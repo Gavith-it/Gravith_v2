@@ -8,8 +8,7 @@ import { toast } from 'sonner';
 import * as z from 'zod';
 
 import { getActiveMaterials } from '../shared/materialMasterData';
-import { useMaterialReceipts } from '../shared/materialReceiptsContext';
-import { useVendors } from '../shared/vendorsContext';
+
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -23,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useMaterialReceipts, useVendors } from '@/lib/contexts';
 import type { MaterialReceipt } from '@/types';
 
 interface MaterialReceiptFormProps {

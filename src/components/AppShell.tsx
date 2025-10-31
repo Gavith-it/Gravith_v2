@@ -22,12 +22,10 @@ import React from 'react';
 
 import { MainSidebar } from './MainSidebar';
 import { SaaSHomepage } from './SaaSHomepage';
-import { MaterialReceiptsProvider } from './shared/materialReceiptsContext';
-import { MaterialsProvider } from './shared/materialsContext';
-import { VendorsProvider } from './shared/vendorsContext';
 import { SidebarProvider, SidebarTrigger } from './ui/sidebar';
 
 import { useAuth } from '@/lib/auth-context';
+import { MaterialReceiptsProvider, MaterialsProvider, VendorsProvider } from '@/lib/contexts';
 
 // Icon mapping for each page
 const getPageIcon = (page: string) => {

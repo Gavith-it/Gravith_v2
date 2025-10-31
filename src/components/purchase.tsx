@@ -21,8 +21,7 @@ import { DataTable } from './common/DataTable';
 import { FormDialog } from './common/FormDialog';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 import { PurchaseForm } from './shared/PurchaseForm';
-import type { SharedMaterial } from './shared/materialsContext';
-import { useMaterials } from './shared/materialsContext';
+
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +36,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMaterials } from '@/lib/contexts';
+import type { SharedMaterial } from '@/lib/contexts';
 
 interface PurchasePageProps {
   filterBySite?: string;

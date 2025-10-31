@@ -1,10 +1,9 @@
-// Vendors context for global access
 'use client';
 
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useCallback, useState } from 'react';
 
-import type { Vendor } from '../vendors-columns';
+import type { Vendor } from '@/types';
 
 // Use original mock data from vendors.tsx
 const initialVendors: Vendor[] = [
@@ -28,6 +27,9 @@ const initialVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-01-15',
     notes: 'Reliable equipment supplier with good maintenance record',
+    organizationId: 'org-1',
+    createdAt: '2023-01-15T00:00:00Z',
+    updatedAt: '2024-02-20T00:00:00Z',
   },
   {
     id: '2',
@@ -49,6 +51,9 @@ const initialVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-01-10',
     notes: 'Premium steel supplier with excellent quality standards',
+    organizationId: 'org-1',
+    createdAt: '2023-01-10T00:00:00Z',
+    updatedAt: '2024-02-25T00:00:00Z',
   },
   {
     id: '3',
@@ -70,6 +75,9 @@ const initialVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-02-01',
     notes: 'Skilled labour contractors with timely delivery',
+    organizationId: 'org-1',
+    createdAt: '2023-02-01T00:00:00Z',
+    updatedAt: '2024-02-22T00:00:00Z',
   },
   {
     id: '4',
@@ -91,12 +99,15 @@ const initialVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-03-15',
     notes: 'Reliable transport services for material delivery',
+    organizationId: 'org-1',
+    createdAt: '2023-03-15T00:00:00Z',
+    updatedAt: '2024-02-28T00:00:00Z',
   },
 ];
 
 interface VendorsContextType {
   vendors: Vendor[];
-  addVendor: (vendor: Omit<Vendor, 'id'>) => void;
+  addVendor: (vendor: Omit<Vendor, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) => void;
   updateVendor: (id: string, vendor: Partial<Vendor>) => void;
 }
 
@@ -105,12 +116,29 @@ const VendorsContext = createContext<VendorsContextType | undefined>(undefined);
 export function VendorsProvider({ children }: { children: ReactNode }) {
   const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
 
-  const addVendor = useCallback((vendor: Omit<Vendor, 'id'>) => {
-    setVendors((prev) => [...prev, { ...vendor, id: (prev.length + 1).toString() }]);
-  }, []);
+  const addVendor = useCallback(
+    (vendor: Omit<Vendor, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) => {
+      const now = new Date().toISOString();
+      setVendors((prev) => [
+        ...prev,
+        {
+          ...vendor,
+          id: (prev.length + 1).toString(),
+          organizationId: 'org-1',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+    },
+    [],
+  );
 
   const updateVendor = useCallback((id: string, updates: Partial<Vendor>) => {
-    setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v)));
+    setVendors((prev) =>
+      prev.map((v) =>
+        v.id === id ? { ...v, ...updates, updatedAt: new Date().toISOString() } : v,
+      ),
+    );
   }, []);
 
   return (

@@ -8,9 +8,7 @@ import { toast } from 'sonner';
 import * as z from 'zod';
 
 import { getActiveMaterials } from './materialMasterData';
-import { useMaterialReceipts } from './materialReceiptsContext';
-import type { SharedMaterial } from './materialsContext';
-import { useMaterials } from './materialsContext';
+
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +40,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import type { SharedMaterial } from '@/lib/contexts';
+import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
 
 interface PurchaseFormProps {
   selectedSite?: string;

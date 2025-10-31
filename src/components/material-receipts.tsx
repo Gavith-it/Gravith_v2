@@ -23,8 +23,7 @@ import { DataTable } from './common/DataTable';
 import { FormDialog } from './common/FormDialog';
 import { MaterialReceiptForm } from './forms/MaterialReceiptForm';
 import { PurchaseTabs } from './layout/PurchaseTabs';
-import { useMaterialReceipts } from './shared/materialReceiptsContext';
-import { useMaterials } from './shared/materialsContext';
+
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +46,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
 import type { MaterialReceipt } from '@/types';
 
 export function MaterialReceiptsPage() {
