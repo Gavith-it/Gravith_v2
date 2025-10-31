@@ -21,7 +21,7 @@ import React from 'react';
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { formatCurrency, formatDate, formatPercentage } from '../lib/utils';
 
-import { FormDialog } from './common/FormDialog';
+import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
 import type { ExpenseFormData } from './forms/ExpenseForm';
 import { ExpenseForm } from './forms/ExpenseForm';
@@ -59,77 +59,6 @@ interface ActivityFormData {
   dependencies: string;
   resources: string;
   milestones: boolean;
-}
-
-// Helper component for info tooltips
-interface InfoTooltipProps {
-  label: string;
-  children: React.ReactNode;
-}
-
-function InfoTooltip({ label, children }: InfoTooltipProps) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Info
-            className="h-4 w-4 text-muted-foreground cursor-help hover:text-foreground transition-colors"
-            aria-label={label}
-          />
-        </TooltipTrigger>
-        <TooltipContent>
-          <div className="text-xs">{children}</div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-// Reusable StatCard component for quick stats
-interface StatCardProps {
-  icon: LucideIcon;
-  iconBgColor: string;
-  iconColor: string;
-  title: string;
-  value: string | number;
-  subtitle: string;
-  tooltipLabel: string;
-  tooltipContent: React.ReactNode;
-}
-
-function StatCard({
-  icon: Icon,
-  iconBgColor,
-  iconColor,
-  title,
-  value,
-  subtitle,
-  tooltipLabel,
-  tooltipContent,
-}: StatCardProps) {
-  return (
-    <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
-      <CardContent className="p-6">
-        <div className="flex flex-col space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className={`p-2 rounded-lg ${iconBgColor}`}>
-                <Icon className={`h-5 w-5 ${iconColor}`} />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">{title}</p>
-              </div>
-            </div>
-            <InfoTooltip label={tooltipLabel}>{tooltipContent}</InfoTooltip>
-          </div>
-          <div className="space-y-1">
-            <p className="text-3xl font-bold tracking-tight">{value}</p>
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 // Mock data for dashboard
@@ -336,27 +265,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     // TODO: Call API to save activity
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'On Track':
-        return (
-          <Badge variant="secondary" className="bg-green-100 text-green-800">
-            On Track
-          </Badge>
-        );
-      case 'Delayed':
-        return <Badge variant="destructive">Delayed</Badge>;
-      case 'Ahead':
-        return (
-          <Badge variant="default" className="bg-blue-100 text-blue-800">
-            Ahead
-          </Badge>
-        );
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
-
   const getAlertVariant = (type: string) => {
     switch (type) {
       case 'warning':
@@ -487,7 +395,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                         {site.location}
                       </div>
                     </div>
-                    {getStatusBadge(site.status)}
+                    <StatusBadge status={site.status} />
                   </div>
 
                   <div className="space-y-2">
