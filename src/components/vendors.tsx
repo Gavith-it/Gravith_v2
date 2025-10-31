@@ -92,6 +92,9 @@ const mockVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-01-15',
     notes: 'Reliable equipment supplier with good maintenance record',
+    organizationId: 'org-1',
+    createdAt: '2023-01-15T00:00:00Z',
+    updatedAt: '2024-02-20T00:00:00Z',
   },
   {
     id: '2',
@@ -113,6 +116,9 @@ const mockVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-01-10',
     notes: 'Premium steel supplier with excellent quality standards',
+    organizationId: 'org-1',
+    createdAt: '2023-01-10T00:00:00Z',
+    updatedAt: '2024-02-25T00:00:00Z',
   },
   {
     id: '3',
@@ -134,6 +140,9 @@ const mockVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-02-01',
     notes: 'Skilled labour contractors with timely delivery',
+    organizationId: 'org-1',
+    createdAt: '2023-02-01T00:00:00Z',
+    updatedAt: '2024-02-22T00:00:00Z',
   },
   {
     id: '4',
@@ -155,6 +164,9 @@ const mockVendors: Vendor[] = [
     status: 'active',
     registrationDate: '2023-03-15',
     notes: 'Reliable transport services for material delivery',
+    organizationId: 'org-1',
+    createdAt: '2023-03-15T00:00:00Z',
+    updatedAt: '2024-02-28T00:00:00Z',
   },
 ];
 
@@ -207,9 +219,10 @@ export function VendorsPage() {
 
   // Analytics calculations
   const totalVendors = vendors.length;
-  const totalPaid = vendors.reduce((sum, vendor) => sum + vendor.totalPaid, 0);
-  const totalPending = vendors.reduce((sum, vendor) => sum + vendor.pendingAmount, 0);
-  const averageRating = vendors.reduce((sum, vendor) => sum + vendor.rating, 0) / vendors.length;
+  const totalPaid = vendors.reduce((sum, vendor) => sum + (vendor.totalPaid || 0), 0);
+  const totalPending = vendors.reduce((sum, vendor) => sum + (vendor.pendingAmount || 0), 0);
+  const averageRating =
+    vendors.reduce((sum, vendor) => sum + (vendor.rating || 0), 0) / vendors.length;
 
   // Helper functions
   const handleEditVendor = (vendor: Vendor) => {
@@ -245,6 +258,7 @@ export function VendorsPage() {
       );
     } else {
       // Create new vendor
+      const now = new Date().toISOString();
       const newVendor: Vendor = {
         id: (vendors.length + 1).toString(),
         name: formData.name,
@@ -263,8 +277,11 @@ export function VendorsPage() {
         pendingAmount: 0,
         lastPayment: '',
         status: 'active',
-        registrationDate: new Date().toISOString().split('T')[0],
+        registrationDate: now.split('T')[0],
         notes: formData.notes || '',
+        organizationId: 'org-1',
+        createdAt: now,
+        updatedAt: now,
       };
 
       setVendors((prev) => [...prev, newVendor]);
@@ -588,16 +605,16 @@ export function VendorsPage() {
                             </div>
                           </TableCell>
                           <TableCell className="font-semibold text-green-600 text-right whitespace-nowrap">
-                            ₹{(vendor.totalPaid / 100000).toFixed(1)}L
+                            ₹{((vendor.totalPaid || 0) / 100000).toFixed(1)}L
                           </TableCell>
                           <TableCell className="font-semibold text-orange-600 text-right whitespace-nowrap">
-                            ₹{(vendor.pendingAmount / 100000).toFixed(1)}L
+                            ₹{((vendor.pendingAmount || 0) / 100000).toFixed(1)}L
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Star className="h-3 w-3 text-yellow-500 fill-current flex-shrink-0" />
                               <span className="text-sm font-medium whitespace-nowrap">
-                                {vendor.rating}
+                                {vendor.rating || 0}
                               </span>
                             </div>
                           </TableCell>

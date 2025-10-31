@@ -9,28 +9,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import type { Vendor } from '@/types';
 
-export interface Vendor {
-  id: string;
-  name: string;
-  category: 'Materials' | 'Equipment' | 'Labour' | 'Transport' | 'Professional' | 'Other';
-  contactPerson: string;
-  phone: string;
-  email: string;
-  address: string;
-  gstNumber: string;
-  panNumber: string;
-  bankAccount: string;
-  ifscCode: string;
-  paymentTerms: string;
-  rating: number;
-  totalPaid: number;
-  pendingAmount: number;
-  lastPayment: string;
-  status: 'active' | 'inactive' | 'blocked';
-  registrationDate: string;
-  notes: string;
-}
+// Re-export Vendor type for backwards compatibility
+export type { Vendor };
 
 export const getStatusColor = (status: Vendor['status']) => {
   switch (status) {
@@ -79,9 +61,11 @@ export const createVendorTableData = (vendors: Vendor[]) => {
     ),
     totalPaid: (
       <div className="space-y-1">
-        <p className="text-sm font-medium">Paid: ₹{(vendor.totalPaid / 100000).toFixed(1)}L</p>
+        <p className="text-sm font-medium">
+          Paid: ₹{((vendor.totalPaid || 0) / 100000).toFixed(1)}L
+        </p>
         <p className="text-sm text-orange-600">
-          Pending: ₹{(vendor.pendingAmount / 1000).toFixed(0)}K
+          Pending: ₹{((vendor.pendingAmount || 0) / 1000).toFixed(0)}K
         </p>
       </div>
     ),
@@ -89,7 +73,7 @@ export const createVendorTableData = (vendors: Vendor[]) => {
     rating: (
       <div className="flex items-center gap-1">
         <Star className="h-3 w-3 fill-current text-yellow-500" />
-        <span className="text-sm font-medium">{vendor.rating.toFixed(1)}</span>
+        <span className="text-sm font-medium">{(vendor.rating || 0).toFixed(1)}</span>
       </div>
     ),
   }));
