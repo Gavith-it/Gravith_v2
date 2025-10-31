@@ -283,6 +283,7 @@ export interface Expense {
   organizationId: string;
   createdAt: string;
   updatedAt: string;
+  [key: string]: unknown; // Index signature for DataTable compatibility
 }
 
 /**

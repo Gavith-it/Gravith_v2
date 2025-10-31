@@ -23,6 +23,7 @@ import { formatCurrency, formatDate, formatPercentage } from '../lib/utils';
 
 import { FormDialog } from './common/FormDialog';
 import ActivityForm from './forms/ActivityForm';
+import type { ExpenseFormData } from './forms/ExpenseForm';
 import { ExpenseForm } from './forms/ExpenseForm';
 import MaterialMasterForm from './forms/MaterialMasterForm';
 import VehicleUsageForm from './forms/VehicleUsageForm';
@@ -34,6 +35,31 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+
+// Form data types
+interface MaterialMasterFormData {
+  name: string;
+  category: string;
+  unit: string;
+  standardRate: number;
+  isActive: boolean;
+  hsn: string;
+  taxRate: number;
+}
+
+interface ActivityFormData {
+  siteId: string;
+  name: string;
+  description: string;
+  startDate: string;
+  duration: string;
+  assignedTeam: string;
+  priority: string;
+  category: string;
+  dependencies: string;
+  resources: string;
+  milestones: boolean;
+}
 
 // Helper component for info tooltips
 interface InfoTooltipProps {
@@ -280,13 +306,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const activityDialog = useDialogState();
 
   // Handler functions for each dialog
-  const handleExpenseSubmit = async (data: Record<string, unknown>) => {
+  const handleExpenseSubmit = async (data: ExpenseFormData) => {
     console.log('Expense submitted:', data);
     expenseDialog.closeDialog();
     // TODO: Call API to save expense
   };
 
-  const handleMaterialMasterSubmit = async (data: Record<string, unknown>) => {
+  const handleMaterialMasterSubmit = async (data: MaterialMasterFormData) => {
     console.log('Material master submitted:', data);
     materialMasterDialog.closeDialog();
     // TODO: Call API to save material master
@@ -304,7 +330,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     // TODO: Call API to save vehicle usage
   };
 
-  const handleActivitySubmit = async (data: Record<string, unknown>) => {
+  const handleActivitySubmit = async (data: ActivityFormData) => {
     console.log('Activity submitted:', data);
     activityDialog.closeDialog();
     // TODO: Call API to save activity
