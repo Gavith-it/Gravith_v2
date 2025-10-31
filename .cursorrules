@@ -1,0 +1,111 @@
+# Cursor Rules — Gavith Build
+
+## Project Context
+- Stack: Next.js 15 (App Router), React 19, TypeScript 5, Tailwind v4, **shadcn/ui** (Radix), Recharts, RHF + Zod, next-themes.
+- Packaging: npm.
+- Goal: Multi-tenant construction management (frontend-first) with strong a11y and perf guardrails.
+
+---
+
+## Golden Rules (always)
+1) **Do not change runtime behavior** unless explicitly requested. Prefer pure refactors.  
+2) **Tenant safety first:** never introduce code paths that can mix data between organizations.  
+3) **shadcn primitives live only in `src/components/ui/**`.** Do not duplicate/modify them outside this folder.  
+4) **Pages stay thin.** Move logic to `src/components/common/**` or `src/lib/hooks/**`.  
+5) **Absolute imports via `@/*` only** (no deep relative paths).  
+6) **A11y ≥ WCAG 2.2 AA**. Icon-only buttons must have `aria-label`. Dialogs trap focus.  
+7) After edits, run the **verification commands** (below) and fix issues in the same change.
+
+---
+
+## Folder & Import Policy
+- **Routes:** `src/app/**/page.tsx` (+ `layout.tsx`, `error.tsx`, `not-found.tsx` as needed).  
+- **UI primitives:** `src/components/ui/**` (shadcn generated files only).  
+- **Composites:** `src/components/common/**` (e.g., `DataTable`, `FormDialog`).  
+- **Layouts/Scaffolds:** `src/components/layout/**` (e.g., `PageHeader`, `SectionCard`, `AppShell`).  
+- **Forms:** `src/components/forms/**` (business forms using RHF + Zod).  
+- **Hooks:** global in `src/lib/hooks/**`; feature-local in `src/hooks/**` (avoid duplicates).  
+- **Utilities:** `src/lib/**`  
+- **Assets:** `src/assets/**`
+
+**Required refactors Cursor should perform automatically:**
+- Replace deep relative imports (`../../..`) with `@/` where possible.
+- If the same primitive exists outside `ui/`, **move it** into `ui/` or refactor usages to the canonical `ui/` file.
+- If duplicate hooks exist (e.g., multiple `use-mobile`), **consolidate** into `src/lib/hooks/use-mobile.ts` and update imports.
+
+---
+
+## shadcn/ui Rules
+- Add/modify primitives **only** via CLI into `src/components/ui/**`.
+- Composite/wrapper components **must not** copy primitive code; compose them in `common/` or `layout/`.
+- Enforce tokenized styling (Tailwind variables). **No inline hex.**
+- All UI imports in pages/components must come from `@/components/ui/*` or composites from `@/components/common/*`.
+
+---
+
+## Multi-Tenancy & RBAC
+- Every data call/fetch helper must be tenant-scoped.  
+- Middleware derives `orgId` from session; components/pages must **not** build cross-org URLs.  
+- Any new list/detail page must accept and apply `orgId` context on queries (placeholder until backend).  
+- RBAC (v0): Admin, Project Manager, Site Supervisor, Materials Manager, Finance Manager, Executive.  
+  - Cursor should not hardcode role strings; use a central `Role` type and guards.
+
+---
+
+## Page Structure & Patterns
+- **Scaffold:** `PageHeader` + `SectionCard` for consistent pages.  
+- **Tables:** Use `DataTable` (TanStack + shadcn Table). No page-local table forks.  
+- **Dialogs/Forms:** Use `FormDialog` + RHF + Zod.  
+- **Client vs Server:** Prefer Server Components; use Client only where interactivity is required.  
+- **State:** Local state + hooks; avoid global stores for v0.
+
+---
+
+## Performance Rules
+- Budgets: Primary route gzip JS **< 230KB**, dynamic chunk **< 180KB**, LCP **< 2.5s**.  
+- Dynamic import heavy charts/forms via `next/dynamic` (`ssr:false` only when necessary).  
+- Virtualize tables >100 rows (`@tanstack/react-virtual`).  
+- Use `next/image` for rasters; memoize pure components.  
+- Add `revalidate`/cache policies to Server Components when appropriate.
+
+---
+
+## Accessibility Rules
+- Lighthouse A11y **≥ 95** on `/login`, `/signup`, `/dashboard`, `/sites`, `/materials`.  
+- Focus visible and non-color-only.  
+- Dialogs: labelled, focus trap, escape/overlay close patterns correct.  
+- Tables: header associations, keyboard navigation, row selection accessible.  
+- Icon-only controls must include `aria-label`.
+
+---
+
+## Testing Rules
+- Unit: Vitest + React Testing Library.  
+  - Must test `useTableState`, `useDialogState`, `DataTable`, `FormDialog`.  
+- E2E: Playwright smoke for `/login`, `/signup`, `/dashboard`, `/sites`, `/materials`.  
+- Coverage: global ≥ 70%, critical flows ≥ 85%.
+
+---
+
+## Commit & PR Rules
+- Conventional Commits (`feat:`, `fix:`, `refactor:`, `chore:`…).  
+- PRs must pass: lint, typecheck, unit, e2e, lighthouse (A11y ≥ 95).  
+- Attach screenshots for visible UI changes.  
+- Update docs when you add/edit entities or modules (`PRD.md`, `DATA_DICTIONARY.md`, `API_CONTRACTS.md`).
+
+---
+
+## Non-Goals (Cursor should not do unless asked)
+- Introduce new external libraries.  
+- Reorganize files outside the policy above.  
+- Change public APIs or routing semantics.  
+- Implement backend logic or auth provider specifics (placeholders/mocks only for now).
+
+---
+
+## Verification Commands (run after edits)
+```bash
+npm run lint && npm run typecheck && npm run build
+npm test
+npm run e2e   # if Playwright configured
+npm run analyze  # ensure budgets in PERFORMANCE.md
