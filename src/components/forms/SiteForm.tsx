@@ -31,6 +31,7 @@ interface Site {
   spent: number;
   description: string;
   progress: number;
+  imageUrl?: string;
 }
 
 interface SiteFormProps {

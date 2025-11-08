@@ -29,7 +29,7 @@ import { SchedulingPage } from './scheduling';
 import { WorkProgressPage } from './work-progress';
 
 import SiteForm from '@/components/forms/SiteForm';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,6 +71,7 @@ interface Site {
   spent: number;
   description: string;
   progress: number;
+  imageUrl?: string;
 }
 
 interface SiteExpense {
@@ -156,6 +157,8 @@ const mockSites: Site[] = [
     spent: 32000000,
     description: 'Premium residential complex with 200 units',
     progress: 64,
+    imageUrl:
+      'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=160&q=80',
   },
   {
     id: '2',
@@ -168,6 +171,8 @@ const mockSites: Site[] = [
     spent: 41250000,
     description: 'Modern commercial complex with retail and office spaces',
     progress: 55,
+    imageUrl:
+      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=160&q=80',
   },
   {
     id: '3',
@@ -180,6 +185,8 @@ const mockSites: Site[] = [
     spent: 33600000,
     description: 'Four-lane highway bridge construction',
     progress: 96,
+    imageUrl:
+      'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=160&q=80',
   },
 ];
 
@@ -614,6 +621,16 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                     }}
                   >
                     <CardContent className="p-5">
+                      {site.imageUrl && (
+                        <div className="mb-4 h-32 rounded-lg overflow-hidden border border-border/60">
+                          <img
+                            src={site.imageUrl}
+                            alt={site.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        </div>
+                      )}
                       {/* Header Section */}
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1 min-w-0 pr-3">
@@ -741,6 +758,13 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-14 w-14 bg-primary/10">
+                        {currentSite.imageUrl && (
+                          <AvatarImage
+                            src={currentSite.imageUrl}
+                            alt={currentSite.name}
+                            className="object-cover"
+                          />
+                        )}
                         <AvatarFallback className="bg-primary/10 text-primary">
                           <Building2 className="h-7 w-7" />
                         </AvatarFallback>

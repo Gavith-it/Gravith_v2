@@ -47,7 +47,6 @@ import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDate, formatDateShort } from '@/lib/utils';
 import type { Expense } from '@/types';
 
-
 // Mock Data - In production, this would come from API
 interface SiteDetails {
   id: string;
@@ -60,6 +59,7 @@ interface SiteDetails {
   spent: number;
   description: string;
   progress: number;
+  imageUrl?: string;
 }
 
 interface SitePurchase {

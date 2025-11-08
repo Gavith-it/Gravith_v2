@@ -49,7 +49,13 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
-export const expenseColumns = [
+interface ExpenseColumnHandlers {
+  onView: (expense: Expense) => void;
+  onEdit: (expense: Expense) => void;
+  onDelete: (expense: Expense) => void;
+}
+
+export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHandlers) => [
   {
     key: 'category',
     label: 'Category & Description',
@@ -152,7 +158,7 @@ export const expenseColumns = [
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Handle view action
+                  onView(expense);
                 }}
                 className="h-8 w-8 p-0 transition-all hover:bg-primary/10"
                 aria-label="View expense details"
@@ -173,7 +179,7 @@ export const expenseColumns = [
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Handle edit action
+                  onEdit(expense);
                 }}
                 className="h-8 w-8 p-0 transition-all hover:bg-primary/10"
                 aria-label="Edit expense"
@@ -217,7 +223,13 @@ export const expenseColumns = [
             </DropdownMenuItem>
             <DropdownMenuItem className="text-sm">Download receipt</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-sm text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-sm text-destructive focus:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(expense);
+              }}
+            >
               <Trash2 className="h-3.5 w-3.5 mr-2" />
               Delete
             </DropdownMenuItem>

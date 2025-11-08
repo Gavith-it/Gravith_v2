@@ -19,6 +19,7 @@ import {
   CreditCard,
   FileText,
   MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
 import React, { useState } from 'react';
 
@@ -306,6 +307,22 @@ export function VendorsPage() {
         : vendor,
     );
     setVendors(updatedVendors);
+  };
+
+  const handleDeleteVendor = (vendorId: string) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Are you sure you want to delete this vendor?');
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setVendors((prev) => prev.filter((vendor) => vendor.id !== vendorId));
+
+    if (editingVendor?.id === vendorId) {
+      setEditingVendor(null);
+      setIsVendorDialogOpen(false);
+    }
   };
 
   const getCategoryIcon = (category: string) => {
@@ -633,39 +650,37 @@ export function VendorsPage() {
                             {vendor.lastPayment ? formatDate(vendor.lastPayment) : 'N/A'}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1 justify-end">
+                            <div className="flex items-center gap-2 justify-end">
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
-                                      variant="ghost"
-                                      size="sm"
+                                      variant="outline"
+                                      size="icon"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleEditVendor(vendor);
                                       }}
-                                      className="h-8 w-8 p-0 transition-all hover:bg-primary/10"
+                                      className="h-8 w-8"
                                       aria-label="Edit vendor"
                                     >
-                                      <Edit className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                                      <Edit className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Edit vendor</p>
-                                  </TooltipContent>
+                                  <TooltipContent>Edit vendor</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
-                                      variant="ghost"
-                                      size="sm"
+                                      variant="outline"
+                                      size="icon"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         toggleVendorStatus(vendor.id);
                                       }}
-                                      className="h-8 w-8 p-0 transition-all hover:bg-destructive/10"
+                                      className="h-8 w-8"
                                       aria-label={
                                         vendor.status === 'active'
                                           ? 'Deactivate vendor'
@@ -673,18 +688,36 @@ export function VendorsPage() {
                                       }
                                     >
                                       {vendor.status === 'active' ? (
-                                        <Pause className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                                        <Pause className="h-4 w-4" />
                                       ) : (
-                                        <CheckCircle2 className="h-3 w-3 text-muted-foreground hover:text-green-600" />
+                                        <CheckCircle2 className="h-4 w-4" />
                                       )}
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>
-                                      {vendor.status === 'active' ? 'Deactivate' : 'Activate'}{' '}
-                                      vendor
-                                    </p>
+                                    {vendor.status === 'active'
+                                      ? 'Deactivate vendor'
+                                      : 'Activate vendor'}
                                   </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteVendor(vendor.id);
+                                      }}
+                                      className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
+                                      aria-label="Delete vendor"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Delete vendor</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                             </div>

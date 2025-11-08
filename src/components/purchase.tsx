@@ -22,12 +22,12 @@ import { FormDialog } from './common/FormDialog';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 import { PurchaseForm } from './shared/PurchaseForm';
 
-
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -291,12 +291,16 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                       </Button>
                     }
                   >
-                    <PurchaseForm
-                      selectedSite={filterBySite}
-                      editingMaterial={dialog.editingItem}
-                      onSubmit={handleFormSubmit}
-                      onCancel={handleFormCancel}
-                    />
+                    <ScrollArea className="h-[60vh] md:h-[65vh] pr-6">
+                      <div className="pr-1 pb-4">
+                        <PurchaseForm
+                          selectedSite={filterBySite}
+                          editingMaterial={dialog.editingItem}
+                          onSubmit={handleFormSubmit}
+                          onCancel={handleFormCancel}
+                        />
+                      </div>
+                    </ScrollArea>
                   </FormDialog>
                 </div>
               </div>

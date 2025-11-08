@@ -68,6 +68,7 @@ export interface Site {
   createdAt: string;
   updatedAt: string;
   managerId?: string;
+  imageUrl?: string;
 }
 
 /**

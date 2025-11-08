@@ -8,6 +8,8 @@ import {
   Calendar,
   BarChart as BarChartIcon,
   Truck,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 import React, { useState } from 'react';
 
@@ -29,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { formatDateShort } from '@/lib/utils';
 
@@ -107,6 +110,60 @@ interface VehicleManagementProps {
   selectedVehicle?: string;
   onVehicleSelect?: (vehicleId: string) => void;
 }
+
+type RefuelingFormState = {
+  vehicleId: string;
+  date: string;
+  fuelType: VehicleRefueling['fuelType'];
+  quantity: string;
+  cost: string;
+  odometerReading: string;
+  location: string;
+  vendor: string;
+  invoiceNumber: string;
+  notes: string;
+};
+
+const emptyRefuelingFormState: RefuelingFormState = {
+  vehicleId: '',
+  date: '',
+  fuelType: 'Diesel',
+  quantity: '',
+  cost: '',
+  odometerReading: '',
+  location: '',
+  vendor: '',
+  invoiceNumber: '',
+  notes: '',
+};
+
+type UsageFormState = {
+  vehicleId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  startOdometer: string;
+  endOdometer: string;
+  workDescription: string;
+  workCategory: VehicleUsage['workCategory'];
+  siteId: string;
+  fuelConsumed: string;
+  notes: string;
+};
+
+const emptyUsageFormState: UsageFormState = {
+  vehicleId: '',
+  date: '',
+  startTime: '',
+  endTime: '',
+  startOdometer: '',
+  endOdometer: '',
+  workDescription: '',
+  workCategory: 'Construction',
+  siteId: '',
+  fuelConsumed: '',
+  notes: '',
+};
 
 export function VehiclesPage({
   selectedVehicle: propSelectedVehicle,
@@ -280,6 +337,25 @@ export function VehiclesPage({
   const [selectedVehicle, setSelectedVehicle] = useState<string>(propSelectedVehicle || '1');
   const [activeTab, setActiveTab] = useState('refueling');
 
+  const refuelingDialog = useDialogState<VehicleRefueling>();
+  const usageDialog = useDialogState<VehicleUsage>();
+
+  const resetRefuelingForm = React.useCallback(() => {
+    setRefuelingForm({
+      ...emptyRefuelingFormState,
+      vehicleId: selectedVehicle || '',
+    });
+  }, [selectedVehicle]);
+
+  const resetUsageForm = React.useCallback(() => {
+    const vehicle = vehicles.find((v) => v.id === selectedVehicle);
+    setUsageForm({
+      ...emptyUsageFormState,
+      vehicleId: selectedVehicle || '',
+      siteId: vehicle?.siteId || '',
+    });
+  }, [selectedVehicle, vehicles]);
+
   // Update selectedVehicle when prop changes
   React.useEffect(() => {
     if (propSelectedVehicle) {
@@ -287,35 +363,64 @@ export function VehiclesPage({
     }
   }, [propSelectedVehicle]);
 
-  const refuelingDialog = useDialogState();
-  const usageDialog = useDialogState();
+  React.useEffect(() => {
+    if (!refuelingDialog.isDialogOpen) {
+      resetRefuelingForm();
+      return;
+    }
+
+    if (refuelingDialog.editingItem) {
+      const item = refuelingDialog.editingItem;
+      setRefuelingForm({
+        vehicleId: item.vehicleId,
+        date: item.date,
+        fuelType: item.fuelType,
+        quantity: item.quantity.toString(),
+        cost: item.cost.toString(),
+        odometerReading: item.odometerReading.toString(),
+        location: item.location,
+        vendor: item.vendor,
+        invoiceNumber: item.invoiceNumber,
+        notes: item.notes ?? '',
+      });
+    } else {
+      resetRefuelingForm();
+    }
+  }, [refuelingDialog.isDialogOpen, refuelingDialog.editingItem, resetRefuelingForm]);
+
+  React.useEffect(() => {
+    if (!usageDialog.isDialogOpen) {
+      resetUsageForm();
+      return;
+    }
+
+    if (usageDialog.editingItem) {
+      const item = usageDialog.editingItem;
+      setUsageForm({
+        vehicleId: item.vehicleId,
+        date: item.date,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        startOdometer: item.startOdometer.toString(),
+        endOdometer: item.endOdometer.toString(),
+        workDescription: item.workDescription,
+        workCategory: item.workCategory,
+        siteId: item.siteId,
+        fuelConsumed: item.fuelConsumed.toString(),
+        notes: item.notes ?? '',
+      });
+    } else {
+      resetUsageForm();
+    }
+  }, [usageDialog.isDialogOpen, usageDialog.editingItem, resetUsageForm]);
 
   // Form states
-  const [refuelingForm, setRefuelingForm] = useState({
-    vehicleId: '',
-    date: '',
-    fuelType: 'Diesel' as VehicleRefueling['fuelType'],
-    quantity: '',
-    cost: '',
-    odometerReading: '',
-    location: '',
-    vendor: '',
-    invoiceNumber: '',
-    notes: '',
+  const [refuelingForm, setRefuelingForm] = useState<RefuelingFormState>({
+    ...emptyRefuelingFormState,
   });
 
-  const [usageForm, setUsageForm] = useState({
-    vehicleId: '',
-    date: '',
-    startTime: '',
-    endTime: '',
-    startOdometer: '',
-    endOdometer: '',
-    workDescription: '',
-    workCategory: 'Construction' as VehicleUsage['workCategory'],
-    siteId: '',
-    fuelConsumed: '',
-    notes: '',
+  const [usageForm, setUsageForm] = useState<UsageFormState>({
+    ...emptyUsageFormState,
   });
 
   // Calculate analytics
@@ -334,8 +439,10 @@ export function VehiclesPage({
     e.preventDefault();
     const vehicle = vehicles.find((v) => v.id === refuelingForm.vehicleId);
 
-    const newRefueling: VehicleRefueling = {
-      id: (refuelingRecords.length + 1).toString(),
+    const recordId = refuelingDialog.editingItem?.id || (refuelingRecords.length + 1).toString();
+
+    const updatedRefueling: VehicleRefueling = {
+      id: recordId,
       vehicleId: refuelingForm.vehicleId,
       vehicleNumber: vehicle?.vehicleNumber || '',
       date: refuelingForm.date,
@@ -351,37 +458,32 @@ export function VehiclesPage({
       recordedBy: 'Current User',
     };
 
-    setRefuelingRecords((prev) => [...prev, newRefueling]);
+    if (refuelingDialog.editingItem) {
+      setRefuelingRecords((prev) =>
+        prev.map((record) => (record.id === recordId ? updatedRefueling : record)),
+      );
+    } else {
+      setRefuelingRecords((prev) => [...prev, updatedRefueling]);
 
-    // Update vehicle fuel level and mileage
-    setVehicles((prev) =>
-      prev.map((vehicle) =>
-        vehicle.id === refuelingForm.vehicleId
-          ? {
-              ...vehicle,
-              currentFuelLevel: Math.min(
-                vehicle.fuelCapacity,
-                vehicle.currentFuelLevel + Number(refuelingForm.quantity),
-              ),
-              mileage: Number(refuelingForm.odometerReading),
-              lastUpdated: new Date().toISOString().split('T')[0],
-            }
-          : vehicle,
-      ),
-    );
+      // Update vehicle fuel level and mileage for newly added entries
+      setVehicles((prev) =>
+        prev.map((v) =>
+          v.id === refuelingForm.vehicleId
+            ? {
+                ...v,
+                currentFuelLevel: Math.min(
+                  v.fuelCapacity,
+                  v.currentFuelLevel + Number(refuelingForm.quantity),
+                ),
+                mileage: Number(refuelingForm.odometerReading),
+                lastUpdated: new Date().toISOString().split('T')[0],
+              }
+            : v,
+        ),
+      );
+    }
 
-    setRefuelingForm({
-      vehicleId: '',
-      date: '',
-      fuelType: 'Diesel',
-      quantity: '',
-      cost: '',
-      odometerReading: '',
-      location: '',
-      vendor: '',
-      invoiceNumber: '',
-      notes: '',
-    });
+    resetRefuelingForm();
     refuelingDialog.closeDialog();
   };
 
@@ -390,8 +492,10 @@ export function VehiclesPage({
     const vehicle = vehicles.find((v) => v.id === usageForm.vehicleId);
     const totalDistance = Number(usageForm.endOdometer) - Number(usageForm.startOdometer);
 
-    const newUsage: VehicleUsage = {
-      id: (usageRecords.length + 1).toString(),
+    const recordId = usageDialog.editingItem?.id || (usageRecords.length + 1).toString();
+
+    const updatedUsage: VehicleUsage = {
+      id: recordId,
       vehicleId: usageForm.vehicleId,
       vehicleNumber: vehicle?.vehicleNumber || '',
       date: usageForm.date,
@@ -414,36 +518,52 @@ export function VehiclesPage({
       recordedBy: 'Current User',
     };
 
-    setUsageRecords((prev) => [...prev, newUsage]);
+    if (usageDialog.editingItem) {
+      setUsageRecords((prev) =>
+        prev.map((record) => (record.id === recordId ? updatedUsage : record)),
+      );
+    } else {
+      setUsageRecords((prev) => [...prev, updatedUsage]);
 
-    // Update vehicle mileage and fuel level
-    setVehicles((prev) =>
-      prev.map((v) =>
-        v.id === usageForm.vehicleId
-          ? {
-              ...v,
-              mileage: Number(usageForm.endOdometer),
-              currentFuelLevel: Math.max(0, v.currentFuelLevel - Number(usageForm.fuelConsumed)),
-              lastUpdated: new Date().toISOString().split('T')[0],
-            }
-          : v,
-      ),
-    );
+      // Update vehicle mileage and fuel level when creating a new usage entry
+      setVehicles((prev) =>
+        prev.map((v) =>
+          v.id === usageForm.vehicleId
+            ? {
+                ...v,
+                mileage: Number(usageForm.endOdometer),
+                currentFuelLevel: Math.max(0, v.currentFuelLevel - Number(usageForm.fuelConsumed)),
+                lastUpdated: new Date().toISOString().split('T')[0],
+              }
+            : v,
+        ),
+      );
+    }
 
-    setUsageForm({
-      vehicleId: '',
-      date: '',
-      startTime: '',
-      endTime: '',
-      startOdometer: '',
-      endOdometer: '',
-      workDescription: '',
-      workCategory: 'Construction',
-      siteId: '',
-      fuelConsumed: '',
-      notes: '',
-    });
+    resetUsageForm();
     usageDialog.closeDialog();
+  };
+
+  const handleEditRefueling = (record: VehicleRefueling) => {
+    refuelingDialog.openDialog(record);
+  };
+
+  const handleDeleteRefueling = (recordId: string) => {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this refueling record?')) {
+      return;
+    }
+    setRefuelingRecords((prev) => prev.filter((record) => record.id !== recordId));
+  };
+
+  const handleEditUsage = (record: VehicleUsage) => {
+    usageDialog.openDialog(record);
+  };
+
+  const handleDeleteUsage = (recordId: string) => {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this usage record?')) {
+      return;
+    }
+    setUsageRecords((prev) => prev.filter((record) => record.id !== recordId));
   };
 
   const getStatusColor = (status: Vehicle['status']) => {
@@ -604,46 +724,91 @@ export function VehiclesPage({
                       <CardContent className="p-6">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-lg font-semibold">Vehicle Refueling Records</h3>
-                          <Button onClick={() => refuelingDialog.openDialog()} className="gap-2">
+                          <Button
+                            onClick={() => {
+                              resetRefuelingForm();
+                              refuelingDialog.openDialog();
+                            }}
+                            className="gap-2"
+                          >
                             <Plus className="h-4 w-4" />
                             Add Refueling
                           </Button>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="min-w-full text-sm">
-                            <thead>
-                              <tr className="border-b bg-muted/50">
-                                <th className="px-3 py-2 text-left">Date</th>
-                                <th className="px-3 py-2 text-left">Vehicle</th>
-                                <th className="px-3 py-2 text-left">Fuel Type</th>
-                                <th className="px-3 py-2 text-left">Quantity</th>
-                                <th className="px-3 py-2 text-left">Cost</th>
-                                <th className="px-3 py-2 text-left">Odometer</th>
-                                <th className="px-3 py-2 text-left">Location</th>
-                                <th className="px-3 py-2 text-left">Vendor</th>
-                                <th className="px-3 py-2 text-left">Invoice</th>
-                                <th className="px-3 py-2 text-left">Notes</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {refuelingRecords.map((record) => (
-                                <tr key={record.id} className="border-b hover:bg-muted/50">
-                                  <td className="px-3 py-2">{record.date}</td>
-                                  <td className="px-3 py-2">{record.vehicleNumber}</td>
-                                  <td className="px-3 py-2">{record.fuelType}</td>
-                                  <td className="px-3 py-2">
-                                    {record.quantity} {record.unit}
-                                  </td>
-                                  <td className="px-3 py-2">₹{record.cost}</td>
-                                  <td className="px-3 py-2">{record.odometerReading}</td>
-                                  <td className="px-3 py-2">{record.location}</td>
-                                  <td className="px-3 py-2">{record.vendor}</td>
-                                  <td className="px-3 py-2">{record.invoiceNumber}</td>
-                                  <td className="px-3 py-2">{record.notes || '-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
+                            <TooltipProvider>
+                              <table className="min-w-full text-sm">
+                                <thead>
+                                  <tr className="border-b bg-muted/50">
+                                    <th className="px-3 py-2 text-left">Date</th>
+                                    <th className="px-3 py-2 text-left">Vehicle</th>
+                                    <th className="px-3 py-2 text-left">Fuel Type</th>
+                                    <th className="px-3 py-2 text-left">Quantity</th>
+                                    <th className="px-3 py-2 text-left">Cost</th>
+                                    <th className="px-3 py-2 text-left">Odometer</th>
+                                    <th className="px-3 py-2 text-left">Location</th>
+                                    <th className="px-3 py-2 text-left">Vendor</th>
+                                    <th className="px-3 py-2 text-left">Invoice</th>
+                                    <th className="px-3 py-2 text-left">Notes</th>
+                                    <th className="px-3 py-2 text-left">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {refuelingRecords.map((record) => (
+                                    <tr key={record.id} className="border-b hover:bg-muted/50">
+                                      <td className="px-3 py-2">{record.date}</td>
+                                      <td className="px-3 py-2">{record.vehicleNumber}</td>
+                                      <td className="px-3 py-2">{record.fuelType}</td>
+                                      <td className="px-3 py-2">
+                                        {record.quantity} {record.unit}
+                                      </td>
+                                      <td className="px-3 py-2">₹{record.cost}</td>
+                                      <td className="px-3 py-2">{record.odometerReading}</td>
+                                      <td className="px-3 py-2">{record.location}</td>
+                                      <td className="px-3 py-2">{record.vendor}</td>
+                                      <td className="px-3 py-2">{record.invoiceNumber}</td>
+                                      <td className="px-3 py-2">{record.notes || '-'}</td>
+                                      <td className="px-3 py-2">
+                                        <div className="flex items-center gap-2">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => handleEditRefueling(record)}
+                                                aria-label={`Edit refueling record ${record.invoiceNumber}`}
+                                                className="h-8 w-8"
+                                              >
+                                                <Edit className="h-4 w-4" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Edit</TooltipContent>
+                                          </Tooltip>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => handleDeleteRefueling(record.id)}
+                                                aria-label={`Delete refueling record ${record.invoiceNumber}`}
+                                                className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Delete</TooltipContent>
+                                          </Tooltip>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </TooltipProvider>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -748,48 +913,93 @@ export function VehiclesPage({
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold">Vehicle Usage Records</h3>
-                        <Button onClick={() => usageDialog.openDialog()} className="gap-2">
+                        <Button
+                          onClick={() => {
+                            resetUsageForm();
+                            usageDialog.openDialog();
+                          }}
+                          className="gap-2"
+                        >
                           <Plus className="h-4 w-4" />
                           Add Usage Record
                         </Button>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                          <thead>
-                            <tr className="border-b bg-muted/50">
-                              <th className="px-3 py-2 text-left">Date</th>
-                              <th className="px-3 py-2 text-left">Vehicle</th>
-                              <th className="px-3 py-2 text-left">Driver</th>
-                              <th className="px-3 py-2 text-left">Purpose</th>
-                              <th className="px-3 py-2 text-left">Start Reading</th>
-                              <th className="px-3 py-2 text-left">End Reading</th>
-                              <th className="px-3 py-2 text-left">Distance</th>
-                              <th className="px-3 py-2 text-left">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {usageRecords.map((record) => (
-                              <tr key={record.id} className="border-b hover:bg-muted/50">
-                                <td className="px-3 py-2">{record.date}</td>
-                                <td className="px-3 py-2">{record.vehicleNumber}</td>
-                                <td className="px-3 py-2">{record.operator}</td>
-                                <td className="px-3 py-2">{record.workDescription}</td>
-                                <td className="px-3 py-2">{record.startOdometer}</td>
-                                <td className="px-3 py-2">{record.endOdometer || '-'}</td>
-                                <td className="px-3 py-2">{record.totalDistance} km</td>
-                                <td className="px-3 py-2">
-                                  <Badge
-                                    variant={
-                                      record.status === 'Completed' ? 'default' : 'secondary'
-                                    }
-                                  >
-                                    {record.status}
-                                  </Badge>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
+                          <TooltipProvider>
+                            <table className="min-w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="px-3 py-2 text-left">Date</th>
+                                  <th className="px-3 py-2 text-left">Vehicle</th>
+                                  <th className="px-3 py-2 text-left">Driver</th>
+                                  <th className="px-3 py-2 text-left">Purpose</th>
+                                  <th className="px-3 py-2 text-left">Start Reading</th>
+                                  <th className="px-3 py-2 text-left">End Reading</th>
+                                  <th className="px-3 py-2 text-left">Distance</th>
+                                  <th className="px-3 py-2 text-left">Status</th>
+                                  <th className="px-3 py-2 text-left">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {usageRecords.map((record) => (
+                                  <tr key={record.id} className="border-b hover:bg-muted/50">
+                                    <td className="px-3 py-2">{record.date}</td>
+                                    <td className="px-3 py-2">{record.vehicleNumber}</td>
+                                    <td className="px-3 py-2">{record.operator}</td>
+                                    <td className="px-3 py-2">{record.workDescription}</td>
+                                    <td className="px-3 py-2">{record.startOdometer}</td>
+                                    <td className="px-3 py-2">{record.endOdometer || '-'}</td>
+                                    <td className="px-3 py-2">{record.totalDistance} km</td>
+                                    <td className="px-3 py-2">
+                                      <Badge
+                                        variant={
+                                          record.status === 'Completed' ? 'default' : 'secondary'
+                                        }
+                                      >
+                                        {record.status}
+                                      </Badge>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-2">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="icon"
+                                              onClick={() => handleEditUsage(record)}
+                                              aria-label={`Edit usage record ${record.id}`}
+                                              className="h-8 w-8"
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>Edit</TooltipContent>
+                                        </Tooltip>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="icon"
+                                              onClick={() => handleDeleteUsage(record.id)}
+                                              aria-label={`Delete usage record ${record.id}`}
+                                              className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>Delete</TooltipContent>
+                                        </Tooltip>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </TooltipProvider>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -821,318 +1031,355 @@ export function VehiclesPage({
 
       {/* Refueling Dialog */}
       <FormDialog
-        title="Add Refueling Record"
+        title={refuelingDialog.isEditing ? 'Edit Refueling Record' : 'Add Refueling Record'}
         description="Record vehicle refueling details"
         isOpen={refuelingDialog.isDialogOpen}
-        onOpenChange={refuelingDialog.toggleDialog}
+        onOpenChange={(open) =>
+          open
+            ? refuelingDialog.openDialog(refuelingDialog.editingItem)
+            : refuelingDialog.closeDialog()
+        }
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleRefuelingSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="vehicle">Vehicle *</Label>
-              <Select
-                value={refuelingForm.vehicleId}
-                onValueChange={(value) =>
-                  setRefuelingForm((prev) => ({ ...prev, vehicleId: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select vehicle" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicles.map((vehicle) => (
-                    <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.vehicleNumber} - {vehicle.type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <ScrollArea className="max-h-[60vh] pr-2">
+            <div className="space-y-4 pr-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="vehicle">Vehicle *</Label>
+                  <Select
+                    value={refuelingForm.vehicleId}
+                    onValueChange={(value) =>
+                      setRefuelingForm((prev) => ({ ...prev, vehicleId: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map((vehicle) => (
+                        <SelectItem key={vehicle.id} value={vehicle.id}>
+                          {vehicle.vehicleNumber} - {vehicle.type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date *</Label>
+                  <DatePicker
+                    date={refuelingForm.date ? new Date(refuelingForm.date) : undefined}
+                    onSelect={(date) =>
+                      setRefuelingForm((prev) => ({
+                        ...prev,
+                        date: date ? date.toISOString().split('T')[0] : '',
+                      }))
+                    }
+                    placeholder="Select refueling date"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fuelType">Fuel Type *</Label>
+                  <Select
+                    value={refuelingForm.fuelType}
+                    onValueChange={(value: VehicleRefueling['fuelType']) =>
+                      setRefuelingForm((prev) => ({ ...prev, fuelType: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Diesel">Diesel</SelectItem>
+                      <SelectItem value="Petrol">Petrol</SelectItem>
+                      <SelectItem value="CNG">CNG</SelectItem>
+                      <SelectItem value="Electric">Electric</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quantity">Quantity *</Label>
+                  <Input
+                    type="number"
+                    value={refuelingForm.quantity}
+                    onChange={(e) =>
+                      setRefuelingForm((prev) => ({ ...prev, quantity: e.target.value }))
+                    }
+                    placeholder="50"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cost">Cost *</Label>
+                  <Input
+                    type="number"
+                    value={refuelingForm.cost}
+                    onChange={(e) =>
+                      setRefuelingForm((prev) => ({ ...prev, cost: e.target.value }))
+                    }
+                    placeholder="4250"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="odometer">Odometer Reading *</Label>
+                  <Input
+                    type="number"
+                    value={refuelingForm.odometerReading}
+                    onChange={(e) =>
+                      setRefuelingForm((prev) => ({ ...prev, odometerReading: e.target.value }))
+                    }
+                    placeholder="2480"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location *</Label>
+                  <Input
+                    value={refuelingForm.location}
+                    onChange={(e) =>
+                      setRefuelingForm((prev) => ({ ...prev, location: e.target.value }))
+                    }
+                    placeholder="Site Fuel Station"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="vendor">Vendor *</Label>
+                  <Input
+                    value={refuelingForm.vendor}
+                    onChange={(e) =>
+                      setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
+                    }
+                    placeholder="BP Fuel Station"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invoice">Invoice Number *</Label>
+                  <Input
+                    value={refuelingForm.invoiceNumber}
+                    onChange={(e) =>
+                      setRefuelingForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))
+                    }
+                    placeholder="BP-001234"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  value={refuelingForm.notes}
+                  onChange={(e) => setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Additional notes..."
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="date">Date *</Label>
-              <DatePicker
-                date={refuelingForm.date ? new Date(refuelingForm.date) : undefined}
-                onSelect={(date) =>
-                  setRefuelingForm((prev) => ({
-                    ...prev,
-                    date: date ? date.toISOString().split('T')[0] : '',
-                  }))
-                }
-                placeholder="Select refueling date"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="fuelType">Fuel Type *</Label>
-              <Select
-                value={refuelingForm.fuelType}
-                onValueChange={(value: VehicleRefueling['fuelType']) =>
-                  setRefuelingForm((prev) => ({ ...prev, fuelType: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Diesel">Diesel</SelectItem>
-                  <SelectItem value="Petrol">Petrol</SelectItem>
-                  <SelectItem value="CNG">CNG</SelectItem>
-                  <SelectItem value="Electric">Electric</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity *</Label>
-              <Input
-                type="number"
-                value={refuelingForm.quantity}
-                onChange={(e) =>
-                  setRefuelingForm((prev) => ({ ...prev, quantity: e.target.value }))
-                }
-                placeholder="50"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cost">Cost *</Label>
-              <Input
-                type="number"
-                value={refuelingForm.cost}
-                onChange={(e) => setRefuelingForm((prev) => ({ ...prev, cost: e.target.value }))}
-                placeholder="4250"
-                required
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="odometer">Odometer Reading *</Label>
-              <Input
-                type="number"
-                value={refuelingForm.odometerReading}
-                onChange={(e) =>
-                  setRefuelingForm((prev) => ({ ...prev, odometerReading: e.target.value }))
-                }
-                placeholder="2480"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="location">Location *</Label>
-              <Input
-                value={refuelingForm.location}
-                onChange={(e) =>
-                  setRefuelingForm((prev) => ({ ...prev, location: e.target.value }))
-                }
-                placeholder="Site Fuel Station"
-                required
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="vendor">Vendor *</Label>
-              <Input
-                value={refuelingForm.vendor}
-                onChange={(e) => setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))}
-                placeholder="BP Fuel Station"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="invoice">Invoice Number *</Label>
-              <Input
-                value={refuelingForm.invoiceNumber}
-                onChange={(e) =>
-                  setRefuelingForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))
-                }
-                placeholder="BP-001234"
-                required
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              value={refuelingForm.notes}
-              onChange={(e) => setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Additional notes..."
-            />
-          </div>
-          <div className="flex justify-end gap-2">
+          </ScrollArea>
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => refuelingDialog.closeDialog()}>
               Cancel
             </Button>
-            <Button type="submit">Add Refueling</Button>
+            <Button type="submit">
+              {refuelingDialog.isEditing ? 'Update Refueling' : 'Add Refueling'}
+            </Button>
           </div>
         </form>
       </FormDialog>
 
       {/* Usage Dialog */}
       <FormDialog
-        title="Add Usage Record"
+        title={usageDialog.isEditing ? 'Edit Usage Record' : 'Add Usage Record'}
         description="Record vehicle usage details"
         isOpen={usageDialog.isDialogOpen}
-        onOpenChange={usageDialog.toggleDialog}
+        onOpenChange={(open) =>
+          open ? usageDialog.openDialog(usageDialog.editingItem) : usageDialog.closeDialog()
+        }
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleUsageSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="vehicle">Vehicle *</Label>
-              <Select
-                value={usageForm.vehicleId}
-                onValueChange={(value) => setUsageForm((prev) => ({ ...prev, vehicleId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select vehicle" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicles.map((vehicle) => (
-                    <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.vehicleNumber} - {vehicle.type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <ScrollArea className="max-h-[60vh] pr-2">
+            <div className="space-y-4 pr-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="vehicle">Vehicle *</Label>
+                  <Select
+                    value={usageForm.vehicleId}
+                    onValueChange={(value) =>
+                      setUsageForm((prev) => ({ ...prev, vehicleId: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map((vehicle) => (
+                        <SelectItem key={vehicle.id} value={vehicle.id}>
+                          {vehicle.vehicleNumber} - {vehicle.type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date *</Label>
+                  <DatePicker
+                    date={usageForm.date ? new Date(usageForm.date) : undefined}
+                    onSelect={(date) =>
+                      setUsageForm((prev) => ({
+                        ...prev,
+                        date: date ? date.toISOString().split('T')[0] : '',
+                      }))
+                    }
+                    placeholder="Select usage date"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="startTime">Start Time *</Label>
+                  <Input
+                    type="time"
+                    value={usageForm.startTime}
+                    onChange={(e) =>
+                      setUsageForm((prev) => ({ ...prev, startTime: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endTime">End Time *</Label>
+                  <Input
+                    type="time"
+                    value={usageForm.endTime}
+                    onChange={(e) => setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="startOdometer">Start Odometer *</Label>
+                  <Input
+                    type="number"
+                    value={usageForm.startOdometer}
+                    onChange={(e) =>
+                      setUsageForm((prev) => ({ ...prev, startOdometer: e.target.value }))
+                    }
+                    placeholder="2480"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endOdometer">End Odometer *</Label>
+                  <Input
+                    type="number"
+                    value={usageForm.endOdometer}
+                    onChange={(e) =>
+                      setUsageForm((prev) => ({ ...prev, endOdometer: e.target.value }))
+                    }
+                    placeholder="2490"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="workDescription">Work Description *</Label>
+                <Textarea
+                  value={usageForm.workDescription}
+                  onChange={(e) =>
+                    setUsageForm((prev) => ({ ...prev, workDescription: e.target.value }))
+                  }
+                  placeholder="Describe the work performed..."
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="workCategory">Work Category *</Label>
+                  <Select
+                    value={usageForm.workCategory}
+                    onValueChange={(value: VehicleUsage['workCategory']) =>
+                      setUsageForm((prev) => ({ ...prev, workCategory: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Construction">Construction</SelectItem>
+                      <SelectItem value="Transport">Transport</SelectItem>
+                      <SelectItem value="Delivery">Delivery</SelectItem>
+                      <SelectItem value="Maintenance">Maintenance</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="site">Site *</Label>
+                  <Select
+                    value={usageForm.siteId}
+                    onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select site" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from(new Set(vehicles.map((vehicle) => vehicle.siteId))).map(
+                        (siteId) => {
+                          const siteName = vehicles.find(
+                            (vehicle) => vehicle.siteId === siteId,
+                          )?.siteName;
+                          return (
+                            <SelectItem key={siteId} value={siteId}>
+                              {siteName}
+                            </SelectItem>
+                          );
+                        },
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) *</Label>
+                  <Input
+                    type="number"
+                    value={usageForm.fuelConsumed}
+                    onChange={(e) =>
+                      setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))
+                    }
+                    placeholder="40"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    value={usageForm.notes}
+                    onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Additional notes..."
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="date">Date *</Label>
-              <DatePicker
-                date={usageForm.date ? new Date(usageForm.date) : undefined}
-                onSelect={(date) =>
-                  setUsageForm((prev) => ({
-                    ...prev,
-                    date: date ? date.toISOString().split('T')[0] : '',
-                  }))
-                }
-                placeholder="Select usage date"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="startTime">Start Time *</Label>
-              <Input
-                type="time"
-                value={usageForm.startTime}
-                onChange={(e) => setUsageForm((prev) => ({ ...prev, startTime: e.target.value }))}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="endTime">End Time *</Label>
-              <Input
-                type="time"
-                value={usageForm.endTime}
-                onChange={(e) => setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))}
-                required
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="startOdometer">Start Odometer *</Label>
-              <Input
-                type="number"
-                value={usageForm.startOdometer}
-                onChange={(e) =>
-                  setUsageForm((prev) => ({ ...prev, startOdometer: e.target.value }))
-                }
-                placeholder="2480"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="endOdometer">End Odometer *</Label>
-              <Input
-                type="number"
-                value={usageForm.endOdometer}
-                onChange={(e) => setUsageForm((prev) => ({ ...prev, endOdometer: e.target.value }))}
-                placeholder="2490"
-                required
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="workDescription">Work Description *</Label>
-            <Textarea
-              value={usageForm.workDescription}
-              onChange={(e) =>
-                setUsageForm((prev) => ({ ...prev, workDescription: e.target.value }))
-              }
-              placeholder="Describe the work performed..."
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="workCategory">Work Category *</Label>
-              <Select
-                value={usageForm.workCategory}
-                onValueChange={(value: VehicleUsage['workCategory']) =>
-                  setUsageForm((prev) => ({ ...prev, workCategory: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Construction">Construction</SelectItem>
-                  <SelectItem value="Transport">Transport</SelectItem>
-                  <SelectItem value="Delivery">Delivery</SelectItem>
-                  <SelectItem value="Maintenance">Maintenance</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="siteId">Site *</Label>
-              <Select
-                value={usageForm.siteId}
-                onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select site" />
-                </SelectTrigger>
-                <SelectContent>
-                  {[...new Set(vehicles.map((v) => v.siteId))].map((siteId) => {
-                    const site = vehicles.find((v) => v.siteId === siteId);
-                    return (
-                      <SelectItem key={siteId} value={siteId}>
-                        {site?.siteName}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) *</Label>
-            <Input
-              type="number"
-              value={usageForm.fuelConsumed}
-              onChange={(e) => setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))}
-              placeholder="40"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              value={usageForm.notes}
-              onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Additional notes..."
-            />
-          </div>
-          <div className="flex justify-end gap-2">
+          </ScrollArea>
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => usageDialog.closeDialog()}>
               Cancel
             </Button>
-            <Button type="submit">Add Usage</Button>
+            <Button type="submit">
+              <Activity className="h-4 w-4 mr-2" />
+              {usageDialog.isEditing ? 'Update Usage Record' : 'Add Usage Record'}
+            </Button>
           </div>
         </form>
       </FormDialog>

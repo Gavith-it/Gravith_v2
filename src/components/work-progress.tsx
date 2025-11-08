@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
@@ -50,6 +50,15 @@ import { useMaterials } from '@/lib/contexts';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDateShort } from '@/lib/utils';
+
+interface SiteOption {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  location?: string;
+  status?: 'Active' | 'Completed' | 'On Hold';
+  progress?: number;
+}
 
 interface WorkProgressEntry {
   id: string;
@@ -107,19 +116,68 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Mock sites data
-  const mockSites = [
-    { id: '1', name: 'Rajiv Nagar Residential Complex' },
-    { id: '2', name: 'Green Valley Commercial Center' },
-    { id: '3', name: 'Sunshine Apartments Phase II' },
-  ];
+  const baseSiteOptions: SiteOption[] = React.useMemo(
+    () => [
+      {
+        id: '1',
+        name: 'Residential Complex A',
+        location: 'Sector 15, Navi Mumbai',
+        status: 'Active',
+        progress: 64,
+        imageUrl:
+          'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=300&q=80',
+      },
+      {
+        id: '2',
+        name: 'Commercial Plaza B',
+        location: 'Business District, Pune',
+        status: 'Active',
+        progress: 55,
+        imageUrl:
+          'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=300&q=80',
+      },
+      {
+        id: '3',
+        name: 'Highway Bridge Project',
+        location: 'Mumbai-Pune Highway',
+        status: 'Completed',
+        progress: 96,
+        imageUrl:
+          'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=300&q=80',
+      },
+    ],
+    [],
+  );
+
+  const siteOptions = useMemo(() => {
+    if (!filterBySite) {
+      return baseSiteOptions;
+    }
+
+    const existingSite = baseSiteOptions.find((site) => site.name === filterBySite);
+    if (existingSite) {
+      return baseSiteOptions;
+    }
+
+    const slug = filterBySite
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    return [
+      ...baseSiteOptions,
+      {
+        id: `auto-${slug || 'site'}`,
+        name: filterBySite,
+      },
+    ];
+  }, [baseSiteOptions, filterBySite]);
 
   // Mock data for work progress entries
   const [workProgressEntries, setWorkProgressEntries] = useState<WorkProgressEntry[]>([
     {
       id: '1',
       siteId: '1',
-      siteName: 'Rajiv Nagar Residential Complex',
+      siteName: 'Residential Complex A',
       workType: 'Foundation',
       description: 'Concrete foundation work for Building A',
       date: '2024-01-15',
@@ -153,7 +211,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     {
       id: '2',
       siteId: '1',
-      siteName: 'Rajiv Nagar Residential Complex',
+      siteName: 'Residential Complex A',
       workType: 'Plumbing',
       description: 'Water supply installation',
       date: '2024-01-20',
@@ -176,9 +234,14 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     },
   ]);
 
-  const [workProgressForm, setWorkProgressForm] = useState({
-    siteId: '',
-    siteName: '',
+  const resolvedSite = useMemo(
+    () => (filterBySite ? siteOptions.find((site) => site.name === filterBySite) : undefined),
+    [filterBySite, siteOptions],
+  );
+
+  const createEmptyWorkForm = (site?: { id: string; name: string }) => ({
+    siteId: site?.id ?? '',
+    siteName: site?.name ?? '',
     workType: '',
     description: '',
     date: '',
@@ -201,9 +264,23 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     status: 'In Progress' as WorkProgressEntry['status'],
   });
 
+  const [workProgressForm, setWorkProgressForm] = useState(() => createEmptyWorkForm(resolvedSite));
+
   // Material selection state
   const [selectedMaterial, setSelectedMaterial] = useState('');
   const [materialQuantity, setMaterialQuantity] = useState(0);
+
+  useEffect(() => {
+    if (!dialog.isDialogOpen) {
+      setWorkProgressForm((prev) => {
+        if (prev.siteId || !resolvedSite) {
+          return prev;
+        }
+        return createEmptyWorkForm(resolvedSite);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedSite]);
 
   // Filter work progress entries
   const filteredEntries = workProgressEntries.filter((entry) => {
@@ -268,24 +345,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     });
 
     dialog.closeDialog();
-    setWorkProgressForm({
-      siteId: '',
-      siteName: '',
-      workType: '',
-      description: '',
-      date: '',
-      unit: '',
-      length: 0,
-      breadth: 0,
-      thickness: 0,
-      totalQuantity: 0,
-      materialsUsed: [],
-      laborHours: 0,
-      progressPercentage: 0,
-      notes: '',
-      photos: [],
-      status: 'In Progress',
-    });
+    setWorkProgressForm(createEmptyWorkForm(resolvedSite));
     setSelectedMaterial('');
     setMaterialQuantity(0);
   };
@@ -529,6 +589,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                         : 'Record new work progress and material usage'
                     }
                     isOpen={dialog.isDialogOpen}
+                    maxWidth="max-w-2xl"
                     onOpenChange={(open) => {
                       if (open) {
                         dialog.openDialog();
@@ -536,29 +597,11 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                         dialog.closeDialog();
                       }
                     }}
-                    maxWidth="max-w-4xl"
                     trigger={
                       <Button
                         onClick={() => {
                           dialog.openDialog();
-                          setWorkProgressForm({
-                            siteId: '',
-                            siteName: '',
-                            workType: '',
-                            description: '',
-                            date: '',
-                            unit: '',
-                            length: 0,
-                            breadth: 0,
-                            thickness: 0,
-                            totalQuantity: 0,
-                            materialsUsed: [],
-                            laborHours: 0,
-                            progressPercentage: 0,
-                            notes: '',
-                            photos: [],
-                            status: 'In Progress',
-                          });
+                          setWorkProgressForm(createEmptyWorkForm(resolvedSite));
                           setSelectedMaterial('');
                           setMaterialQuantity(0);
                         }}
@@ -569,16 +612,16 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                       </Button>
                     }
                   >
-                    <form onSubmit={handleFormSubmit} className="space-y-6">
-                      <ScrollArea className="max-h-[70vh] pr-4">
-                        <div className="space-y-6">
+                    <form onSubmit={handleFormSubmit} className="space-y-4">
+                      <ScrollArea className="h-[55vh] md:h-[60vh] pr-6">
+                        <div className="space-y-4 pr-1 pb-6">
                           {/* Basic Information */}
                           <div className="space-y-4">
                             <h3 className="text-sm font-semibold text-foreground">
                               Basic Information
                             </h3>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                               <div className="space-y-2">
                                 <Label>Work Type</Label>
                                 <Select
@@ -625,8 +668,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               <Label>Site</Label>
                               <Select
                                 value={workProgressForm.siteId}
+                                disabled={Boolean(resolvedSite)}
                                 onValueChange={(value) => {
-                                  const site = mockSites.find((s) => s.id === value);
+                                  const site = siteOptions.find((s) => s.id === value);
                                   setWorkProgressForm((prev) => ({
                                     ...prev,
                                     siteId: value,
@@ -641,7 +685,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                   <SelectValue placeholder="Select site" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {mockSites.map((site) => (
+                                  {siteOptions.map((site) => (
                                     <SelectItem key={site.id} value={site.id}>
                                       {site.name}
                                     </SelectItem>
@@ -673,7 +717,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                           <div className="space-y-4">
                             <h3 className="text-sm font-semibold text-foreground">Measurements</h3>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                               <div className="space-y-2">
                                 <Label>Unit</Label>
                                 <Select
@@ -713,7 +757,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                               <div className="space-y-2">
                                 <Label>Length (m)</Label>
                                 <Input
@@ -786,7 +830,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               </div>
                             ) : (
                               <div className="space-y-3">
-                                <div className="flex gap-2">
+                                <div className="flex flex-col gap-3 md:flex-row">
                                   <div className="flex-1 space-y-2">
                                     <Label>Select Material</Label>
                                     <Select
@@ -806,7 +850,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                       </SelectContent>
                                     </Select>
                                   </div>
-                                  <div className="w-32 space-y-2">
+                                  <div className="md:w-32 space-y-2">
                                     <Label>Quantity</Label>
                                     <Input
                                       type="number"
@@ -885,7 +929,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               Labor & Progress
                             </h3>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                               <div className="space-y-2">
                                 <Label>Labor Hours</Label>
                                 <Input
@@ -970,7 +1014,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               </div>
 
                               {workProgressForm.photos.length > 0 && (
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                                   {workProgressForm.photos.map((photo, index) => (
                                     <div key={index} className="relative group">
                                       <div className="relative w-full h-24 rounded-lg border overflow-hidden">
@@ -1023,7 +1067,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                         </div>
                       </ScrollArea>
 
-                      <div className="flex justify-end gap-2 pt-4 border-t">
+                      <div className="flex justify-end gap-2 pt-4 border-t bg-background">
                         <Button
                           type="button"
                           variant="outline"

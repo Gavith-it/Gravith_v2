@@ -18,8 +18,10 @@ import {
   Info,
   BarChart3,
   Search,
+  Edit,
+  Trash2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -87,6 +89,26 @@ interface PaymentRecord {
   receivedBy: string;
   notes?: string;
 }
+
+type RecordPaymentFormState = {
+  paymentId: string;
+  amount: string;
+  paymentDate: string;
+  paymentMethod: PaymentRecord['paymentMethod'];
+  transactionId: string;
+  receivedBy: string;
+  notes: string;
+};
+
+const INITIAL_RECORD_PAYMENT_FORM: RecordPaymentFormState = {
+  paymentId: '',
+  amount: '',
+  paymentDate: '',
+  paymentMethod: 'bank_transfer',
+  transactionId: '',
+  receivedBy: '',
+  notes: '',
+};
 
 const mockPayments: Payment[] = [
   {
@@ -208,7 +230,7 @@ export function PaymentsPage() {
   });
 
   const paymentDialog = useDialogState();
-  const recordPaymentDialog = useDialogState();
+  const recordPaymentDialog = useDialogState<PaymentRecord>();
 
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
 
@@ -222,15 +244,61 @@ export function PaymentsPage() {
     notes: '',
   });
 
-  const [recordPaymentForm, setRecordPaymentForm] = useState({
-    paymentId: '',
-    amount: '',
-    paymentDate: '',
-    paymentMethod: 'bank_transfer' as PaymentRecord['paymentMethod'],
-    transactionId: '',
-    receivedBy: '',
-    notes: '',
-  });
+  const [recordPaymentForm, setRecordPaymentForm] = useState<RecordPaymentFormState>(() => ({
+    ...INITIAL_RECORD_PAYMENT_FORM,
+  }));
+
+  const calculatePaymentStatus = useCallback(
+    (payment: Payment, amountPaid: number, amountOutstanding: number): Payment['status'] => {
+      if (amountOutstanding <= 0) {
+        return 'paid';
+      }
+
+      const dueDateObj = payment.dueDate ? new Date(payment.dueDate) : undefined;
+      const isValidDueDate = dueDateObj && !Number.isNaN(dueDateObj.getTime());
+      const isOverdue = amountOutstanding > 0 && isValidDueDate ? dueDateObj! < new Date() : false;
+
+      if (amountPaid === 0) {
+        return isOverdue ? 'overdue' : 'pending';
+      }
+
+      return isOverdue ? 'overdue' : 'partial';
+    },
+    [],
+  );
+
+  const getLatestPaymentDate = useCallback((paymentId: string, records: PaymentRecord[]) => {
+    const relatedRecords = records.filter((record) => record.paymentId === paymentId);
+    if (relatedRecords.length === 0) {
+      return undefined;
+    }
+    return relatedRecords
+      .map((record) => record.paymentDate)
+      .sort()
+      .pop();
+  }, []);
+
+  useEffect(() => {
+    if (!recordPaymentDialog.isDialogOpen) {
+      setRecordPaymentForm({ ...INITIAL_RECORD_PAYMENT_FORM });
+      return;
+    }
+
+    if (recordPaymentDialog.editingItem) {
+      const item = recordPaymentDialog.editingItem;
+      setRecordPaymentForm({
+        paymentId: item.paymentId,
+        amount: item.amount.toString(),
+        paymentDate: item.paymentDate,
+        paymentMethod: item.paymentMethod,
+        transactionId: item.transactionId || '',
+        receivedBy: item.receivedBy,
+        notes: item.notes || '',
+      });
+    } else {
+      setRecordPaymentForm({ ...INITIAL_RECORD_PAYMENT_FORM });
+    }
+  }, [recordPaymentDialog.editingItem, recordPaymentDialog.isDialogOpen]);
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -265,47 +333,127 @@ export function PaymentsPage() {
   const handleRecordPaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const newRecord: PaymentRecord = {
-      id: (paymentRecords.length + 1).toString(),
-      paymentId: recordPaymentForm.paymentId,
-      amount: Number(recordPaymentForm.amount),
-      paymentDate: recordPaymentForm.paymentDate,
-      paymentMethod: recordPaymentForm.paymentMethod,
-      transactionId: recordPaymentForm.transactionId,
-      receivedBy: recordPaymentForm.receivedBy,
-      notes: recordPaymentForm.notes,
-    };
+    const amountValue = Number(recordPaymentForm.amount);
 
-    setPaymentRecords((prev) => [...prev, newRecord]);
+    if (!recordPaymentForm.paymentId || Number.isNaN(amountValue)) {
+      return;
+    }
 
-    // Update payment status
-    setPayments((prev) =>
-      prev.map((payment) => {
-        if (payment.id === recordPaymentForm.paymentId) {
-          const newAmountPaid = payment.amountPaid + Number(recordPaymentForm.amount);
-          const newOutstanding = payment.contractValue - newAmountPaid;
+    if (recordPaymentDialog.editingItem) {
+      const editingRecord = recordPaymentDialog.editingItem;
+      const updatedRecord: PaymentRecord = {
+        ...editingRecord,
+        paymentId: recordPaymentForm.paymentId,
+        amount: amountValue,
+        paymentDate: recordPaymentForm.paymentDate,
+        paymentMethod: recordPaymentForm.paymentMethod,
+        transactionId: recordPaymentForm.transactionId || undefined,
+        receivedBy: recordPaymentForm.receivedBy,
+        notes: recordPaymentForm.notes || undefined,
+      };
+
+      const updatedRecords = paymentRecords.map((record) =>
+        record.id === editingRecord.id ? updatedRecord : record,
+      );
+
+      setPaymentRecords(updatedRecords);
+      const impactedIds = new Set([editingRecord.paymentId, updatedRecord.paymentId]);
+
+      setPayments((prev) =>
+        prev.map((payment) => {
+          if (!impactedIds.has(payment.id)) {
+            return payment;
+          }
+
+          const relatedRecords = updatedRecords.filter((record) => record.paymentId === payment.id);
+          const amountPaid = relatedRecords.reduce((sum, record) => sum + record.amount, 0);
+          const amountOutstanding = Math.max(payment.contractValue - amountPaid, 0);
+
           return {
             ...payment,
-            amountPaid: newAmountPaid,
-            amountOutstanding: newOutstanding,
-            lastPaymentDate: recordPaymentForm.paymentDate,
-            status: newOutstanding === 0 ? 'paid' : ('partial' as Payment['status']),
+            amountPaid,
+            amountOutstanding,
+            lastPaymentDate: getLatestPaymentDate(payment.id, updatedRecords),
+            status: calculatePaymentStatus(payment, amountPaid, amountOutstanding),
           };
+        }),
+      );
+    } else {
+      const newRecord: PaymentRecord = {
+        id: Date.now().toString(),
+        paymentId: recordPaymentForm.paymentId,
+        amount: amountValue,
+        paymentDate: recordPaymentForm.paymentDate,
+        paymentMethod: recordPaymentForm.paymentMethod,
+        transactionId: recordPaymentForm.transactionId || undefined,
+        receivedBy: recordPaymentForm.receivedBy,
+        notes: recordPaymentForm.notes || undefined,
+      };
+
+      const updatedRecords = [...paymentRecords, newRecord];
+      setPaymentRecords(updatedRecords);
+      setPayments((prev) =>
+        prev.map((payment) => {
+          if (payment.id !== newRecord.paymentId) {
+            return payment;
+          }
+
+          const relatedRecords = updatedRecords.filter((record) => record.paymentId === payment.id);
+          const amountPaid = relatedRecords.reduce((sum, record) => sum + record.amount, 0);
+          const amountOutstanding = Math.max(payment.contractValue - amountPaid, 0);
+
+          return {
+            ...payment,
+            amountPaid,
+            amountOutstanding,
+            lastPaymentDate: getLatestPaymentDate(payment.id, updatedRecords),
+            status: calculatePaymentStatus(payment, amountPaid, amountOutstanding),
+          };
+        }),
+      );
+    }
+
+    setRecordPaymentForm({ ...INITIAL_RECORD_PAYMENT_FORM });
+    recordPaymentDialog.closeDialog();
+  };
+
+  const handleEditPaymentRecord = (record: PaymentRecord) => {
+    recordPaymentDialog.openDialog(record);
+  };
+
+  const handleDeletePaymentRecord = (record: PaymentRecord) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Are you sure you want to delete this payment record?');
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const updatedRecords = paymentRecords.filter((item) => item.id !== record.id);
+    setPaymentRecords(updatedRecords);
+    setPayments((prev) =>
+      prev.map((payment) => {
+        if (payment.id !== record.paymentId) {
+          return payment;
         }
-        return payment;
+
+        const relatedRecords = updatedRecords.filter((item) => item.paymentId === payment.id);
+        const amountPaid = relatedRecords.reduce((sum, item) => sum + item.amount, 0);
+        const amountOutstanding = Math.max(payment.contractValue - amountPaid, 0);
+
+        return {
+          ...payment,
+          amountPaid,
+          amountOutstanding,
+          lastPaymentDate: getLatestPaymentDate(payment.id, updatedRecords),
+          status: calculatePaymentStatus(payment, amountPaid, amountOutstanding),
+        };
       }),
     );
 
-    setRecordPaymentForm({
-      paymentId: '',
-      amount: '',
-      paymentDate: '',
-      paymentMethod: 'bank_transfer',
-      transactionId: '',
-      receivedBy: '',
-      notes: '',
-    });
-    recordPaymentDialog.closeDialog();
+    if (recordPaymentDialog.isDialogOpen && recordPaymentDialog.editingItem?.id === record.id) {
+      recordPaymentDialog.closeDialog();
+    }
   };
 
   const getStatusBadge = (status: Payment['status']) => {
@@ -384,6 +532,17 @@ export function PaymentsPage() {
 
       return 0;
     });
+
+  const selectablePayments = useMemo(
+    () =>
+      payments.filter(
+        (payment) =>
+          payment.amountOutstanding > 0 ||
+          (recordPaymentDialog.editingItem &&
+            recordPaymentDialog.editingItem.paymentId === payment.id),
+      ),
+    [payments, recordPaymentDialog.editingItem],
+  );
 
   // Analytics calculations
   const totalContractValue = payments.reduce((sum, payment) => sum + payment.contractValue, 0);
@@ -646,7 +805,7 @@ export function PaymentsPage() {
                       </div>
                       <Button
                         variant="outline"
-                        onClick={recordPaymentDialog.openDialog}
+                        onClick={() => recordPaymentDialog.openDialog(null)}
                         className="gap-2"
                       >
                         <Receipt className="h-4 w-4" />
@@ -751,6 +910,12 @@ export function PaymentsPage() {
                         { key: 'transactionId', label: 'Transaction ID', sortable: false },
                         { key: 'receivedBy', label: 'Received By', sortable: true },
                         { key: 'notes', label: 'Notes', sortable: false },
+                        {
+                          key: 'actions',
+                          label: 'Actions',
+                          sortable: false,
+                          align: 'right' as const,
+                        },
                       ]}
                       data={paymentRecords.map((record) => {
                         const payment = payments.find((p) => p.id === record.paymentId);
@@ -785,6 +950,42 @@ export function PaymentsPage() {
                             <span className="text-sm text-muted-foreground">
                               {record.notes || '-'}
                             </span>
+                          ),
+                          actions: (
+                            <div className="flex items-center gap-2 justify-end">
+                              <TooltipProvider>
+                                <UITooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => handleEditPaymentRecord(record)}
+                                      aria-label="Edit payment record"
+                                      className="h-8 w-8"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit</TooltipContent>
+                                </UITooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <UITooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => handleDeletePaymentRecord(record)}
+                                      aria-label="Delete payment record"
+                                      className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Delete</TooltipContent>
+                                </UITooltip>
+                              </TooltipProvider>
+                            </div>
                           ),
                         };
                       })}
@@ -900,7 +1101,11 @@ export function PaymentsPage() {
         title="Record Payment Received"
         description="Update payment records for existing contracts"
         isOpen={recordPaymentDialog.isDialogOpen}
-        onOpenChange={recordPaymentDialog.toggleDialog}
+        onOpenChange={(open) =>
+          open
+            ? recordPaymentDialog.openDialog(recordPaymentDialog.editingItem)
+            : recordPaymentDialog.closeDialog()
+        }
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleRecordPaymentSubmit} className="space-y-4">
@@ -916,14 +1121,12 @@ export function PaymentsPage() {
                 <SelectValue placeholder="Choose contract" />
               </SelectTrigger>
               <SelectContent>
-                {payments
-                  .filter((p) => p.amountOutstanding > 0)
-                  .map((payment) => (
-                    <SelectItem key={payment.id} value={payment.id}>
-                      {payment.clientName} - {payment.projectName} (Outstanding: ₹
-                      {(payment.amountOutstanding / 10000000).toFixed(1)}Cr)
-                    </SelectItem>
-                  ))}
+                {selectablePayments.map((payment) => (
+                  <SelectItem key={payment.id} value={payment.id}>
+                    {payment.clientName} - {payment.projectName} (Outstanding: ₹
+                    {(payment.amountOutstanding / 10000000).toFixed(1)}Cr)
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -1030,7 +1233,9 @@ export function PaymentsPage() {
         title="Add New Payment Contract"
         description="Create a new client payment tracking record"
         isOpen={paymentDialog.isDialogOpen}
-        onOpenChange={paymentDialog.toggleDialog}
+        onOpenChange={(open) =>
+          open ? paymentDialog.openDialog(paymentDialog.editingItem) : paymentDialog.closeDialog()
+        }
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handlePaymentSubmit} className="space-y-4">

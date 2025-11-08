@@ -13,8 +13,7 @@ import {
 import { useSearchParams } from 'next/navigation';
 import React, { useEffect, useState } from 'react';
 
-
-import { expenseColumns } from './expenses-columns';
+import { getExpenseColumns } from './expenses-columns';
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
@@ -34,8 +33,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
+import { formatDate } from '@/lib/utils';
 import type { Expense } from '@/types';
-
 
 // Mock data - in real app this would come from API
 const mockExpenses: Expense[] = [
@@ -175,7 +174,8 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
   const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const dialogState = useDialogState();
+  const dialogState = useDialogState<Expense>();
+  const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
 
   // Use table state hook for filtering and pagination
   const tableState = useTableState({
@@ -199,23 +199,81 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      const newExpense: Expense = {
-        id: (expenses.length + 1).toString(),
-        ...formData,
-        date: formData.date.toISOString().split('T')[0],
-        status: 'pending' as const,
-        siteId: 'site-1', // In real app, this would come from form or context
-        organizationId: 'org-1', // In real app, this would come from auth context
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      if (dialogState.editingItem) {
+        const updatedExpense: Expense = {
+          ...dialogState.editingItem,
+          category: formData.category,
+          subcategory: formData.subcategory,
+          description: formData.description,
+          amount: formData.amount,
+          date: formData.date.toISOString().split('T')[0],
+          vendor: formData.vendor,
+          siteName: formData.site,
+          receipt: formData.receipt,
+          approvedBy: formData.approvedBy,
+          updatedAt: new Date().toISOString(),
+        };
 
-      setExpenses((prev) => [...prev, newExpense]);
+        setExpenses((prev) =>
+          prev.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense)),
+        );
+      } else {
+        const siteName = formData.site;
+        const siteSlug = siteName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+        const newExpense: Expense = {
+          id: (expenses.length + 1).toString(),
+          category: formData.category,
+          subcategory: formData.subcategory,
+          description: formData.description,
+          amount: formData.amount,
+          date: formData.date.toISOString().split('T')[0],
+          vendor: formData.vendor,
+          siteId: `site-${siteSlug}`,
+          siteName,
+          receipt: formData.receipt,
+          status: 'pending',
+          approvedBy: formData.approvedBy,
+          organizationId: 'org-1',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setExpenses((prev) => [...prev, newExpense]);
+      }
+
       dialogState.closeDialog();
     } catch (error) {
       console.error('Failed to add expense:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleViewExpense = (expense: Expense) => {
+    setViewingExpense(expense);
+  };
+
+  const handleEditExpense = (expense: Expense) => {
+    dialogState.openDialog(expense);
+  };
+
+  const handleDeleteExpense = (expense: Expense) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Are you sure you want to delete this expense?');
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setExpenses((prev) => prev.filter((item) => item.id !== expense.id));
+
+    if (dialogState.editingItem?.id === expense.id) {
+      dialogState.closeDialog();
+    }
+
+    if (viewingExpense?.id === expense.id) {
+      setViewingExpense(null);
     }
   };
 
@@ -423,7 +481,11 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
             <Card className="w-full overflow-hidden">
               <CardContent className="p-0">
                 <DataTable<Expense>
-                  columns={expenseColumns}
+                  columns={getExpenseColumns({
+                    onView: handleViewExpense,
+                    onEdit: handleEditExpense,
+                    onDelete: handleDeleteExpense,
+                  })}
                   data={filteredExpenses}
                   onSort={tableState.setSortField}
                   onPageChange={tableState.setCurrentPage}
@@ -440,10 +502,16 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
 
         {/* Add Expense Dialog */}
         <FormDialog
-          title="Add New Expense"
-          description="Create a new expense entry for your project"
+          title={dialogState.isEditing ? 'Edit Expense' : 'Add New Expense'}
+          description={
+            dialogState.isEditing
+              ? 'Update the expense details'
+              : 'Create a new expense entry for your project'
+          }
           isOpen={dialogState.isDialogOpen}
-          onOpenChange={(open) => (open ? dialogState.openDialog() : dialogState.closeDialog())}
+          onOpenChange={(open) =>
+            open ? dialogState.openDialog(dialogState.editingItem) : dialogState.closeDialog()
+          }
           maxWidth="max-w-2xl"
         >
           <ExpenseForm
@@ -451,7 +519,82 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
             onCancel={dialogState.closeDialog}
             isLoading={isLoading}
             lockedSite={filterBySite}
+            submitLabel={dialogState.isEditing ? 'Update Expense' : 'Add Expense'}
+            loadingLabel={dialogState.isEditing ? 'Updating...' : 'Adding...'}
+            defaultValues={
+              dialogState.editingItem
+                ? {
+                    category: dialogState.editingItem.category as ExpenseFormData['category'],
+                    subcategory: dialogState.editingItem.subcategory || '',
+                    description: dialogState.editingItem.description,
+                    amount: dialogState.editingItem.amount,
+                    date: new Date(dialogState.editingItem.date),
+                    vendor: dialogState.editingItem.vendor || '',
+                    site: dialogState.editingItem.siteName || '',
+                    receipt: dialogState.editingItem.receipt || '',
+                    approvedBy: dialogState.editingItem.approvedBy || '',
+                  }
+                : undefined
+            }
           />
+        </FormDialog>
+
+        <FormDialog
+          title="Expense Details"
+          description="Review the expense information"
+          isOpen={Boolean(viewingExpense)}
+          onOpenChange={(open) => (!open ? setViewingExpense(null) : null)}
+          maxWidth="max-w-xl"
+        >
+          {viewingExpense && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Category</p>
+                  <p className="font-medium">{viewingExpense.category}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Subcategory</p>
+                  <p className="font-medium">{viewingExpense.subcategory || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Amount</p>
+                  <p className="font-medium">₹{viewingExpense.amount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Date</p>
+                  <p className="font-medium">{formatDate(viewingExpense.date)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Vendor</p>
+                  <p className="font-medium">{viewingExpense.vendor || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Site</p>
+                  <p className="font-medium">{viewingExpense.siteName || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Receipt</p>
+                  <p className="font-medium">{viewingExpense.receipt || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Approved By</p>
+                  <p className="font-medium">{viewingExpense.approvedBy || 'N/A'}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1">Description</p>
+                <p className="text-sm leading-relaxed">
+                  {viewingExpense.description || 'No description provided.'}
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setViewingExpense(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </FormDialog>
       </div>
     </div>

@@ -81,6 +81,7 @@ interface Site {
   spent: number;
   description: string;
   progress: number;
+  imageUrl?: string;
 }
 
 // Mock sites data (in real app, this would come from props or context)

@@ -10,12 +10,16 @@ import {
   Crown,
   User,
   UserCheck,
+  Loader2,
+  Mail,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { formatDate } from '../lib/utils';
 import type { UserWithOrganization, Organization } from '../types';
 
+import { FormDialog } from './common/FormDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -24,10 +28,22 @@ import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
+import { createClient } from '@/lib/supabase/client';
+
 interface OrganizationManagementProps {
   currentUser: UserWithOrganization;
   currentOrganization: Organization;
   onUpdateOrganization: (updates: Partial<Organization>) => void;
+}
+
+interface OrganizationMember {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  username: string;
+  organization_role: UserWithOrganization['organizationRole'];
+  is_active: boolean;
 }
 
 export function OrganizationPage({
@@ -37,6 +53,173 @@ export function OrganizationPage({
 }: OrganizationManagementProps) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(currentOrganization.name);
+
+  const supabase = useMemo(() => {
+    try {
+      return createClient();
+    } catch (error) {
+      console.error('Failed to initialize Supabase client:', error);
+      return null;
+    }
+  }, []);
+  const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [isMembersLoading, setIsMembersLoading] = useState(true);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<OrganizationMember['organization_role']>('user');
+  const [isInviting, setIsInviting] = useState(false);
+
+  const fallbackMembers = useMemo<OrganizationMember[]>(() => {
+    const primaryMember: OrganizationMember = {
+      id: currentUser.id,
+      email: currentUser.email,
+      first_name: currentUser.firstName ?? null,
+      last_name: currentUser.lastName ?? null,
+      username: currentUser.username,
+      organization_role: currentUser.organizationRole,
+      is_active: currentUser.isActive,
+    };
+
+    const sampleMembers: OrganizationMember[] = [
+      {
+        id: 'mock-member-1',
+        email: 'project.lead@gavith.com',
+        first_name: 'Priya',
+        last_name: 'Sharma',
+        username: 'priya.sharma',
+        organization_role: 'manager',
+        is_active: true,
+      },
+      {
+        id: 'mock-member-2',
+        email: 'finance.team@gavith.com',
+        first_name: 'Rahul',
+        last_name: 'Verma',
+        username: 'rahul.verma',
+        organization_role: 'finance-manager',
+        is_active: true,
+      },
+    ];
+
+    return [primaryMember, ...sampleMembers];
+  }, [currentUser]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMembers = async () => {
+      if (!supabase) {
+        if (isMounted) {
+          setMembers(fallbackMembers);
+          setIsMembersLoading(false);
+        }
+        return;
+      }
+
+      setIsMembersLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('id, email, first_name, last_name, username, organization_role, is_active')
+          .eq('organization_id', currentOrganization.id)
+          .order('created_at', { ascending: true });
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error('Error fetching organization members:', error);
+          toast.error('Failed to load organization members.');
+          setMembers(fallbackMembers);
+        } else {
+          setMembers(
+            (data as OrganizationMember[])?.length
+              ? (data as OrganizationMember[])
+              : fallbackMembers,
+          );
+        }
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Unexpected error fetching members:', error);
+        toast.error('Failed to load organization members.');
+        setMembers(fallbackMembers);
+      }
+      setIsMembersLoading(false);
+    };
+
+    fetchMembers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [supabase, currentOrganization.id, fallbackMembers, toast]);
+
+  const refreshMembers = async () => {
+    if (!supabase) {
+      setMembers(fallbackMembers);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, email, first_name, last_name, username, organization_role, is_active')
+        .eq('organization_id', currentOrganization.id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error refreshing organization members:', error);
+        toast.error('Failed to refresh members list.');
+        setMembers(fallbackMembers);
+        return;
+      }
+
+      setMembers(
+        (data as OrganizationMember[])?.length ? (data as OrganizationMember[]) : fallbackMembers,
+      );
+    } catch (error) {
+      console.error('Unexpected error refreshing organization members:', error);
+      toast.error('Failed to refresh members list.');
+      setMembers(fallbackMembers);
+    }
+  };
+
+  const handleInviteMember = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) {
+      toast.error('Please enter an email address.');
+      return;
+    }
+
+    setIsInviting(true);
+    try {
+      const response = await fetch('/api/organization/invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || 'Failed to send invite.');
+        return;
+      }
+
+      toast.success('Invitation sent successfully.');
+      setInviteEmail('');
+      setInviteRole('user');
+      setInviteDialogOpen(false);
+      await refreshMembers();
+    } catch (error) {
+      console.error('Unexpected error sending invite:', error);
+      toast.error('Unexpected error while inviting member.');
+    } finally {
+      setIsInviting(false);
+    }
+  };
 
   const handleSaveName = () => {
     if (editedName.trim() && editedName !== currentOrganization.name) {
@@ -268,41 +451,66 @@ export function OrganizationPage({
                     Organization Members
                   </CardTitle>
                   {(currentUser.organizationRole === 'owner' ||
-                    currentUser.organizationRole === 'admin') && <Button>Invite Member</Button>}
+                    currentUser.organizationRole === 'admin') && (
+                    <Button onClick={() => setInviteDialogOpen(true)}>Invite Member</Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {/* Current user */}
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold">
-                        {(currentUser.firstName?.[0] || currentUser.username[0]).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {currentUser.firstName && currentUser.lastName
-                            ? `${currentUser.firstName} ${currentUser.lastName}`
-                            : currentUser.username}{' '}
-                          <span className="text-blue-600">(You)</span>
-                        </p>
-                        <p className="text-sm text-slate-600">{currentUser.email}</p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={getRoleBadgeVariant(currentUser.organizationRole)}
-                      className="capitalize"
-                    >
-                      {currentUser.organizationRole}
-                    </Badge>
+                {isMembersLoading ? (
+                  <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <p>Loading members...</p>
                   </div>
-
+                ) : members.length === 0 ? (
                   <div className="text-center py-8 text-slate-500">
                     <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No other members yet</p>
-                    <p className="text-sm mt-1">Invite team members to collaborate on projects</p>
+                    <p>No members found</p>
+                    <p className="text-sm mt-1">Invite team members to collaborate on projects.</p>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-4">
+                    {members.map((member) => {
+                      const isCurrentUser = member.id === currentUser.id;
+                      const displayName =
+                        member.first_name && member.last_name
+                          ? `${member.first_name} ${member.last_name}`
+                          : member.username;
+
+                      return (
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-between p-4 rounded-lg border bg-muted/30"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold">
+                              {(member.first_name?.[0] || member.username[0] || 'U').toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-900">
+                                {displayName}{' '}
+                                {isCurrentUser && <span className="text-blue-600">(You)</span>}
+                              </p>
+                              <p className="text-sm text-slate-600">{member.email}</p>
+                              {!member.is_active && (
+                                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  Invitation pending
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Badge
+                            variant={getRoleBadgeVariant(member.organization_role)}
+                            className="capitalize"
+                          >
+                            {member.organization_role}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -371,6 +579,63 @@ export function OrganizationPage({
           </div>
         </TabsContent>
       </Tabs>
+
+      <FormDialog
+        title="Invite a Member"
+        isOpen={inviteDialogOpen}
+        onOpenChange={setInviteDialogOpen}
+        maxWidth="sm:max-w-lg"
+      >
+        <form className="space-y-4" onSubmit={handleInviteMember}>
+          <div className="space-y-2">
+            <Label htmlFor="invite-email">Email address</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              required
+              placeholder="person@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="invite-role">Role</Label>
+            <select
+              id="invite-role"
+              value={inviteRole}
+              onChange={(e) =>
+                setInviteRole(e.target.value as OrganizationMember['organization_role'])
+              }
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="user">User</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Admin</option>
+              <option value="project-manager">Project Manager</option>
+              <option value="site-supervisor">Site Supervisor</option>
+              <option value="materials-manager">Materials Manager</option>
+              <option value="finance-manager">Finance Manager</option>
+              <option value="executive">Executive</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setInviteDialogOpen(false)}
+              disabled={isInviting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isInviting}>
+              {isInviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Send Invite
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
     </div>
   );
 }

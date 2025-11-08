@@ -68,6 +68,7 @@ interface Site {
   spent: number;
   description: string;
   progress: number;
+  imageUrl?: string;
 }
 
 const mockSites: Site[] = [

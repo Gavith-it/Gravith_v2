@@ -46,6 +46,8 @@ interface ExpenseFormProps {
   defaultValues?: Partial<ExpenseFormData>;
   isLoading?: boolean;
   lockedSite?: string;
+  submitLabel?: string;
+  loadingLabel?: string;
 }
 
 export function ExpenseForm({
@@ -54,6 +56,8 @@ export function ExpenseForm({
   defaultValues,
   isLoading = false,
   lockedSite,
+  submitLabel = 'Add Expense',
+  loadingLabel,
 }: ExpenseFormProps) {
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -267,7 +271,7 @@ export function ExpenseForm({
             Cancel
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Adding...' : 'Add Expense'}
+            {isLoading ? (loadingLabel ?? 'Saving...') : submitLabel}
           </Button>
         </div>
       </form>
