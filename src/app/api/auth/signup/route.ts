@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { Database } from '@/lib/supabase/types';
 
 interface SignupPayload {
   firstName: string;
@@ -10,6 +9,24 @@ interface SignupPayload {
   password: string;
   company: string;
 }
+
+type OrganizationInsertPayload = {
+  name: string;
+  is_active: boolean;
+  created_by: string;
+};
+
+type UserProfileInsertPayload = {
+  id: string;
+  username: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  role: 'admin' | 'user';
+  organization_id: string;
+  organization_role: 'owner' | 'admin' | 'manager' | 'user';
+  is_active: boolean;
+};
 
 export async function POST(request: Request) {
   try {
@@ -53,13 +70,9 @@ export async function POST(request: Request) {
 
     const { data: organization, error: organizationError } = await adminClient
       .from('organizations')
-      .insert<Database['public']['Tables']['organizations']['Insert']>([
-        {
-          name: company,
-          is_active: true,
-          created_by: authUserId,
-        },
-      ])
+      .insert([
+        { name: company, is_active: true, created_by: authUserId },
+      ] as unknown as OrganizationInsertPayload[])
       .select('id')
       .single();
 
@@ -74,21 +87,19 @@ export async function POST(request: Request) {
 
     const username = email.split('@')[0];
 
-    const { error: profileError } = await adminClient
-      .from('user_profiles')
-      .insert<Database['public']['Tables']['user_profiles']['Insert']>([
-        {
-          id: authUserId,
-          username,
-          email,
-          first_name: firstName,
-          last_name: lastName,
-          role: 'admin',
-          organization_id: organization.id,
-          organization_role: 'owner',
-          is_active: true,
-        },
-      ]);
+    const { error: profileError } = await adminClient.from('user_profiles').insert([
+      {
+        id: authUserId,
+        username,
+        email,
+        first_name: firstName,
+        last_name: lastName,
+        role: 'admin',
+        organization_id: organization.id,
+        organization_role: 'owner',
+        is_active: true,
+      },
+    ] as unknown as UserProfileInsertPayload[]);
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
