@@ -24,21 +24,18 @@ export async function POST(request: Request) {
 
     const adminClient = createAdminClient();
 
-    const { data: existingUsers, error: listError } = await adminClient.auth.admin.listUsers({
-      email,
-      perPage: 1,
-      page: 1,
-    });
+    const { data: existingUser, error: existingUserError } =
+      await adminClient.auth.admin.getUserByEmail(email);
 
-    if (listError) {
-      console.error('Error checking existing users:', listError);
+    if (existingUserError) {
+      console.error('Error checking existing user:', existingUserError);
       return NextResponse.json(
         { error: 'Unable to verify existing accounts. Please try again later.' },
         { status: 500 },
       );
     }
 
-    if (existingUsers?.users?.length) {
+    if (existingUser?.user) {
       return NextResponse.json(
         { error: 'An account with this email already exists. Please sign in instead.' },
         { status: 409 },
