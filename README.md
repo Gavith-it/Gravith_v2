@@ -29,8 +29,20 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Deploying to Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Create a new project in [Vercel](https://vercel.com) and link it to your GitHub repository.
+2. In the project settings, add the following environment variables (copy the keys from `env.example` and provide your real values):
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   | Name                            | Value                     | Notes                                       |
+   | ------------------------------- | ------------------------- | ------------------------------------------- |
+   | `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL      | safe to expose                              |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key         | safe to expose                              |
+   | `SUPABASE_SERVICE_ROLE_KEY`     | Supabase service role key | **server-side only** – store as "Encrypted" |
+
+   > **Important:** never commit real keys to the repository. The `env.example` file is provided only as a reference.
+
+3. Trigger a deployment (either by pushing to the connected branch or using **Deploy** in the Vercel dashboard).
+4. After the first deployment, review the environment variables in Vercel and add them to any Preview/Production environments as needed.
+
+For more background, review the official [Next.js deployment guide](https://nextjs.org/docs/app/building-your-application/deploying).

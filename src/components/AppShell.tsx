@@ -15,7 +15,6 @@ import {
   ShoppingCart,
   Target,
   Database,
-  FileText,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import React from 'react';
@@ -54,7 +53,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { isLoggedIn, logout, isLoading } = useAuth();
+  const { isLoggedIn, user, logout, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -84,8 +83,10 @@ export function AppShell({ children }: AppShellProps) {
 
   const currentPage = getCurrentPage();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
+    router.push('/');
+    router.refresh();
   };
 
   // Show loading state while checking authentication
@@ -164,33 +165,40 @@ export function AppShell({ children }: AppShellProps) {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-3">
+                      {user && (
                         <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                            <span className="text-white text-sm font-semibold">JD</span>
+                            <span className="text-white text-sm font-semibold">
+                              {user.firstName?.charAt(0) ?? user.username.charAt(0)}
+                              {user.lastName?.charAt(0) ?? ''}
+                            </span>
                           </div>
-                          <span className="font-medium">John Doe</span>
+                          <span className="font-medium">
+                            {user.firstName && user.lastName
+                              ? `${user.firstName} ${user.lastName}`
+                              : user.email}
+                          </span>
                         </div>
-                        <button
-                          onClick={handleLogout}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 transition-all duration-200"
+                      )}
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 transition-all duration-200"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                            />
-                          </svg>
-                          <span className="hidden sm:inline">Logout</span>
-                        </button>
-                      </div>
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                          />
+                        </svg>
+                        <span className="hidden sm:inline">Logout</span>
+                      </button>
                     </div>
                   </div>
                   <div className="min-h-full w-full max-w-none">{children}</div>

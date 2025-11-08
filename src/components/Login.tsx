@@ -1,373 +1,365 @@
 'use client';
 
 import { Eye, EyeOff, AlertCircle, Building2 } from 'lucide-react';
-import React, { useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import gavithLogo from '../assets/40b9a52cc41bb9e286b6859d260d4a3571e6e982.png';
-import type { Organization, UserWithOrganization } from '../types';
+
 
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Separator } from './ui/separator';
+
+import { useAuth } from '@/lib/auth-context';
+import { createClient } from '@/lib/supabase/client';
 
 interface LoginProps {
-  onLogin: (userData: UserWithOrganization) => void;
   onCreateOrganization: () => void;
-  isLoading: boolean;
 }
 
-// Mock organizations and users - in real app this would be backend API
-const mockOrganizations: Organization[] = [
-  {
-    id: 'org1',
-    name: 'Gavith Construction Pvt. Ltd.',
-    subscription: 'premium',
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    createdBy: 'system',
-  },
-  {
-    id: 'org2',
-    name: 'ABC Construction Co.',
-    subscription: 'basic',
-    isActive: true,
-    createdAt: '2024-01-02T00:00:00Z',
-    updatedAt: '2024-01-02T00:00:00Z',
-    createdBy: 'system',
-  },
-];
+export function Login({ onCreateOrganization }: LoginProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClient(), []);
+  const { login } = useAuth();
 
-const mockUsers: UserWithOrganization[] = [
-  {
-    id: 'user1',
-    username: 'admin',
-    email: 'admin@gavithconstruction.com',
-    firstName: 'Rajesh',
-    lastName: 'Kumar',
-    role: 'admin',
-    organizationId: 'org1',
-    organizationRole: 'owner',
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    organization: mockOrganizations[0],
-  },
-  {
-    id: 'user2',
-    username: 'manager',
-    email: 'manager@gavithconstruction.com',
-    firstName: 'Priya',
-    lastName: 'Sharma',
-    role: 'user',
-    organizationId: 'org1',
-    organizationRole: 'manager',
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    organization: mockOrganizations[0],
-  },
-  {
-    id: 'user3',
-    username: 'engineer',
-    email: 'engineer@abcconstruction.com',
-    firstName: 'Amit',
-    lastName: 'Patel',
-    role: 'user',
-    organizationId: 'org2',
-    organizationRole: 'user',
-    isActive: true,
-    createdAt: '2024-01-02T00:00:00Z',
-    updatedAt: '2024-01-02T00:00:00Z',
-    organization: mockOrganizations[1],
-  },
-];
-
-// For demonstration, we'll use simple password matching
-const userCredentials = [
-  { username: 'admin', password: 'admin123' },
-  { username: 'manager', password: 'manager123' },
-  { username: 'engineer', password: 'engineer123' },
-];
-
-export function Login({ onLogin, onCreateOrganization, isLoading }: LoginProps) {
   const [credentials, setCredentials] = useState({
-    username: '',
+    email: '',
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const messageParam = searchParams.get('message');
+    if (messageParam) {
+      setMessage(messageParam);
+    }
+  }, [searchParams]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setMessage('');
+    setIsLoading(true);
 
-    if (!credentials.username || !credentials.password) {
-      setError('Please enter both username and password');
+    if (!credentials.email || !credentials.password) {
+      setError('Please enter both email and password');
+      setIsLoading(false);
       return;
     }
 
-    // Mock authentication - in real app this would be API call
-    const credMatch = userCredentials.find(
-      (c) => c.username === credentials.username && c.password === credentials.password,
-    );
+    try {
+      const { error: loginError } = await login(credentials.email, credentials.password);
 
-    if (credMatch) {
-      const user = mockUsers.find((u) => u.username === credentials.username);
-      if (user && user.isActive) {
-        onLogin(user);
+      if (loginError) {
+        if (loginError.message.includes('Invalid login credentials')) {
+          setError('Invalid email or password');
+        } else if (loginError.message.includes('Email not confirmed')) {
+          setError('Please verify your email before signing in');
+        } else {
+          setError(loginError.message || 'Failed to sign in. Please try again.');
+        }
       } else {
-        setError('User account is inactive. Please contact your administrator.');
+        router.push('/dashboard');
       }
-    } else {
-      setError('Invalid username or password');
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Login error:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock forgot password functionality
     setError('');
-    alert('Password reset instructions have been sent to your email.');
+    setMessage('');
+
+    if (!credentials.email) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    try {
+      setIsResetting(true);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(credentials.email, {
+        redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+      });
+
+      if (resetError) {
+        setError(resetError.message || 'Failed to send reset instructions. Please try again.');
+        return;
+      }
+
+      setMessage('Password reset instructions have been sent to your email.');
+    } catch (err) {
+      console.error('Forgot password error:', err);
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleBackToLogin = () => {
     setShowForgotPassword(false);
+    setError('');
+  };
+
+  const openForgotPassword = () => {
+    setError('');
+    setMessage('');
+    setShowForgotPassword(true);
   };
 
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cyan-500 via-blue-600 to-blue-800 p-4 relative overflow-hidden">
-        {/* Animated Background Elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="floating-shapes">
-            <div className="shape shape-1"></div>
-            <div className="shape shape-2"></div>
-            <div className="shape shape-3"></div>
-            <div className="shape shape-4"></div>
-            <div className="shape shape-5"></div>
+      <div className="min-h-screen flex">
+        <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900" />
+          <div className="absolute inset-0 bg-black/20" />
+
+          <div className="relative z-10 flex flex-col items-center justify-center p-12 text-white">
+            <ImageWithFallback
+              src={gavithLogo}
+              alt="Gavith Build Logo"
+              className="h-16 w-16 object-contain mb-6"
+            />
+            <h2 className="text-3xl font-bold mb-4">Gavith Build</h2>
+            <p className="text-blue-100 text-center max-w-md">
+              Professional construction management platform for modern teams
+            </p>
           </div>
-          <div className="particles">
-            <div className="particle particle-1"></div>
-            <div className="particle particle-2"></div>
-            <div className="particle particle-3"></div>
-            <div className="particle particle-4"></div>
-            <div className="particle particle-5"></div>
-            <div className="particle particle-6"></div>
-          </div>
-          <div className="grid-lines opacity-20"></div>
         </div>
 
-        {/* Forgot Password Card */}
-        <Card className="w-full max-w-md bg-white/95 backdrop-blur-xl border-white/30 shadow-2xl shadow-black/20 relative z-10">
-          <CardHeader className="text-center space-y-6 pb-8">
-            <div className="flex items-center justify-center">
-              <div className="relative">
+        <div className="w-full lg:w-1/2 flex items-center justify-center bg-background p-4 lg:p-8">
+          <Card className="w-full max-w-md">
+            <CardHeader className="space-y-1 text-center">
+              <div className="flex justify-center mb-4 lg:hidden">
                 <ImageWithFallback
                   src={gavithLogo}
                   alt="Gavith Build Logo"
-                  className="h-16 w-16 object-contain float-animation"
-                />
-                <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl -z-10"></div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <CardTitle className="text-2xl text-blue-900 font-bold">Reset Password</CardTitle>
-              <p className="gavith-text-gradient mt-2 font-semibold text-lg">Gavith Build</p>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleForgotPassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="reset-username">Username or Email</Label>
-                <Input
-                  id="reset-username"
-                  type="text"
-                  placeholder="Enter your username or email"
-                  required
-                  className="input-enhanced"
+                  className="h-12 w-12 object-contain"
                 />
               </div>
+              <CardTitle className="text-2xl font-semibold tracking-tight">
+                Reset Password
+              </CardTitle>
+              <CardDescription>
+                Enter your email address and we’ll send you a link to reset your password.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
 
-              <Button type="submit" className="w-full btn-primary-enhanced">
-                Send Reset Instructions
-              </Button>
+                {message && !error && (
+                  <Alert>
+                    <AlertDescription>{message}</AlertDescription>
+                  </Alert>
+                )}
 
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-blue-600 hover:text-blue-700"
-                onClick={() => setShowForgotPassword(false)}
-              >
-                Back to Login
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-email">Email</Label>
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={credentials.email}
+                    onChange={(e) => setCredentials((prev) => ({ ...prev, email: e.target.value }))}
+                    required
+                    disabled={isResetting}
+                  />
+                </div>
+
+                <Button type="submit" className="w-full" disabled={isResetting}>
+                  Send Reset Instructions
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={handleBackToLogin}
+                  disabled={isResetting}
+                >
+                  Back to Login
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cyan-500 via-blue-600 to-blue-800 p-4 relative overflow-hidden">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="floating-shapes">
-          <div className="shape shape-1"></div>
-          <div className="shape shape-2"></div>
-          <div className="shape shape-3"></div>
-          <div className="shape shape-4"></div>
-          <div className="shape shape-5"></div>
+    <div className="min-h-screen flex">
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900" />
+        <div className="absolute inset-0 bg-black/20" />
+
+        <div className="relative z-10 w-full flex flex-col items-center justify-center p-12 text-white">
+          <ImageWithFallback
+            src={gavithLogo}
+            alt="Gavith Build Logo"
+            className="h-20 w-20 object-contain mb-8"
+          />
+          <h1 className="text-4xl font-bold mb-4 text-center">Gavith Build</h1>
+          <p className="text-xl text-blue-100 text-center max-w-md mb-8">
+            Professional construction management platform for modern teams
+          </p>
+          <div className="max-w-md text-center text-blue-100">
+            <p className="text-sm">
+              Streamline your construction projects with powerful tools for project management,
+              materials tracking, and team collaboration.
+            </p>
+          </div>
         </div>
-        <div className="particles">
-          <div className="particle particle-1"></div>
-          <div className="particle particle-2"></div>
-          <div className="particle particle-3"></div>
-          <div className="particle particle-4"></div>
-          <div className="particle particle-5"></div>
-          <div className="particle particle-6"></div>
-        </div>
-        <div className="grid-lines opacity-20"></div>
       </div>
 
-      {/* Login Card */}
-      <Card className="w-full max-w-md bg-white/95 backdrop-blur-xl border-white/30 shadow-2xl shadow-black/20 relative z-10">
-        <CardHeader className="text-center space-y-6 pb-8">
-          <div className="flex items-center justify-center">
-            <div className="relative">
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-background p-4 lg:p-8">
+        <Card className="w-full max-w-md">
+          <CardHeader className="space-y-1">
+            <div className="flex justify-center mb-2 lg:hidden">
               <ImageWithFallback
                 src={gavithLogo}
                 alt="Gavith Build Logo"
-                className="h-20 w-20 object-contain float-animation"
+                className="h-10 w-10 object-contain"
               />
-              <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl -z-10"></div>
             </div>
-          </div>
-          <div className="space-y-2">
-            <CardTitle className="gavith-text-gradient text-4xl font-bold tracking-wide">
-              Gavith Build
+            <CardTitle className="text-2xl font-semibold tracking-tight text-center">
+              Login to your account
             </CardTitle>
-            <p className="gavith-text-secondary text-lg font-semibold">
-              Construction Management System
-            </p>
-          </div>
-        </CardHeader>
+            <CardDescription className="text-center">
+              Enter your email below to login to your account
+            </CardDescription>
+          </CardHeader>
 
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="Enter your username"
-                value={credentials.username}
-                onChange={(e) => setCredentials((prev) => ({ ...prev, username: e.target.value }))}
-                disabled={isLoading}
-                required
-                className="input-enhanced"
-              />
-            </div>
+              {message && !error && (
+                <Alert>
+                  <AlertDescription>{message}</AlertDescription>
+                </Alert>
+              )}
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter your password"
-                  value={credentials.password}
-                  onChange={(e) =>
-                    setCredentials((prev) => ({ ...prev, password: e.target.value }))
-                  }
+                  id="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={credentials.email}
+                  onChange={(e) => setCredentials((prev) => ({ ...prev, email: e.target.value }))}
                   disabled={isLoading}
                   required
-                  className="input-enhanced"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={isLoading}
-                  tabIndex={-1}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
               </div>
-            </div>
 
-            <div className="flex items-center justify-between">
-              <Button
-                type="button"
-                variant="link"
-                className="px-0 text-blue-600 hover:text-blue-700"
-                onClick={() => setShowForgotPassword(true)}
-                disabled={isLoading}
-              >
-                Forgot password?
-              </Button>
-            </div>
-
-            <Button type="submit" className="w-full btn-primary-enhanced" disabled={isLoading}>
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in...
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={openForgotPassword}
+                    disabled={isLoading}
+                  >
+                    Forgot your password?
+                  </Button>
                 </div>
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-          </form>
 
-          {/* Organization Creation Section */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <Separator className="w-full" />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={credentials.password}
+                    onChange={(e) =>
+                      setCredentials((prev) => ({ ...prev, password: e.target.value }))
+                    }
+                    disabled={isLoading}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-muted-foreground">New to Gavith Build?</span>
-              </div>
-            </div>
 
-            <div className="mt-6">
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                    Signing in...
+                  </>
+                ) : (
+                  'Login'
+                )}
+              </Button>
+
+              <div className="text-center text-sm text-muted-foreground">
+                Don’t have an account?{' '}
+                <Link
+                  href="/signup"
+                  className="text-primary underline-offset-4 hover:underline font-medium"
+                >
+                  Sign up
+                </Link>
+              </div>
+            </form>
+
+            <div className="mt-6 pt-6 border-t">
               <Button
                 type="button"
                 variant="outline"
-                className="w-full border-2 border-dashed border-blue-300 hover:border-blue-400 hover:bg-blue-50"
+                className="w-full"
                 onClick={onCreateOrganization}
                 disabled={isLoading}
               >
-                <Building2 className="h-4 w-4 mr-2" />
+                <Building2 className="mr-2 h-4 w-4" />
                 Create New Organization
               </Button>
             </div>
-
-            <div className="mt-4 text-center">
-              <p className="text-xs text-gray-600">
-                Demo credentials: admin/admin123, manager/manager123, engineer/engineer123
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

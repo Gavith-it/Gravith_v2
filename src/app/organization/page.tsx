@@ -1,50 +1,31 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 import { OrganizationPage } from '@/components/organization';
-
-// Mock data for organization page
-const mockUsers = [
-  {
-    id: 'user1',
-    username: 'admin',
-    email: 'admin@gavithconstruction.com',
-    firstName: 'Admin',
-    lastName: 'User',
-    role: 'admin' as const,
-    organizationId: 'org1',
-    organizationRole: 'owner' as const,
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    organization: {
-      id: 'org1',
-      name: 'Gavith Construction Pvt. Ltd.',
-      subscription: 'premium' as const,
-      isActive: true,
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-      createdBy: 'system',
-    },
-  },
-];
-
-const mockOrganizations = [
-  {
-    id: 'org1',
-    name: 'Gavith Construction Pvt. Ltd.',
-    subscription: 'premium' as const,
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    createdBy: 'system',
-  },
-];
+import { useAuth } from '@/lib/auth-context';
+import type { Organization } from '@/types';
 
 export default function OrganizationPageRoute() {
+  const { user } = useAuth();
+  const [organization, setOrganization] = useState<Organization | null>(null);
+
+  useEffect(() => {
+    if (user?.organization) {
+      setOrganization(user.organization);
+    }
+  }, [user]);
+
+  if (!user || !organization) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">Loading organization details...</div>
+    );
+  }
+
   return (
     <OrganizationPage
-      currentUser={mockUsers[0]}
-      currentOrganization={mockOrganizations[0]}
+      currentUser={user}
+      currentOrganization={organization}
       onUpdateOrganization={() => {}}
     />
   );

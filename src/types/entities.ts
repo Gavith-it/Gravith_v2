@@ -27,7 +27,16 @@ export interface User {
   lastName?: string;
   role: 'admin' | 'user';
   organizationId: string;
-  organizationRole: 'owner' | 'admin' | 'manager' | 'user';
+  organizationRole:
+    | 'owner'
+    | 'admin'
+    | 'manager'
+    | 'user'
+    | 'project-manager'
+    | 'site-supervisor'
+    | 'materials-manager'
+    | 'finance-manager'
+    | 'executive';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

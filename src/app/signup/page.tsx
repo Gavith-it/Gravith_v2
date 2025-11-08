@@ -1,14 +1,18 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { createClient } from '@/lib/supabase/client';
 
 export default function SignupPage() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -18,7 +22,7 @@ export default function SignupPage() {
     company: '',
   });
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
+  const [error, setError] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -30,13 +34,58 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate signup process
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          company: formData.company,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.error || 'Failed to create account. Please try again.');
+        return;
+      }
+
+      const successMessage = encodeURIComponent(
+        'Account created successfully. You can sign in with your email and password.',
+      );
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (signInError) {
+        router.push(`/login?message=${successMessage}`);
+        return;
+      }
+
+      router.push(`/dashboard?message=${successMessage}`);
+    } catch (err) {
+      console.error('Signup error:', err);
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
       setIsLoading(false);
-      router.push('/login');
-    }, 2000);
+    }
   };
 
   return (
@@ -50,6 +99,8 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
