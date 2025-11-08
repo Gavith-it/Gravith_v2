@@ -10,24 +10,6 @@ interface SignupPayload {
   company: string;
 }
 
-type OrganizationInsertPayload = {
-  name: string;
-  is_active: boolean;
-  created_by: string;
-};
-
-type UserProfileInsertPayload = {
-  id: string;
-  username: string;
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  role: 'admin' | 'user';
-  organization_id: string;
-  organization_role: 'owner' | 'admin' | 'manager' | 'user';
-  is_active: boolean;
-};
-
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Partial<SignupPayload>;
@@ -70,9 +52,7 @@ export async function POST(request: Request) {
 
     const { data: organization, error: organizationError } = await adminClient
       .from('organizations')
-      .insert([
-        { name: company, is_active: true, created_by: authUserId },
-      ] as unknown as OrganizationInsertPayload[])
+      .insert([{ name: company, is_active: true, created_by: authUserId }] as never)
       .select('id')
       .single();
 
@@ -99,7 +79,7 @@ export async function POST(request: Request) {
         organization_role: 'owner',
         is_active: true,
       },
-    ] as unknown as UserProfileInsertPayload[]);
+    ] as never);
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
