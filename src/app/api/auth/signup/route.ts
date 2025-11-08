@@ -51,18 +51,22 @@ export async function POST(request: Request) {
 
     const authUserId = authUser.user.id;
 
-    const { data: organization, error: organizationError } = await adminClient.rpc<
-      Database['public']['Functions']['create_organization_with_owner']['Returns'],
-      Database['public']['Functions']['create_organization_with_owner']['Args']
-    >('create_organization_with_owner', {
-      p_name: company,
-      p_user_id: authUserId,
-      p_user_email: email,
-      p_user_first_name: firstName,
-      p_user_last_name: lastName,
-    });
+    const { data: organization, error: organizationError } = await adminClient.rpc(
+      'create_organization_with_owner',
+      {
+        p_name: company,
+        p_user_id: authUserId,
+        p_user_email: email,
+        p_user_first_name: firstName,
+        p_user_last_name: lastName,
+      },
+    );
 
-    if (organizationError || !organization) {
+    const organizationRow = organization as
+      | Database['public']['Tables']['organizations']['Row']
+      | null;
+
+    if (organizationError || !organizationRow) {
       console.error('Error creating organization:', organizationError);
       await adminClient.auth.admin.deleteUser(authUserId);
       return NextResponse.json(
@@ -75,7 +79,7 @@ export async function POST(request: Request) {
       {
         message: 'Account created successfully. You can now sign in.',
         email,
-        organizationId: organization.id,
+        organizationId: organizationRow.id,
       },
       { status: 201 },
     );
