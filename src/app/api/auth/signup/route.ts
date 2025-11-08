@@ -52,7 +52,9 @@ export async function POST(request: Request) {
 
     const { data: organization, error: organizationError } = await adminClient
       .from('organizations')
-      .insert([{ name: company, is_active: true, created_by: authUserId }] as never)
+      .insert([{ name: company, is_active: true, created_by: authUserId }] as Array<
+        Record<string, unknown>
+      >)
       .select('id')
       .single();
 
@@ -65,9 +67,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const organizationId = (organization as { id: string }).id;
+
     const username = email.split('@')[0];
 
-    const { error: profileError } = await adminClient.from('user_profiles').insert([
+    const profilePayload = [
       {
         id: authUserId,
         username,
@@ -75,16 +79,18 @@ export async function POST(request: Request) {
         first_name: firstName,
         last_name: lastName,
         role: 'admin',
-        organization_id: organization.id,
+        organization_id: organizationId,
         organization_role: 'owner',
         is_active: true,
       },
-    ] as never);
+    ] as Array<Record<string, unknown>>;
+
+    const { error: profileError } = await adminClient.from('user_profiles').insert(profilePayload);
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
       await adminClient.auth.admin.deleteUser(authUserId);
-      await adminClient.from('organizations').delete().eq('id', organization.id);
+      await adminClient.from('organizations').delete().eq('id', organizationId);
       return NextResponse.json(
         { error: 'Failed to create user profile. Please try again later.' },
         { status: 500 },
@@ -95,7 +101,7 @@ export async function POST(request: Request) {
       {
         message: 'Account created successfully. You can now sign in.',
         email,
-        organizationId: organization.id,
+        organizationId,
       },
       { status: 201 },
     );
