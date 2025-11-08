@@ -62,7 +62,18 @@ export interface Database {
       };
     };
     Views: never;
-    Functions: never;
+    Functions: {
+      create_organization_with_owner: {
+        Args: {
+          p_name: string;
+          p_user_id: string;
+          p_user_email: string;
+          p_user_first_name: string;
+          p_user_last_name: string;
+        };
+        Returns: Database['public']['Tables']['organizations']['Row'];
+      };
+    };
     Enums: never;
     CompositeTypes: never;
   };
