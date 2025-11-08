@@ -53,11 +53,13 @@ export async function POST(request: Request) {
 
     const { data: organization, error: organizationError } = await adminClient
       .from('organizations')
-      .insert({
-        name: company,
-        is_active: true,
-        created_by: authUserId,
-      } satisfies Database['public']['Tables']['organizations']['Insert'])
+      .insert<Database['public']['Tables']['organizations']['Insert']>([
+        {
+          name: company,
+          is_active: true,
+          created_by: authUserId,
+        },
+      ])
       .select('id')
       .single();
 
@@ -72,17 +74,21 @@ export async function POST(request: Request) {
 
     const username = email.split('@')[0];
 
-    const { error: profileError } = await adminClient.from('user_profiles').insert({
-      id: authUserId,
-      username,
-      email,
-      first_name: firstName,
-      last_name: lastName,
-      role: 'admin',
-      organization_id: organization.id,
-      organization_role: 'owner',
-      is_active: true,
-    } satisfies Database['public']['Tables']['user_profiles']['Insert']);
+    const { error: profileError } = await adminClient
+      .from('user_profiles')
+      .insert<Database['public']['Tables']['user_profiles']['Insert']>([
+        {
+          id: authUserId,
+          username,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          role: 'admin',
+          organization_id: organization.id,
+          organization_role: 'owner',
+          is_active: true,
+        },
+      ]);
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
