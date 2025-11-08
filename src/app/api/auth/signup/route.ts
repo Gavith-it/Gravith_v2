@@ -50,15 +50,16 @@ export async function POST(request: Request) {
 
     const authUserId = authUser.user.id;
 
-    const { data: organization, error: organizationError } = await adminClient
-      .from('organizations')
-      .insert({
-        name: company,
-        is_active: true,
-        created_by: authUserId,
-      })
-      .select('id')
-      .single();
+    const { data: organization, error: organizationError } = await adminClient.rpc(
+      'create_organization_with_owner',
+      {
+        p_name: company,
+        p_user_id: authUserId,
+        p_user_email: email,
+        p_user_first_name: firstName,
+        p_user_last_name: lastName,
+      },
+    );
 
     if (organizationError || !organization) {
       console.error('Error creating organization:', organizationError);
@@ -69,37 +70,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const organizationId = organization.id;
-
-    const username = email.split('@')[0];
-
-    const { error: profileError } = await adminClient.from('user_profiles').insert({
-      id: authUserId,
-      username,
-      email,
-      first_name: firstName,
-      last_name: lastName,
-      role: 'admin',
-      organization_id: organizationId,
-      organization_role: 'owner',
-      is_active: true,
-    });
-
-    if (profileError) {
-      console.error('Error creating user profile:', profileError);
-      await adminClient.auth.admin.deleteUser(authUserId);
-      await adminClient.from('organizations').delete().eq('id', organizationId);
-      return NextResponse.json(
-        { error: 'Failed to create user profile. Please try again later.' },
-        { status: 500 },
-      );
-    }
-
     return NextResponse.json(
       {
         message: 'Account created successfully. You can now sign in.',
         email,
-        organizationId,
+        organizationId: organization.id,
       },
       { status: 201 },
     );
