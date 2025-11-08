@@ -24,24 +24,6 @@ export async function POST(request: Request) {
 
     const adminClient = createAdminClient();
 
-    const { data: existingUser, error: existingUserError } =
-      await adminClient.auth.admin.getUserByEmail(email);
-
-    if (existingUserError) {
-      console.error('Error checking existing user:', existingUserError);
-      return NextResponse.json(
-        { error: 'Unable to verify existing accounts. Please try again later.' },
-        { status: 500 },
-      );
-    }
-
-    if (existingUser?.user) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists. Please sign in instead.' },
-        { status: 409 },
-      );
-    }
-
     const { data: authUser, error: createUserError } = await adminClient.auth.admin.createUser({
       email,
       password,
@@ -49,6 +31,16 @@ export async function POST(request: Request) {
     });
 
     if (createUserError || !authUser?.user) {
+      if (
+        createUserError &&
+        createUserError.message?.toLowerCase().includes('already registered')
+      ) {
+        return NextResponse.json(
+          { error: 'An account with this email already exists. Please sign in instead.' },
+          { status: 409 },
+        );
+      }
+
       console.error('Error creating auth user:', createUserError);
       return NextResponse.json(
         { error: 'Failed to create account. Please try again later.' },
