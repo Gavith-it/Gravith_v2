@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { Database } from '@/lib/supabase/types';
 
 interface SignupPayload {
   firstName: string;
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
         name: company,
         is_active: true,
         created_by: authUserId,
-      })
+      } satisfies Database['public']['Tables']['organizations']['Insert'])
       .select('id')
       .single();
 
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
       organization_id: organization.id,
       organization_role: 'owner',
       is_active: true,
-    });
+    } satisfies Database['public']['Tables']['user_profiles']['Insert']);
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
