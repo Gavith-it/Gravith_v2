@@ -1,80 +1,114 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type SubscriptionPlan = 'free' | 'basic' | 'premium' | 'enterprise';
+
+export type OrganizationRole =
+  | 'owner'
+  | 'admin'
+  | 'manager'
+  | 'user'
+  | 'project-manager'
+  | 'site-supervisor'
+  | 'materials-manager'
+  | 'finance-manager'
+  | 'executive';
+
 export interface Database {
   public: {
     Tables: {
       organizations: {
         Row: {
-          id: string;
-          name: string;
-          is_active: boolean;
-          subscription: 'free' | 'basic' | 'premium' | 'enterprise' | null;
           created_at: string;
-          updated_at: string;
           created_by: string | null;
+          id: string;
+          is_active: boolean;
+          name: string;
+          subscription: SubscriptionPlan | null;
+          updated_at: string;
         };
         Insert: {
-          id?: string;
-          name: string;
-          is_active?: boolean;
-          subscription?: 'free' | 'basic' | 'premium' | 'enterprise' | null;
           created_at?: string;
-          updated_at?: string;
           created_by?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          subscription?: SubscriptionPlan | null;
+          updated_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['organizations']['Insert']>;
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          subscription?: SubscriptionPlan | null;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       user_profiles: {
         Row: {
-          id: string;
-          username: string;
+          created_at: string;
           email: string;
           first_name: string | null;
-          last_name: string | null;
-          role: 'admin' | 'user';
-          organization_id: string;
-          organization_role:
-            | 'owner'
-            | 'admin'
-            | 'manager'
-            | 'user'
-            | 'project-manager'
-            | 'site-supervisor'
-            | 'materials-manager'
-            | 'finance-manager'
-            | 'executive';
+          id: string;
           is_active: boolean;
-          created_at: string;
+          last_name: string | null;
+          organization_id: string;
+          organization_role: OrganizationRole;
+          role: 'admin' | 'user';
           updated_at: string;
+          username: string;
         };
         Insert: {
-          id: string;
-          username: string;
+          created_at?: string;
           email: string;
           first_name?: string | null;
-          last_name?: string | null;
-          role?: 'admin' | 'user';
-          organization_id: string;
-          organization_role?: UserProfileRecord['organization_role'];
+          id: string;
           is_active?: boolean;
-          created_at?: string;
+          last_name?: string | null;
+          organization_id: string;
+          organization_role?: OrganizationRole;
+          role?: 'admin' | 'user';
           updated_at?: string;
+          username: string;
         };
-        Update: Partial<Database['public']['Tables']['user_profiles']['Insert']>;
+        Update: {
+          created_at?: string;
+          email?: string;
+          first_name?: string | null;
+          id?: string;
+          is_active?: boolean;
+          last_name?: string | null;
+          organization_id?: string;
+          organization_role?: OrganizationRole;
+          role?: 'admin' | 'user';
+          updated_at?: string;
+          username?: string;
+        };
+        Relationships: [];
       };
     };
-    Views: never;
+    Views: {
+      [_ in never]: never;
+    };
     Functions: {
       create_organization_with_owner: {
         Args: {
           p_name: string;
-          p_user_id: string;
           p_user_email: string;
           p_user_first_name: string;
+          p_user_id: string;
           p_user_last_name: string;
         };
         Returns: Database['public']['Tables']['organizations']['Row'];
       };
     };
-    Enums: never;
-    CompositeTypes: never;
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
 }

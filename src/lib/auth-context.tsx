@@ -54,7 +54,7 @@ async function fetchAuthenticatedProfile(): Promise<UserWithOrganization | null>
           id: string;
           name: string;
           is_active: boolean;
-          subscription?: string | null;
+          subscription?: 'free' | 'basic' | 'premium' | 'enterprise' | null;
           created_at: string;
           updated_at: string;
           created_by?: string | null;
