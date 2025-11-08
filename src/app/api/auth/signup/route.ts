@@ -52,9 +52,11 @@ export async function POST(request: Request) {
 
     const { data: organization, error: organizationError } = await adminClient
       .from('organizations')
-      .insert([{ name: company, is_active: true, created_by: authUserId }] as Array<
-        Record<string, unknown>
-      >)
+      .insert({
+        name: company,
+        is_active: true,
+        created_by: authUserId,
+      })
       .select('id')
       .single();
 
@@ -67,25 +69,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const organizationId = (organization as { id: string }).id;
+    const organizationId = organization.id;
 
     const username = email.split('@')[0];
 
-    const profilePayload = [
-      {
-        id: authUserId,
-        username,
-        email,
-        first_name: firstName,
-        last_name: lastName,
-        role: 'admin',
-        organization_id: organizationId,
-        organization_role: 'owner',
-        is_active: true,
-      },
-    ] as Array<Record<string, unknown>>;
-
-    const { error: profileError } = await adminClient.from('user_profiles').insert(profilePayload);
+    const { error: profileError } = await adminClient.from('user_profiles').insert({
+      id: authUserId,
+      username,
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      role: 'admin',
+      organization_id: organizationId,
+      organization_role: 'owner',
+      is_active: true,
+    });
 
     if (profileError) {
       console.error('Error creating user profile:', profileError);
