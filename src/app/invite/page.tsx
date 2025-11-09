@@ -23,19 +23,13 @@ function InviteContent() {
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const token = searchParams.get('token') ?? searchParams.get('code');
+  const searchToken = searchParams.get('token') ?? searchParams.get('code');
 
   useEffect(() => {
     let isActive = true;
 
-    async function initializeSession() {
-      if (!token) {
-        setTokenError('Invitation token is missing. Please request a new invite.');
-        setIsInitializing(false);
-        return;
-      }
-
-      const { error } = await supabase.auth.exchangeCodeForSession(token);
+    async function initializeSession(tokenToUse: string) {
+      const { error } = await supabase.auth.exchangeCodeForSession(tokenToUse);
 
       if (error) {
         if (isActive) {
@@ -62,12 +56,45 @@ function InviteContent() {
       }
     }
 
-    void initializeSession();
+    async function resolveAndInitialize() {
+      let tokenToUse = searchToken ?? undefined;
+
+      if (!tokenToUse && typeof window !== 'undefined') {
+        const hash = window.location.hash?.replace(/^#/, '');
+
+        if (hash) {
+          const hashParams = new URLSearchParams(hash);
+          const hashToken =
+            hashParams.get('token') || hashParams.get('code') || hashParams.get('access_token');
+          const type = hashParams.get('type');
+
+          if (hashToken && (!type || type === 'invite')) {
+            tokenToUse = hashToken;
+          }
+        }
+      }
+
+      if (!tokenToUse) {
+        setTokenError('Invitation token is missing. Please request a new invite.');
+        setIsInitializing(false);
+        return;
+      }
+
+      await initializeSession(tokenToUse);
+
+      if (isActive && typeof window !== 'undefined' && window.location.hash) {
+        const url = new URL(window.location.href);
+        url.hash = '';
+        window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+      }
+    }
+
+    void resolveAndInitialize();
 
     return () => {
       isActive = false;
     };
-  }, [supabase, token]);
+  }, [supabase, searchToken]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
