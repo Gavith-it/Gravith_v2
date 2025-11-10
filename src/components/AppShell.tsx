@@ -1,21 +1,6 @@
 'use client';
 
-import {
-  Home,
-  Truck,
-  Receipt,
-  CreditCard,
-  Settings,
-  Building2,
-  Package,
-  Users,
-  Calendar,
-  BarChart3,
-  Building,
-  ShoppingCart,
-  Target,
-  Database,
-} from 'lucide-react';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import React from 'react';
 
@@ -25,28 +10,6 @@ import { SidebarProvider, SidebarTrigger } from './ui/sidebar';
 
 import { useAuth } from '@/lib/auth-context';
 import { MaterialReceiptsProvider, MaterialsProvider, VendorsProvider } from '@/lib/contexts';
-
-// Icon mapping for each page
-const getPageIcon = (page: string) => {
-  const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-    dashboard: Home,
-    sites: Building2,
-    materials: Package,
-    masters: Database,
-    purchase: ShoppingCart,
-    'work-progress': Target,
-    vehicles: Truck,
-    vendors: Users,
-    expenses: Receipt,
-    payments: CreditCard,
-    scheduling: Calendar,
-    reports: BarChart3,
-    organization: Building,
-    settings: Settings,
-  };
-
-  return iconMap[page] || Home;
-};
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -149,11 +112,14 @@ export function AppShell({ children }: AppShellProps) {
                     <div className="flex items-center gap-4">
                       <SidebarTrigger className="h-9 w-9 rounded-lg border border-gray-200/60 bg-white/80 hover:bg-gray-50/80 shadow-sm hover:shadow-md transition-all duration-200" />
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
-                          {React.createElement(getPageIcon(currentPage), {
-                            className: 'h-4 w-4 text-white',
-                          })}
-                        </div>
+                        <Image
+                          src="/fevicon.jpeg"
+                          alt="Dashboard icon"
+                          width={32}
+                          height={32}
+                          className="h-8 w-8 rounded-lg object-cover"
+                          priority
+                        />
                         <div>
                           <h1 className="text-xl font-bold text-gray-900 capitalize leading-tight">
                             {currentPage}
