@@ -88,8 +88,10 @@ export async function POST(request: Request) {
 
     const adminClient = createAdminClient();
 
+    const inviteRedirectUrl = getInviteRedirectUrl(request);
+
     const { data: invitedUser, error: inviteError } =
-      await adminClient.auth.admin.inviteUserByEmail(email);
+      await adminClient.auth.admin.inviteUserByEmail(email, { redirectTo: inviteRedirectUrl });
 
     if (inviteError || !invitedUser?.user) {
       if (inviteError?.message?.toLowerCase().includes('already registered')) {
@@ -131,4 +133,17 @@ export async function POST(request: Request) {
     console.error('Unexpected error while inviting member:', error);
     return NextResponse.json({ error: 'Unexpected error. Please try again.' }, { status: 500 });
   }
+}
+
+function getInviteRedirectUrl(request: Request): string {
+  const configured =
+    process.env['INVITE_REDIRECT_URL'] ||
+    process.env['NEXT_PUBLIC_SITE_URL'] ||
+    process.env['NEXTAUTH_URL'] ||
+    process.env['SITE_URL'] ||
+    null;
+
+  const baseUrl = configured?.replace(/\/$/, '') || new URL(request.url).origin;
+
+  return `${baseUrl}/invite`;
 }
