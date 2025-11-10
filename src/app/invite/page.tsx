@@ -13,6 +13,7 @@ function InviteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const searchParamString = searchParams.toString();
 
   const [isInitializing, setIsInitializing] = useState(true);
   const [tokenError, setTokenError] = useState('');
@@ -23,15 +24,36 @@ function InviteContent() {
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const searchToken = searchParams.get('token') ?? searchParams.get('code');
-
   useEffect(() => {
     let isActive = true;
 
-    async function initializeSession(tokenToUse: string) {
-      const { error } = await supabase.auth.exchangeCodeForSession(tokenToUse);
+    type SessionParams = {
+      code?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      token?: string;
+    };
 
-      if (error) {
+    async function initializeSession({ code, accessToken, refreshToken, token }: SessionParams) {
+      let authError: Error | null = null;
+
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        authError = error ?? null;
+      } else if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        authError = error ?? null;
+      } else if (token) {
+        const { error } = await supabase.auth.exchangeCodeForSession(token);
+        authError = error ?? null;
+      } else {
+        authError = new Error('missing_token');
+      }
+
+      if (authError) {
         if (isActive) {
           setTokenError(
             'This invitation link is invalid or has expired. Please ask for a new invite.',
@@ -57,30 +79,44 @@ function InviteContent() {
     }
 
     async function resolveAndInitialize() {
-      let tokenToUse = searchToken ?? undefined;
+      const currentParams = new URLSearchParams(searchParamString);
 
-      if (!tokenToUse && typeof window !== 'undefined') {
+      let code = currentParams.get('code') ?? undefined;
+      let token = currentParams.get('token') ?? undefined;
+      let accessToken = currentParams.get('access_token') ?? undefined;
+      let refreshToken = currentParams.get('refresh_token') ?? undefined;
+      let type = currentParams.get('type') ?? undefined;
+
+      if (typeof window !== 'undefined') {
         const hash = window.location.hash?.replace(/^#/, '');
 
         if (hash) {
           const hashParams = new URLSearchParams(hash);
-          const hashToken =
-            hashParams.get('token') || hashParams.get('code') || hashParams.get('access_token');
-          const type = hashParams.get('type');
-
-          if (hashToken && (!type || type === 'invite')) {
-            tokenToUse = hashToken;
-          }
+          type = type ?? hashParams.get('type') ?? undefined;
+          code = code ?? hashParams.get('code') ?? undefined;
+          token = token ?? hashParams.get('token') ?? undefined;
+          accessToken = accessToken ?? hashParams.get('access_token') ?? undefined;
+          refreshToken =
+            refreshToken ??
+            hashParams.get('refresh_token') ??
+            hashParams.get('refreshToken') ??
+            undefined;
         }
       }
 
-      if (!tokenToUse) {
+      if (type && type !== 'invite') {
+        setTokenError('This link is intended for a different action. Please request a new invite.');
+        setIsInitializing(false);
+        return;
+      }
+
+      if (!code && !accessToken && !refreshToken && !token) {
         setTokenError('Invitation token is missing. Please request a new invite.');
         setIsInitializing(false);
         return;
       }
 
-      await initializeSession(tokenToUse);
+      await initializeSession({ code, accessToken, refreshToken, token });
 
       if (isActive && typeof window !== 'undefined' && window.location.hash) {
         const url = new URL(window.location.href);
@@ -94,7 +130,7 @@ function InviteContent() {
     return () => {
       isActive = false;
     };
-  }, [supabase, searchToken]);
+  }, [supabase, searchParamString]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
