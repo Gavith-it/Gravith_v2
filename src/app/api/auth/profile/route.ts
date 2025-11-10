@@ -55,6 +55,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Unable to load user profile' }, { status: 500 });
     }
 
+    if (!profile.is_active) {
+      const { error: activateError } = await adminClient
+        .from('user_profiles')
+        .update({ is_active: true })
+        .eq('id', user.id);
+
+      if (activateError) {
+        console.error('Failed to activate user profile after authentication:', activateError);
+      } else {
+        profile.is_active = true;
+      }
+    }
+
     return NextResponse.json({ profile });
   } catch (error) {
     console.error('Unexpected error fetching authenticated profile:', error);
