@@ -7,7 +7,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import gavithLogo from '../assets/40b9a52cc41bb9e286b6859d260d4a3571e6e982.png';
 
-
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
@@ -38,13 +37,29 @@ export function Login({ onCreateOrganization }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     const messageParam = searchParams.get('message');
     if (messageParam) {
-      setMessage(messageParam);
+      setToastMessage(messageParam);
+      setShowToast(true);
+      setMessage('');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!showToast) return;
+    const timeout = window.setTimeout(() => {
+      setShowToast(false);
+      setToastMessage('');
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [showToast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,6 +224,13 @@ export function Login({ onCreateOrganization }: LoginProps) {
 
   return (
     <div className="min-h-screen flex">
+      {showToast && toastMessage && (
+        <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
+          <div className="max-w-md w-full rounded-lg bg-emerald-500 text-white px-4 py-3 shadow-lg shadow-emerald-500/40">
+            <p className="text-sm font-medium text-center">{toastMessage}</p>
+          </div>
+        </div>
+      )}
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900" />
         <div className="absolute inset-0 bg-black/20" />
