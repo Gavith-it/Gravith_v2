@@ -109,7 +109,9 @@ export async function GET() {
         .not('status', 'eq', 'Canceled'),
       supabase
         .from('sites')
-        .select('id, name, location, status, progress, expected_end_date, budget, spent, updated_at')
+        .select(
+          'id, name, location, status, progress, expected_end_date, budget, spent, updated_at',
+        )
         .eq('organization_id', organizationId)
         .order('updated_at', { ascending: false })
         .limit(5),
@@ -151,39 +153,102 @@ export async function GET() {
       0,
     );
 
-    const completionRate = calculateAverageProgress(activityRows ?? []);
+    const completionRate = calculateAverageProgress(
+      (activityRows ?? []).map((activity) => ({
+        progress:
+          typeof activity.progress === 'number'
+            ? activity.progress
+            : activity.progress !== null && activity.progress !== undefined
+              ? Number(activity.progress)
+              : null,
+      })),
+    );
 
-    const activeSites = (siteRows ?? []).map<ActiveSite>((site) => ({
-      id: site.id,
-      name: site.name,
-      location: site.location ?? '',
-      progress: Number(site.progress ?? 0),
-      status: site.status ?? 'Unknown',
-      nextMilestone: null,
-      dueDate: site.expected_end_date,
-      budget: {
-        allocated: Number(site.budget ?? 0),
-        spent: Number(site.spent ?? 0),
+    const activeSites = (siteRows ?? []).map<ActiveSite>((site) => {
+      const record = site as Record<string, unknown>;
+      const idValue = record.id;
+      const nameValue = record.name;
+      const locationValue = record.location;
+      const progressValue = record.progress;
+      const statusValue = record.status;
+      const dueDateValue = record.expected_end_date;
+      const budgetValue = record.budget;
+      const spentValue = record.spent;
+
+      return {
+        id: typeof idValue === 'string' ? idValue : String(idValue ?? ''),
+        name: typeof nameValue === 'string' ? nameValue : 'Unnamed site',
+        location: typeof locationValue === 'string' ? locationValue : '',
+        progress:
+          typeof progressValue === 'number'
+            ? progressValue
+            : progressValue !== null && progressValue !== undefined
+              ? Number(progressValue)
+              : 0,
+        status: typeof statusValue === 'string' ? statusValue : 'Unknown',
+        nextMilestone: null,
+        dueDate: typeof dueDateValue === 'string' ? dueDateValue : null,
+        budget: {
+          allocated:
+            typeof budgetValue === 'number'
+              ? budgetValue
+              : budgetValue !== null && budgetValue !== undefined
+                ? Number(budgetValue)
+                : 0,
+          spent:
+            typeof spentValue === 'number'
+              ? spentValue
+              : spentValue !== null && spentValue !== undefined
+                ? Number(spentValue)
+                : 0,
+        },
+      };
+    });
+
+    const recentPurchaseActivities = (materialPurchaseRows ?? []).map<RecentActivity>(
+      (purchase) => {
+        const record = purchase as Record<string, unknown>;
+        const invoiceNumber = record.vendor_invoice_number;
+        const createdAt = record.created_at;
+        const description = record.description;
+
+        return {
+          id: `purchase-${typeof invoiceNumber === 'string' ? invoiceNumber : ''}-${String(createdAt ?? '')}`,
+          type: 'purchase',
+          description:
+            typeof invoiceNumber === 'string' && invoiceNumber.length > 0
+              ? `Purchase invoice ${invoiceNumber}`
+              : typeof description === 'string' && description.length > 0
+                ? description
+                : 'Material purchase recorded',
+          amount: Number(record.total_amount ?? 0),
+          timestamp:
+            typeof createdAt === 'string'
+              ? createdAt
+              : new Date(createdAt as string | number | Date).toISOString(),
+        };
       },
-    }));
+    );
 
-    const recentPurchaseActivities = (materialPurchaseRows ?? []).map<RecentActivity>((purchase) => ({
-      id: `purchase-${purchase.vendor_invoice_number ?? ''}-${purchase.created_at}`,
-      type: 'purchase',
-      description: purchase.vendor_invoice_number
-        ? `Purchase invoice ${purchase.vendor_invoice_number}`
-        : 'Material purchase recorded',
-      amount: Number(purchase.total_amount ?? 0),
-      timestamp: purchase.created_at,
-    }));
+    const recentExpenseActivities = (monthlyExpenseRows ?? []).map<RecentActivity>((expense) => {
+      const record = expense as Record<string, unknown>;
+      const dateValue = record.date;
+      const description = record.description;
 
-    const recentExpenseActivities = (monthlyExpenseRows ?? []).map<RecentActivity>((expense) => ({
-      id: `expense-${expense.date}-${expense.description}`,
-      type: 'expense',
-      description: expense.description ?? 'Expense recorded',
-      amount: Number(expense.amount ?? 0),
-      timestamp: expense.date,
-    }));
+      return {
+        id: `expense-${String(dateValue ?? '')}-${typeof description === 'string' ? description : ''}`,
+        type: 'expense',
+        description:
+          typeof description === 'string' && description.length > 0
+            ? description
+            : 'Expense recorded',
+        amount: Number(record.amount ?? 0),
+        timestamp:
+          typeof dateValue === 'string'
+            ? dateValue
+            : new Date(dateValue as string | number | Date).toISOString(),
+      };
+    });
 
     const recentActivities = [...recentPurchaseActivities, ...recentExpenseActivities]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -225,9 +290,7 @@ function endOfCurrentMonth(): string {
   return date.toISOString().split('T')[0]!;
 }
 
-function calculateAverageProgress(
-  activities: { progress?: number | null }[],
-): number {
+function calculateAverageProgress(activities: { progress?: number | null }[]): number {
   if (!activities.length) {
     return 0;
   }
@@ -235,4 +298,3 @@ function calculateAverageProgress(
   const total = activities.reduce((sum, activity) => sum + Number(activity.progress ?? 0), 0);
   return Math.round(total / activities.length);
 }
-

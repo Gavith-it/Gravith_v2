@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { ensureMutationAccess, mapRowToExpense, resolveContext } from './_utils';
+import type { ExpenseRow } from './_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Expense } from '@/types';
 
-import { ensureMutationAccess, mapRowToExpense, resolveContext } from './_utils';
 
 const EXPENSE_SELECT = `
   id,
@@ -48,7 +50,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load expenses.' }, { status: 500 });
     }
 
-    const expenses = (data ?? []).map(mapRowToExpense);
+    const expenses = (data ?? []).map((row) => mapRowToExpense(row as ExpenseRow));
     return NextResponse.json({ expenses });
   } catch (error) {
     console.error('Unexpected error fetching expenses:', error);
@@ -109,8 +111,7 @@ export async function POST(request: Request) {
 
     const normalizedAmount = Math.round(numericAmount * 100) / 100;
 
-    const approvedByValue =
-      approvedBy && approvedBy.length > 0 ? approvedBy.slice(0, 255) : null;
+    const approvedByValue = approvedBy && approvedBy.length > 0 ? approvedBy.slice(0, 255) : null;
 
     const payload = {
       description,
@@ -141,11 +142,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create expense.' }, { status: 500 });
     }
 
-    const expense = mapRowToExpense(data);
+    const expense = mapRowToExpense(data as ExpenseRow);
     return NextResponse.json({ expense });
   } catch (error) {
     console.error('Unexpected error creating expense:', error);
     return NextResponse.json({ error: 'Unexpected error creating expense.' }, { status: 500 });
   }
 }
-

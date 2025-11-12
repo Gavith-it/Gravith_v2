@@ -85,9 +85,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (
-      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)
-    ) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -136,10 +134,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update material.' }, { status: 500 });
     }
 
-    return NextResponse.json({ material: mapRowToMaterial(updated) });
+    return NextResponse.json({ material: mapRowToMaterial(updated as MaterialRow) });
   } catch (error) {
     console.error('Unexpected error updating material', error);
     return NextResponse.json({ error: 'Unexpected error updating material.' }, { status: 500 });
   }
 }
-

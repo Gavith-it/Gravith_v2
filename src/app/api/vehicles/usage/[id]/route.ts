@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
 import type { VehicleUsage } from '@/types/entities';
@@ -16,8 +16,35 @@ type MutationRole =
   | 'user';
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
+
+type VehicleUsageRow = {
+  id: string;
+  vehicle_id: string;
+  vehicle_number: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  start_odometer: number | string | null;
+  end_odometer: number | string | null;
+  total_distance: number | string | null;
+  work_description: string;
+  work_category: VehicleUsage['workCategory'];
+  site_id: string;
+  site_name: string;
+  operator: string;
+  fuel_consumed: number | string | null;
+  is_rental: boolean | null;
+  rental_cost: number | string | null;
+  vendor: string | null;
+  status: VehicleUsage['status'];
+  notes: string | null;
+  recorded_by: string;
+  organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
 
 interface UsagePayload {
   date?: string;
@@ -70,7 +97,7 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToUsage(row: any): VehicleUsage {
+function mapRowToUsage(row: VehicleUsageRow): VehicleUsage {
   return {
     id: row.id,
     vehicleId: row.vehicle_id,
@@ -99,8 +126,9 @@ function mapRowToUsage(row: any): VehicleUsage {
   };
 }
 
-export async function PATCH(request: Request, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -109,9 +137,17 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -140,7 +176,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const { data, error } = await supabase
       .from('vehicle_usage')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .select(
         `
@@ -177,18 +213,17 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update usage record.' }, { status: 500 });
     }
 
-    return NextResponse.json({ record: mapRowToUsage(data) });
+    return NextResponse.json({ record: mapRowToUsage(data as VehicleUsageRow) });
+    return NextResponse.json({ record: mapRowToUsage(data as VehicleUsageRow) });
   } catch (error) {
     console.error('Unexpected error updating usage record', error);
-    return NextResponse.json(
-      { error: 'Unexpected error updating usage record.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Unexpected error updating usage record.' }, { status: 500 });
   }
 }
 
-export async function DELETE(_: Request, { params }: RouteContext) {
+export async function DELETE(_: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -197,9 +232,17 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -207,7 +250,7 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     const { error } = await supabase
       .from('vehicle_usage')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId);
 
     if (error) {
@@ -218,10 +261,6 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Unexpected error deleting usage record', error);
-    return NextResponse.json(
-      { error: 'Unexpected error deleting usage record.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Unexpected error deleting usage record.' }, { status: 500 });
   }
 }
-

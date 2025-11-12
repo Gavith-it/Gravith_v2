@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { mapRowToReceipt, MUTATION_ROLES, resolveContext } from '../_utils';
+import type { ReceiptRow } from '../_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { MaterialReceipt } from '@/types/entities';
 
-import { mapRowToReceipt, MUTATION_ROLES, resolveContext } from '../_utils';
 
 type RouteContext = {
   params: Promise<{
@@ -57,7 +59,7 @@ export async function GET(_: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Receipt not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ receipt: mapRowToReceipt(data) });
+    return NextResponse.json({ receipt: mapRowToReceipt(data as ReceiptRow) });
   } catch (error) {
     console.error('Unexpected error loading receipt', error);
     return NextResponse.json({ error: 'Unexpected error loading receipt.' }, { status: 500 });
@@ -173,7 +175,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     if (Object.keys(updates).length === 1) {
       // Only updated_by present; nothing to change
-      return NextResponse.json({ receipt: mapRowToReceipt(existing) });
+      return NextResponse.json({ receipt: mapRowToReceipt(existing as ReceiptRow) });
     }
 
     const { data, error } = await supabase
@@ -189,7 +191,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update receipt.' }, { status: 500 });
     }
 
-    return NextResponse.json({ receipt: mapRowToReceipt(data) });
+    return NextResponse.json({ receipt: mapRowToReceipt(data as ReceiptRow) });
   } catch (error) {
     console.error('Unexpected error updating receipt', error);
     return NextResponse.json({ error: 'Unexpected error updating receipt.' }, { status: 500 });
@@ -234,4 +236,3 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'Unexpected error deleting receipt.' }, { status: 500 });
   }
 }
-

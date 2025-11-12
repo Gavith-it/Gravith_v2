@@ -85,7 +85,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load sites.' }, { status: 500 });
     }
 
-    const sites = (data ?? []).map(mapRowToSite);
+    const sites = (data ?? []).map((row) => mapRowToSite(row as SiteRow));
     return NextResponse.json({ sites });
   } catch (error) {
     console.error('Unexpected error fetching sites', error);
@@ -106,10 +106,7 @@ export async function POST(request: Request) {
     const { name, location, startDate, expectedEndDate, status, budget, description } = body;
 
     if (!name || !location || !startDate || !expectedEndDate || !status || !budget) {
-      return NextResponse.json(
-        { error: 'Missing required site fields.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Missing required site fields.' }, { status: 400 });
     }
 
     const payload = {
@@ -140,10 +137,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create site.' }, { status: 500 });
     }
 
-    return NextResponse.json({ site: mapRowToSite(data) }, { status: 201 });
+    return NextResponse.json({ site: mapRowToSite(data as SiteRow) }, { status: 201 });
   } catch (error) {
     console.error('Unexpected error creating site', error);
     return NextResponse.json({ error: 'Unexpected error creating site.' }, { status: 500 });
   }
 }
-

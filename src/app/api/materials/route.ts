@@ -97,7 +97,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load materials.' }, { status: 500 });
     }
 
-    const materials = (data ?? []).map(mapRowToMaterial);
+    const materials = (data ?? []).map((row) => mapRowToMaterial(row as MaterialRow));
     return NextResponse.json({ materials });
   } catch (error) {
     console.error('Unexpected error fetching materials', error);
@@ -114,9 +114,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (
-      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)
-    ) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -124,10 +122,7 @@ export async function POST(request: Request) {
     const { name, category, unit, standardRate, isActive, hsn, taxRate } = body;
 
     if (!name || !category || !unit || typeof standardRate !== 'number') {
-      return NextResponse.json(
-        { error: 'Missing required material fields.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Missing required material fields.' }, { status: 400 });
     }
 
     const payload = {
@@ -156,10 +151,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create material.' }, { status: 500 });
     }
 
-    return NextResponse.json({ material: mapRowToMaterial(data) }, { status: 201 });
+    return NextResponse.json({ material: mapRowToMaterial(data as MaterialRow) }, { status: 201 });
   } catch (error) {
     console.error('Unexpected error creating material', error);
     return NextResponse.json({ error: 'Unexpected error creating material.' }, { status: 500 });
   }
 }
-

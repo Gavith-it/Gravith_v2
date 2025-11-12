@@ -1,12 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
 import type { Site, SiteInput } from '@/types/sites';
 
 type Params = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 type SiteRow = {
@@ -71,16 +71,15 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(_: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
     if ('error' in ctx) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
-
-    const { id } = params;
 
     const { data, error } = await supabase
       .from('sites')
@@ -99,15 +98,16 @@ export async function GET(_: Request, { params }: Params) {
       return NextResponse.json({ error: 'Site not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ site: mapRowToSite(data) });
+    return NextResponse.json({ site: mapRowToSite(data as SiteRow) });
   } catch (error) {
     console.error('Unexpected error retrieving site', error);
     return NextResponse.json({ error: 'Unexpected error retrieving site.' }, { status: 500 });
   }
 }
 
-export async function PATCH(request: Request, { params }: Params) {
+export async function PATCH(request: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -118,8 +118,6 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!['owner', 'admin', 'manager'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
-
-    const { id } = params;
 
     const { data: site, error: fetchError } = await supabase
       .from('sites')
@@ -169,10 +167,9 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Failed to update site.' }, { status: 500 });
     }
 
-    return NextResponse.json({ site: mapRowToSite(updated) });
+    return NextResponse.json({ site: mapRowToSite(updated as SiteRow) });
   } catch (error) {
     console.error('Unexpected error updating site', error);
     return NextResponse.json({ error: 'Unexpected error updating site.' }, { status: 500 });
   }
 }
-

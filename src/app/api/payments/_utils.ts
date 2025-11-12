@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 
-import { createClient } from '@/lib/supabase/server';
+import type { createClient } from '@/lib/supabase/server';
 import type { Payment } from '@/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-type PaymentRow = {
+export type PaymentRow = {
   id: string;
   client_name: string;
   amount: number | string;
@@ -88,4 +88,3 @@ export function ensureMutationAccess(role: MutationRole) {
   }
   return null;
 }
-

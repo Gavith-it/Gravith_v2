@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { ensureMutationAccess, mapRowToPayment, resolveContext } from './_utils';
+import type { PaymentRow } from './_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Payment } from '@/types';
 
-import { ensureMutationAccess, mapRowToPayment, resolveContext } from './_utils';
 
 const PAYMENT_SELECT = `
   id,
@@ -43,7 +45,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load payments.' }, { status: 500 });
     }
 
-    const payments = (data ?? []).map(mapRowToPayment);
+    const payments = (data ?? []).map((row) => mapRowToPayment(row as PaymentRow));
     return NextResponse.json({ payments });
   } catch (error) {
     console.error('Unexpected error fetching payments:', error);
@@ -105,11 +107,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create payment.' }, { status: 500 });
     }
 
-    const payment = mapRowToPayment(data);
+    const payment = mapRowToPayment(data as PaymentRow);
     return NextResponse.json({ payment });
   } catch (error) {
     console.error('Unexpected error creating payment:', error);
     return NextResponse.json({ error: 'Unexpected error creating payment.' }, { status: 500 });
   }
 }
-

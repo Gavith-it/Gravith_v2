@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 
-import { createClient } from '@/lib/supabase/server';
+import type { createClient } from '@/lib/supabase/server';
 import type { Vendor } from '@/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-type VendorRow = {
+export type VendorRow = {
   id: string;
   name: string;
   category: string;

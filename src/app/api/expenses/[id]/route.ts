@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { ensureMutationAccess, mapRowToExpense, resolveContext } from '../_utils';
+import type { ExpenseRow } from '../_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Expense } from '@/types';
 
-import { ensureMutationAccess, mapRowToExpense, resolveContext } from '../_utils';
 
 const EXPENSE_SELECT = `
   id,
@@ -58,7 +60,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Expense not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ expense: mapRowToExpense(data) });
+    return NextResponse.json({ expense: mapRowToExpense(data as ExpenseRow) });
   } catch (error) {
     console.error('Unexpected error fetching expense:', error);
     return NextResponse.json({ error: 'Unexpected error fetching expense.' }, { status: 500 });
@@ -144,7 +146,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update expense.' }, { status: 500 });
     }
 
-    return NextResponse.json({ expense: mapRowToExpense(data) });
+    return NextResponse.json({ expense: mapRowToExpense(data as ExpenseRow) });
   } catch (error) {
     console.error('Unexpected error updating expense:', error);
     return NextResponse.json({ error: 'Unexpected error updating expense.' }, { status: 500 });
@@ -183,4 +185,3 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: 'Unexpected error deleting expense.' }, { status: 500 });
   }
 }
-

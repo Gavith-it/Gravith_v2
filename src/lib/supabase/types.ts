@@ -14,9 +14,9 @@ export type OrganizationRole =
   | 'executive';
 
 type GenericTable = {
-  Row: { [key: string]: Json };
-  Insert: { [key: string]: Json | undefined };
-  Update: { [key: string]: Json | undefined };
+  Row: Record<string, unknown>;
+  Insert: Record<string, unknown>;
+  Update: Record<string, unknown>;
   Relationships: never[];
 };
 

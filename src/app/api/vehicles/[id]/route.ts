@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import type { VehiclePayload } from '../route';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Vehicle } from '@/types/entities';
-import type { VehiclePayload } from '../route';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type MutationRole =
@@ -20,6 +21,39 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+type VehicleRow = {
+  id: string;
+  organization_id: string;
+  vehicle_number: string;
+  name: string | null;
+  type: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  status: string;
+  site_id: string | null;
+  site_name: string | null;
+  operator: string | null;
+  is_rental: boolean | null;
+  vendor: string | null;
+  rental_cost_per_day: number | string | null;
+  rental_start_date: string | null;
+  rental_end_date: string | null;
+  total_rental_days: number | string | null;
+  total_rental_cost: number | string | null;
+  fuel_capacity: number | string | null;
+  current_fuel_level: number | string | null;
+  mileage: number | string | null;
+  last_maintenance_date: string | null;
+  next_maintenance_date: string | null;
+  insurance_expiry: string | null;
+  registration_expiry: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+};
+
 function mapRowToVehicle(row: VehicleRow): Vehicle {
   return {
     id: row.id,
@@ -29,20 +63,20 @@ function mapRowToVehicle(row: VehicleRow): Vehicle {
     make: row.make ?? undefined,
     model: row.model ?? undefined,
     year: row.year ?? undefined,
-    status: row.status,
+    status: mapStatusForUpdate(row.status as Vehicle['status']) ?? 'available',
     siteId: row.site_id ?? undefined,
     siteName: row.site_name ?? undefined,
     operator: row.operator ?? undefined,
     isRental: row.is_rental ?? false,
     vendor: row.vendor ?? undefined,
-    rentalCostPerDay: row.rental_cost_per_day !== null ? Number(row.rental_cost_per_day) : undefined,
+    rentalCostPerDay:
+      row.rental_cost_per_day !== null ? Number(row.rental_cost_per_day) : undefined,
     rentalStartDate: row.rental_start_date ?? undefined,
     rentalEndDate: row.rental_end_date ?? undefined,
     totalRentalDays: row.total_rental_days !== null ? Number(row.total_rental_days) : undefined,
     totalRentalCost: row.total_rental_cost !== null ? Number(row.total_rental_cost) : undefined,
     fuelCapacity: row.fuel_capacity !== null ? Number(row.fuel_capacity) : undefined,
-    currentFuelLevel:
-      row.current_fuel_level !== null ? Number(row.current_fuel_level) : undefined,
+    currentFuelLevel: row.current_fuel_level !== null ? Number(row.current_fuel_level) : undefined,
     mileage: row.mileage !== null ? Number(row.mileage) : undefined,
     lastMaintenanceDate: row.last_maintenance_date ?? undefined,
     nextMaintenanceDate: row.next_maintenance_date ?? undefined,
@@ -160,7 +194,7 @@ export async function GET(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Vehicle not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ vehicle: mapRowToVehicle(data) });
+    return NextResponse.json({ vehicle: mapRowToVehicle(data as VehicleRow) });
   } catch (error) {
     console.error('Unexpected error fetching vehicle', error);
     return NextResponse.json({ error: 'Unexpected error loading vehicle.' }, { status: 500 });
@@ -178,9 +212,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -200,18 +242,26 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (body.operator !== undefined) updates.operator = body.operator ?? null;
     if (body.isRental !== undefined) updates.is_rental = body.isRental;
     if (body.vendor !== undefined) updates.vendor = body.vendor ?? null;
-    if (body.rentalCostPerDay !== undefined) updates.rental_cost_per_day = body.rentalCostPerDay ?? null;
-    if (body.rentalStartDate !== undefined) updates.rental_start_date = body.rentalStartDate ?? null;
+    if (body.rentalCostPerDay !== undefined)
+      updates.rental_cost_per_day = body.rentalCostPerDay ?? null;
+    if (body.rentalStartDate !== undefined)
+      updates.rental_start_date = body.rentalStartDate ?? null;
     if (body.rentalEndDate !== undefined) updates.rental_end_date = body.rentalEndDate ?? null;
-    if (body.totalRentalDays !== undefined) updates.total_rental_days = body.totalRentalDays ?? null;
-    if (body.totalRentalCost !== undefined) updates.total_rental_cost = body.totalRentalCost ?? null;
+    if (body.totalRentalDays !== undefined)
+      updates.total_rental_days = body.totalRentalDays ?? null;
+    if (body.totalRentalCost !== undefined)
+      updates.total_rental_cost = body.totalRentalCost ?? null;
     if (body.fuelCapacity !== undefined) updates.fuel_capacity = body.fuelCapacity ?? null;
-    if (body.currentFuelLevel !== undefined) updates.current_fuel_level = body.currentFuelLevel ?? null;
+    if (body.currentFuelLevel !== undefined)
+      updates.current_fuel_level = body.currentFuelLevel ?? null;
     if (body.mileage !== undefined) updates.mileage = body.mileage ?? null;
-    if (body.lastMaintenanceDate !== undefined) updates.last_maintenance_date = body.lastMaintenanceDate ?? null;
-    if (body.nextMaintenanceDate !== undefined) updates.next_maintenance_date = body.nextMaintenanceDate ?? null;
+    if (body.lastMaintenanceDate !== undefined)
+      updates.last_maintenance_date = body.lastMaintenanceDate ?? null;
+    if (body.nextMaintenanceDate !== undefined)
+      updates.next_maintenance_date = body.nextMaintenanceDate ?? null;
     if (body.insuranceExpiry !== undefined) updates.insurance_expiry = body.insuranceExpiry ?? null;
-    if (body.registrationExpiry !== undefined) updates.registration_expiry = body.registrationExpiry ?? null;
+    if (body.registrationExpiry !== undefined)
+      updates.registration_expiry = body.registrationExpiry ?? null;
 
     const { data, error } = await supabase
       .from('vehicles')
@@ -259,7 +309,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update vehicle.' }, { status: 500 });
     }
 
-    return NextResponse.json({ vehicle: mapRowToVehicle(data) });
+    return NextResponse.json({ vehicle: mapRowToVehicle(data as VehicleRow) });
   } catch (error) {
     console.error('Unexpected error updating vehicle', error);
     return NextResponse.json({ error: 'Unexpected error updating vehicle.' }, { status: 500 });
@@ -277,9 +327,17 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -301,4 +359,3 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: 'Unexpected error deleting vehicle.' }, { status: 500 });
   }
 }
-

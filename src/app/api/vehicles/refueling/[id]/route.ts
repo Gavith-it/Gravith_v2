@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
 import type { VehicleRefueling } from '@/types/entities';
@@ -16,7 +16,7 @@ type MutationRole =
   | 'user';
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 interface RefuelingPayload {
@@ -64,7 +64,28 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToRefueling(row: any): VehicleRefueling {
+type VehicleRefuelingRow = {
+  id: string;
+  vehicle_id: string;
+  vehicle_number: string;
+  date: string;
+  fuel_type: VehicleRefueling['fuelType'];
+  quantity: number | string | null;
+  unit: VehicleRefueling['unit'];
+  cost: number | string | null;
+  odometer_reading: number | string | null;
+  location: string;
+  vendor: string;
+  invoice_number: string;
+  receipt_url: string | null;
+  notes: string | null;
+  recorded_by: string;
+  organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+function mapRowToRefueling(row: VehicleRefuelingRow): VehicleRefueling {
   return {
     id: row.id,
     vehicleId: row.vehicle_id,
@@ -87,8 +108,9 @@ function mapRowToRefueling(row: any): VehicleRefueling {
   };
 }
 
-export async function PATCH(request: Request, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -97,9 +119,17 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -107,22 +137,22 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const body = (await request.json()) as RefuelingPayload;
     const updates: Record<string, unknown> = { updated_by: ctx.userId };
 
-    if (body.date !== undefined) updates.date = body.date;
-    if (body.fuelType !== undefined) updates.fuel_type = body.fuelType;
-    if (body.quantity !== undefined) updates.quantity = body.quantity;
-    if (body.unit !== undefined) updates.unit = body.unit;
-    if (body.cost !== undefined) updates.cost = body.cost;
-    if (body.odometerReading !== undefined) updates.odometer_reading = body.odometerReading;
-    if (body.location !== undefined) updates.location = body.location;
-    if (body.vendor !== undefined) updates.vendor = body.vendor;
-    if (body.invoiceNumber !== undefined) updates.invoice_number = body.invoiceNumber;
-    if (body.receiptUrl !== undefined) updates.receipt_url = body.receiptUrl;
-    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.date !== undefined) updates['date'] = body.date;
+    if (body.fuelType !== undefined) updates['fuel_type'] = body.fuelType;
+    if (body.quantity !== undefined) updates['quantity'] = body.quantity;
+    if (body.unit !== undefined) updates['unit'] = body.unit;
+    if (body.cost !== undefined) updates['cost'] = body.cost;
+    if (body.odometerReading !== undefined) updates['odometer_reading'] = body.odometerReading;
+    if (body.location !== undefined) updates['location'] = body.location;
+    if (body.vendor !== undefined) updates['vendor'] = body.vendor;
+    if (body.invoiceNumber !== undefined) updates['invoice_number'] = body.invoiceNumber;
+    if (body.receiptUrl !== undefined) updates['receipt_url'] = body.receiptUrl;
+    if (body.notes !== undefined) updates['notes'] = body.notes;
 
     const { data, error } = await supabase
       .from('vehicle_refueling')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .select(
         `
@@ -153,7 +183,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update refueling record.' }, { status: 500 });
     }
 
-    return NextResponse.json({ record: mapRowToRefueling(data) });
+    return NextResponse.json({ record: mapRowToRefueling(data as VehicleRefuelingRow) });
   } catch (error) {
     console.error('Unexpected error updating refueling record', error);
     return NextResponse.json(
@@ -163,8 +193,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_: Request, { params }: RouteContext) {
+export async function DELETE(_: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -173,9 +204,17 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -183,7 +222,7 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     const { error } = await supabase
       .from('vehicle_refueling')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId);
 
     if (error) {
@@ -200,4 +239,3 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     );
   }
 }
-

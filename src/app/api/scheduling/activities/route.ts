@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { ensureMutationAccess, mapRowToActivity, resolveContext } from '../_utils';
+import type { ActivityRow } from '../_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectActivity } from '@/types';
 
-import { ensureMutationAccess, mapRowToActivity, resolveContext } from '../_utils';
 
 const ACTIVITY_SELECT = `
   id,
@@ -29,9 +31,25 @@ const ACTIVITY_SELECT = `
   updated_by
 `;
 
-const VALID_ACTIVITY_STATUSES: ProjectActivity['status'][] = ['not-started', 'in-progress', 'completed', 'delayed'];
-const VALID_ACTIVITY_PRIORITIES: ProjectActivity['priority'][] = ['low', 'medium', 'high', 'critical'];
-const VALID_ACTIVITY_CATEGORIES: ProjectActivity['category'][] = ['Foundation', 'Structure', 'MEP', 'Finishing', 'External'];
+const VALID_ACTIVITY_STATUSES: ProjectActivity['status'][] = [
+  'not-started',
+  'in-progress',
+  'completed',
+  'delayed',
+];
+const VALID_ACTIVITY_PRIORITIES: ProjectActivity['priority'][] = [
+  'low',
+  'medium',
+  'high',
+  'critical',
+];
+const VALID_ACTIVITY_CATEGORIES: ProjectActivity['category'][] = [
+  'Foundation',
+  'Structure',
+  'MEP',
+  'Finishing',
+  'External',
+];
 
 export async function GET() {
   try {
@@ -53,7 +71,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load activities.' }, { status: 500 });
     }
 
-    const activities = (data ?? []).map(mapRowToActivity);
+    const activities = (data ?? []).map((row) => mapRowToActivity(row as ActivityRow));
     return NextResponse.json({ activities });
   } catch (error) {
     console.error('Unexpected error fetching project activities:', error);
@@ -95,7 +113,10 @@ export async function POST(request: Request) {
     } = body;
 
     if (!siteId || !name || !startDate || !endDate) {
-      return NextResponse.json({ error: 'Site, name, start date, and end date are required.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Site, name, start date, and end date are required.' },
+        { status: 400 },
+      );
     }
 
     const normalizedStatus = (status ?? 'not-started') as ProjectActivity['status'];
@@ -145,11 +166,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create activity.' }, { status: 500 });
     }
 
-    const activity = mapRowToActivity(data);
+    const activity = mapRowToActivity(data as ActivityRow);
     return NextResponse.json({ activity });
   } catch (error) {
     console.error('Unexpected error creating project activity:', error);
     return NextResponse.json({ error: 'Unexpected error creating activity.' }, { status: 500 });
   }
 }
-

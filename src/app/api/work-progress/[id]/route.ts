@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
 import type { WorkProgressEntry, WorkProgressMaterial } from '@/types/entities';
@@ -16,7 +16,7 @@ type MutationRole =
   | 'user';
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 interface WorkProgressPayload {
@@ -76,7 +76,45 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToWorkProgress(row: any): WorkProgressEntry {
+type WorkProgressMaterialRow = {
+  id: string;
+  work_progress_id: string;
+  organization_id: string;
+  material_id: string | null;
+  material_name: string;
+  unit: string;
+  quantity: number | string | null;
+  balance_quantity: number | string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type WorkProgressRow = {
+  id: string;
+  organization_id: string;
+  site_id: string | null;
+  site_name: string;
+  work_type: string;
+  description: string | null;
+  work_date: string;
+  unit: string;
+  length: number | string | null;
+  breadth: number | string | null;
+  thickness: number | string | null;
+  total_quantity: number | string;
+  labor_hours: number | string | null;
+  progress_percentage: number | string | null;
+  status: WorkProgressEntry['status'];
+  notes: string | null;
+  photos: string[] | null;
+  created_at: string | null;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  materials?: WorkProgressMaterialRow[] | null;
+};
+
+function mapRowToWorkProgress(row: WorkProgressRow): WorkProgressEntry {
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -95,21 +133,23 @@ function mapRowToWorkProgress(row: any): WorkProgressEntry {
     status: row.status,
     notes: row.notes ?? undefined,
     photos: Array.isArray(row.photos) ? row.photos : [],
-    materials: (row.materials ?? []).map((material: any): WorkProgressMaterial => ({
-      id: material.id,
-      workProgressId: material.work_progress_id,
-      materialId: material.material_id,
-      materialName: material.material_name,
-      unit: material.unit,
-      quantity: Number(material.quantity ?? 0),
-      balanceQuantity:
-        material.balance_quantity !== null && material.balance_quantity !== undefined
-          ? Number(material.balance_quantity)
-          : null,
-      organizationId: material.organization_id,
-      createdAt: material.created_at ?? '',
-      updatedAt: material.updated_at ?? '',
-    })),
+    materials: (row.materials ?? []).map(
+      (material: WorkProgressMaterialRow): WorkProgressMaterial => ({
+        id: material.id,
+        workProgressId: material.work_progress_id,
+        materialId: material.material_id,
+        materialName: material.material_name,
+        unit: material.unit,
+        quantity: Number(material.quantity ?? 0),
+        balanceQuantity:
+          material.balance_quantity !== null && material.balance_quantity !== undefined
+            ? Number(material.balance_quantity)
+            : null,
+        organizationId: material.organization_id,
+        createdAt: material.created_at ?? '',
+        updatedAt: material.updated_at ?? '',
+      }),
+    ),
     createdAt: row.created_at ?? '',
     updatedAt: row.updated_at ?? '',
     createdBy: row.created_by ?? undefined,
@@ -129,8 +169,9 @@ const MUTATION_ROLES: MutationRole[] = [
   'user',
 ];
 
-export async function GET(_: Request, { params }: RouteContext) {
+export async function GET(_: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -177,7 +218,7 @@ export async function GET(_: Request, { params }: RouteContext) {
         )
       `,
       )
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
@@ -190,15 +231,21 @@ export async function GET(_: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Work progress entry not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ entry: mapRowToWorkProgress(data) });
+    return NextResponse.json({
+      entry: mapRowToWorkProgress(data as unknown as WorkProgressRow),
+    });
   } catch (error) {
     console.error('Unexpected error loading work progress entry', error);
-    return NextResponse.json({ error: 'Unexpected error loading work progress entry.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Unexpected error loading work progress entry.' },
+      { status: 500 },
+    );
   }
 }
 
-export async function PATCH(request: Request, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -214,27 +261,27 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     const updates: Record<string, unknown> = { updated_by: ctx.userId };
 
-    if (body.siteId !== undefined) updates.site_id = body.siteId;
-    if (body.siteName !== undefined) updates.site_name = body.siteName;
-    if (body.workType !== undefined) updates.work_type = body.workType;
-    if (body.description !== undefined) updates.description = body.description;
-    if (body.workDate !== undefined) updates.work_date = body.workDate;
-    if (body.unit !== undefined) updates.unit = body.unit;
-    if (body.length !== undefined) updates.length = body.length;
-    if (body.breadth !== undefined) updates.breadth = body.breadth;
-    if (body.thickness !== undefined) updates.thickness = body.thickness;
-    if (body.totalQuantity !== undefined) updates.total_quantity = body.totalQuantity;
-    if (body.laborHours !== undefined) updates.labor_hours = body.laborHours;
+    if (body.siteId !== undefined) updates['site_id'] = body.siteId;
+    if (body.siteName !== undefined) updates['site_name'] = body.siteName;
+    if (body.workType !== undefined) updates['work_type'] = body.workType;
+    if (body.description !== undefined) updates['description'] = body.description;
+    if (body.workDate !== undefined) updates['work_date'] = body.workDate;
+    if (body.unit !== undefined) updates['unit'] = body.unit;
+    if (body.length !== undefined) updates['length'] = body.length;
+    if (body.breadth !== undefined) updates['breadth'] = body.breadth;
+    if (body.thickness !== undefined) updates['thickness'] = body.thickness;
+    if (body.totalQuantity !== undefined) updates['total_quantity'] = body.totalQuantity;
+    if (body.laborHours !== undefined) updates['labor_hours'] = body.laborHours;
     if (body.progressPercentage !== undefined)
-      updates.progress_percentage = body.progressPercentage;
-    if (body.status !== undefined) updates.status = body.status;
-    if (body.notes !== undefined) updates.notes = body.notes;
-    if (body.photos !== undefined) updates.photos = body.photos;
+      updates['progress_percentage'] = body.progressPercentage;
+    if (body.status !== undefined) updates['status'] = body.status;
+    if (body.notes !== undefined) updates['notes'] = body.notes;
+    if (body.photos !== undefined) updates['photos'] = body.photos;
 
     const { data: updatedEntry, error: updateError } = await supabase
       .from('work_progress_entries')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .select(
         `
@@ -272,17 +319,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       const { error: deleteError } = await supabase
         .from('work_progress_materials')
         .delete()
-        .eq('work_progress_id', params.id)
+        .eq('work_progress_id', id)
         .eq('organization_id', ctx.organizationId);
 
       if (deleteError) {
         console.error('Error clearing existing materials', deleteError);
-        return NextResponse.json({ error: 'Failed to update work progress materials.' }, { status: 500 });
+        return NextResponse.json(
+          { error: 'Failed to update work progress materials.' },
+          { status: 500 },
+        );
       }
 
       if (body.materials.length > 0) {
         const materialRows = body.materials.map((material) => ({
-          work_progress_id: params.id,
+          work_progress_id: id,
           organization_id: ctx.organizationId,
           material_id: material.materialId ?? null,
           material_name: material.materialName,
@@ -346,24 +396,33 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         )
       `,
       )
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
     if (fetchError || !refreshedEntry) {
       console.error('Error fetching updated entry', fetchError);
-      return NextResponse.json({ error: 'Failed to load updated work progress entry.' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to load updated work progress entry.' },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ entry: mapRowToWorkProgress(refreshedEntry) });
+    return NextResponse.json({
+      entry: mapRowToWorkProgress(refreshedEntry as unknown as WorkProgressRow),
+    });
   } catch (error) {
     console.error('Unexpected error updating work progress entry', error);
-    return NextResponse.json({ error: 'Unexpected error updating work progress entry.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Unexpected error updating work progress entry.' },
+      { status: 500 },
+    );
   }
 }
 
-export async function DELETE(_: Request, { params }: RouteContext) {
+export async function DELETE(_: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -378,7 +437,7 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     const { error } = await supabase
       .from('work_progress_entries')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId);
 
     if (error) {
@@ -389,7 +448,9 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Unexpected error deleting work progress entry', error);
-    return NextResponse.json({ error: 'Unexpected error deleting work progress entry.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Unexpected error deleting work progress entry.' },
+      { status: 500 },
+    );
   }
 }
-

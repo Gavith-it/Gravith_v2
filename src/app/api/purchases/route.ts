@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
+import type { SharedMaterial } from '@/lib/contexts/materials-context';
 import { createClient } from '@/lib/supabase/server';
 import type { MaterialMaster } from '@/types/entities';
 import type { MaterialMasterInput } from '@/types/materials';
-import type { SharedMaterial } from '@/lib/contexts/materials-context';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -141,7 +141,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load purchases.' }, { status: 500 });
     }
 
-    const purchases = (data ?? []).map(mapRowToSharedMaterial);
+    const purchases = (data ?? []).map((row) => mapRowToSharedMaterial(row as PurchaseRow));
     return NextResponse.json({ purchases });
   } catch (error) {
     console.error('Unexpected error fetching purchases', error);
@@ -158,9 +158,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (
-      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)
-    ) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -185,10 +183,7 @@ export async function POST(request: Request) {
     } = body;
 
     if (!materialName || !site || typeof quantity !== 'number' || typeof unitRate !== 'number') {
-      return NextResponse.json(
-        { error: 'Missing required purchase fields.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Missing required purchase fields.' }, { status: 400 });
     }
 
     const payload = {
@@ -250,10 +245,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create purchase.' }, { status: 500 });
     }
 
-    return NextResponse.json({ purchase: mapRowToSharedMaterial(data) }, { status: 201 });
+    return NextResponse.json(
+      { purchase: mapRowToSharedMaterial(data as PurchaseRow) },
+      { status: 201 },
+    );
   } catch (error) {
     console.error('Unexpected error creating purchase', error);
     return NextResponse.json({ error: 'Unexpected error creating purchase.' }, { status: 500 });
   }
 }
-

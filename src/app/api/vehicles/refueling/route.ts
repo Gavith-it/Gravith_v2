@@ -62,7 +62,28 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToRefueling(row: any): VehicleRefueling {
+type VehicleRefuelingRow = {
+  id: string;
+  vehicle_id: string;
+  vehicle_number: string;
+  date: string;
+  fuel_type: VehicleRefueling['fuelType'];
+  quantity: number | string | null;
+  unit: VehicleRefueling['unit'];
+  cost: number | string | null;
+  odometer_reading: number | string | null;
+  location: string;
+  vendor: string;
+  invoice_number: string;
+  receipt_url: string | null;
+  notes: string | null;
+  recorded_by: string;
+  organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+function mapRowToRefueling(row: VehicleRefuelingRow): VehicleRefueling {
   return {
     id: row.id,
     vehicleId: row.vehicle_id,
@@ -126,7 +147,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load refueling records.' }, { status: 500 });
     }
 
-    const records = (data ?? []).map(mapRowToRefueling);
+    const records = (data ?? []).map((row) => mapRowToRefueling(row as VehicleRefuelingRow));
     return NextResponse.json({ records });
   } catch (error) {
     console.error('Unexpected error fetching refueling records', error);
@@ -147,9 +168,17 @@ export async function POST(request: Request) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -157,7 +186,10 @@ export async function POST(request: Request) {
     const body = (await request.json()) as RefuelingPayload;
 
     if (!body.vehicleId || !body.vehicleNumber || !body.date) {
-      return NextResponse.json({ error: 'Vehicle, date, and fuel details are required.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Vehicle, date, and fuel details are required.' },
+        { status: 400 },
+      );
     }
 
     const payload = {
@@ -212,7 +244,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create refueling record.' }, { status: 500 });
     }
 
-    return NextResponse.json({ record: mapRowToRefueling(data) }, { status: 201 });
+    return NextResponse.json(
+      { record: mapRowToRefueling(data as VehicleRefuelingRow) },
+      { status: 201 },
+    );
   } catch (error) {
     console.error('Unexpected error creating refueling record', error);
     return NextResponse.json(
@@ -221,4 +256,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

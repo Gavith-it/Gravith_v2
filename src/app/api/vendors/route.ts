@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { ensureMutationAccess, mapRowToVendor, resolveContext } from './_utils';
+import type { VendorRow } from './_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Vendor } from '@/types';
 
-import { ensureMutationAccess, mapRowToVendor, resolveContext } from './_utils';
 
 const VENDOR_SELECT = `
   id,
@@ -52,7 +54,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load vendors.' }, { status: 500 });
     }
 
-    const vendors = (data ?? []).map(mapRowToVendor);
+    const vendors = (data ?? []).map((row) => mapRowToVendor(row as VendorRow));
     return NextResponse.json({ vendors });
   } catch (error) {
     console.error('Unexpected error fetching vendors:', error);
@@ -91,10 +93,7 @@ export async function POST(request: Request) {
     } = body;
 
     if (!name || !category || !contactPerson || !phone || !address) {
-      return NextResponse.json(
-        { error: 'Missing required vendor fields.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Missing required vendor fields.' }, { status: 400 });
     }
 
     const payload = {
@@ -128,7 +127,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create vendor.' }, { status: 500 });
     }
 
-    const vendor = mapRowToVendor(data);
+    const vendor = mapRowToVendor(data as VendorRow);
     return NextResponse.json({ vendor });
   } catch (error) {
     console.error('Unexpected error creating vendor:', error);

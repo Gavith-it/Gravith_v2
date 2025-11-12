@@ -68,7 +68,34 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToUsage(row: any): VehicleUsage {
+type VehicleUsageRow = {
+  id: string;
+  vehicle_id: string;
+  vehicle_number: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  start_odometer: number | string | null;
+  end_odometer: number | string | null;
+  total_distance: number | string | null;
+  work_description: string;
+  work_category: VehicleUsage['workCategory'];
+  site_id: string;
+  site_name: string;
+  operator: string;
+  fuel_consumed: number | string | null;
+  is_rental: boolean | null;
+  rental_cost: number | string | null;
+  vendor: string | null;
+  status: VehicleUsage['status'];
+  notes: string | null;
+  recorded_by: string;
+  organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+function mapRowToUsage(row: VehicleUsageRow): VehicleUsage {
   return {
     id: row.id,
     vehicleId: row.vehicle_id,
@@ -144,14 +171,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load usage records.' }, { status: 500 });
     }
 
-    const records = (data ?? []).map(mapRowToUsage);
+    const records = (data ?? []).map((row) => mapRowToUsage(row as VehicleUsageRow));
     return NextResponse.json({ records });
   } catch (error) {
     console.error('Unexpected error fetching usage records', error);
-    return NextResponse.json(
-      { error: 'Unexpected error loading usage records.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Unexpected error loading usage records.' }, { status: 500 });
   }
 }
 
@@ -165,9 +189,17 @@ export async function POST(request: Request) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -175,7 +207,10 @@ export async function POST(request: Request) {
     const body = (await request.json()) as UsagePayload;
 
     if (!body.vehicleId || !body.vehicleNumber || !body.date) {
-      return NextResponse.json({ error: 'Vehicle, date, and work details are required.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Vehicle, date, and work details are required.' },
+        { status: 400 },
+      );
     }
 
     const payload = {
@@ -242,13 +277,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create usage record.' }, { status: 500 });
     }
 
-    return NextResponse.json({ record: mapRowToUsage(data) }, { status: 201 });
+    return NextResponse.json({ record: mapRowToUsage(data as VehicleUsageRow) }, { status: 201 });
   } catch (error) {
     console.error('Unexpected error creating usage record', error);
-    return NextResponse.json(
-      { error: 'Unexpected error creating usage record.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Unexpected error creating usage record.' }, { status: 500 });
   }
 }
-

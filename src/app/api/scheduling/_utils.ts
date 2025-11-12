@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 
-import { createClient } from '@/lib/supabase/server';
+import type { createClient } from '@/lib/supabase/server';
 import type { ProjectActivity, ProjectMilestone } from '@/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-type ActivityRow = {
+export type ActivityRow = {
   id: string;
   site_id: string;
   site_name: string | null;
@@ -29,7 +29,7 @@ type ActivityRow = {
   updated_by: string | null;
 };
 
-type MilestoneRow = {
+export type MilestoneRow = {
   id: string;
   site_id: string;
   name: string;
@@ -132,4 +132,3 @@ export function ensureMutationAccess(role: MutationRole) {
   }
   return null;
 }
-

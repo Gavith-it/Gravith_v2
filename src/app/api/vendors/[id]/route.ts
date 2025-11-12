@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+
+import { ensureMutationAccess, mapRowToVendor, resolveContext } from '../_utils';
+import type { VendorRow } from '../_utils';
 
 import { createClient } from '@/lib/supabase/server';
 import type { Vendor } from '@/types';
 
-import { ensureMutationAccess, mapRowToVendor, resolveContext } from '../_utils';
 
 const VENDOR_SELECT = `
   id,
@@ -33,11 +35,12 @@ const VENDOR_SELECT = `
 `;
 
 type RouteContext = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(_request: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -48,7 +51,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const { data, error } = await supabase
       .from('vendors')
       .select(VENDOR_SELECT)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
@@ -61,15 +64,16 @@ export async function GET(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Vendor not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ vendor: mapRowToVendor(data) });
+    return NextResponse.json({ vendor: mapRowToVendor(data as VendorRow) });
   } catch (error) {
     console.error('Unexpected error fetching vendor:', error);
     return NextResponse.json({ error: 'Unexpected error fetching vendor.' }, { status: 500 });
   }
 }
 
-export async function PATCH(request: Request, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -84,31 +88,30 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     const body = (await request.json()) as Partial<Vendor>;
 
-    const updates: Record<string, unknown> = {
-      updated_by: ctx.userId,
-    };
+    const updates: Record<string, unknown> = { updated_by: ctx.userId };
 
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.category !== undefined) updates.category = body.category;
-    if (body.contactPerson !== undefined) updates.contact_person = body.contactPerson;
-    if (body.email !== undefined) updates.email = body.email.length > 0 ? body.email : null;
-    if (body.phone !== undefined) updates.phone = body.phone;
-    if (body.address !== undefined) updates.address = body.address;
-    if (body.gstNumber !== undefined) updates.gst_number = body.gstNumber ?? null;
-    if (body.panNumber !== undefined) updates.pan_number = body.panNumber ?? null;
-    if (body.bankAccount !== undefined) updates.bank_account = body.bankAccount ?? null;
-    if (body.ifscCode !== undefined) updates.ifsc_code = body.ifscCode ?? null;
-    if (body.paymentTerms !== undefined) updates.payment_terms = body.paymentTerms ?? null;
-    if (body.notes !== undefined) updates.notes = body.notes ?? null;
-    if (body.registrationDate !== undefined) updates.registration_date = body.registrationDate ?? null;
-    if (body.status !== undefined) updates.status = body.status;
+    if (body.name !== undefined) updates['name'] = body.name;
+    if (body.category !== undefined) updates['category'] = body.category;
+    if (body.contactPerson !== undefined) updates['contact_person'] = body.contactPerson;
+    if (body.email !== undefined) updates['email'] = body.email.length > 0 ? body.email : null;
+    if (body.phone !== undefined) updates['phone'] = body.phone;
+    if (body.address !== undefined) updates['address'] = body.address;
+    if (body.gstNumber !== undefined) updates['gst_number'] = body.gstNumber ?? null;
+    if (body.panNumber !== undefined) updates['pan_number'] = body.panNumber ?? null;
+    if (body.bankAccount !== undefined) updates['bank_account'] = body.bankAccount ?? null;
+    if (body.ifscCode !== undefined) updates['ifsc_code'] = body.ifscCode ?? null;
+    if (body.paymentTerms !== undefined) updates['payment_terms'] = body.paymentTerms ?? null;
+    if (body.notes !== undefined) updates['notes'] = body.notes ?? null;
+    if (body.registrationDate !== undefined)
+      updates['registration_date'] = body.registrationDate ?? null;
+    if (body.status !== undefined) updates['status'] = body.status;
 
     if (body.rating !== undefined) {
       const rating = Number(body.rating);
       if (Number.isNaN(rating) || rating < 0 || rating > 5) {
         return NextResponse.json({ error: 'Invalid rating value.' }, { status: 400 });
       }
-      updates.rating = rating;
+      updates['rating'] = rating;
     }
 
     if (body.totalPaid !== undefined) {
@@ -116,7 +119,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       if (Number.isNaN(totalPaid) || totalPaid < 0) {
         return NextResponse.json({ error: 'Invalid total paid value.' }, { status: 400 });
       }
-      updates.total_paid = totalPaid;
+      updates['total_paid'] = totalPaid;
     }
 
     if (body.pendingAmount !== undefined) {
@@ -124,11 +127,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       if (Number.isNaN(pendingAmount) || pendingAmount < 0) {
         return NextResponse.json({ error: 'Invalid pending amount value.' }, { status: 400 });
       }
-      updates.pending_amount = pendingAmount;
+      updates['pending_amount'] = pendingAmount;
     }
 
     if (body.lastPayment !== undefined) {
-      updates.last_payment = body.lastPayment ?? null;
+      updates['last_payment'] = body.lastPayment ?? null;
     }
 
     if (Object.keys(updates).length === 1) {
@@ -138,7 +141,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const { data, error } = await supabase
       .from('vendors')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .select(VENDOR_SELECT)
       .single();
@@ -148,15 +151,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update vendor.' }, { status: 500 });
     }
 
-    return NextResponse.json({ vendor: mapRowToVendor(data) });
+    return NextResponse.json({ vendor: mapRowToVendor(data as VendorRow) });
   } catch (error) {
     console.error('Unexpected error updating vendor:', error);
     return NextResponse.json({ error: 'Unexpected error updating vendor.' }, { status: 500 });
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
 
@@ -172,7 +176,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     const { error } = await supabase
       .from('vendors')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId);
 
     if (error) {

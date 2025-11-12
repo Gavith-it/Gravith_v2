@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import { createClient } from '@/lib/supabase/server';
 import type { SharedMaterial } from '@/lib/contexts/materials-context';
+import { createClient } from '@/lib/supabase/server';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -128,9 +128,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (
-      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)
-    ) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -190,7 +188,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       )
       .single();
 
-    if (updateError || !data || typeof data !== 'object' || data === null || 'error' in (data as any)) {
+    if (updateError || !data) {
       console.error('Error updating purchase', updateError);
       return NextResponse.json({ error: 'Failed to update purchase.' }, { status: 500 });
     }
@@ -212,9 +210,7 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (
-      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)
-    ) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -233,10 +229,7 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Purchase not found.' }, { status: 404 });
     }
 
-    const { error: deleteError } = await supabase
-      .from('material_purchases')
-      .delete()
-      .eq('id', id);
+    const { error: deleteError } = await supabase.from('material_purchases').delete().eq('id', id);
 
     if (deleteError) {
       console.error('Error deleting purchase', deleteError);
@@ -249,4 +242,3 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: 'Unexpected error deleting purchase.' }, { status: 500 });
   }
 }
-

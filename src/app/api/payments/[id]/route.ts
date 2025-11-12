@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { ensureMutationAccess, mapRowToPayment, resolveContext } from '../_utils';
+import type { PaymentRow } from '../_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Payment } from '@/types';
 
-import { ensureMutationAccess, mapRowToPayment, resolveContext } from '../_utils';
 
 const PAYMENT_SELECT = `
   id,
@@ -53,7 +55,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Payment not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ payment: mapRowToPayment(data) });
+    return NextResponse.json({ payment: mapRowToPayment(data as PaymentRow) });
   } catch (error) {
     console.error('Unexpected error fetching payment:', error);
     return NextResponse.json({ error: 'Unexpected error fetching payment.' }, { status: 500 });
@@ -120,7 +122,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update payment.' }, { status: 500 });
     }
 
-    return NextResponse.json({ payment: mapRowToPayment(data) });
+    return NextResponse.json({ payment: mapRowToPayment(data as PaymentRow) });
   } catch (error) {
     console.error('Unexpected error updating payment:', error);
     return NextResponse.json({ error: 'Unexpected error updating payment.' }, { status: 500 });
@@ -159,4 +161,3 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: 'Unexpected error deleting payment.' }, { status: 500 });
   }
 }
-

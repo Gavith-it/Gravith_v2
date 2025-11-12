@@ -71,7 +71,45 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToWorkProgress(row: any): WorkProgressEntry {
+type WorkProgressMaterialRow = {
+  id: string;
+  work_progress_id: string;
+  organization_id: string;
+  material_id: string | null;
+  material_name: string;
+  unit: string;
+  quantity: number | string | null;
+  balance_quantity: number | string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type WorkProgressRow = {
+  id: string;
+  organization_id: string;
+  site_id: string | null;
+  site_name: string;
+  work_type: string;
+  description: string | null;
+  work_date: string;
+  unit: string;
+  length: number | string | null;
+  breadth: number | string | null;
+  thickness: number | string | null;
+  total_quantity: number | string;
+  labor_hours: number | string | null;
+  progress_percentage: number | string | null;
+  status: WorkProgressEntry['status'];
+  notes: string | null;
+  photos: string[] | null;
+  created_at: string | null;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  materials?: WorkProgressMaterialRow[] | null;
+};
+
+function mapRowToWorkProgress(row: WorkProgressRow): WorkProgressEntry {
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -90,21 +128,23 @@ function mapRowToWorkProgress(row: any): WorkProgressEntry {
     status: row.status,
     notes: row.notes ?? undefined,
     photos: Array.isArray(row.photos) ? row.photos : [],
-    materials: (row.materials ?? []).map((material: any): WorkProgressMaterial => ({
-      id: material.id,
-      workProgressId: material.work_progress_id,
-      materialId: material.material_id,
-      materialName: material.material_name,
-      unit: material.unit,
-      quantity: Number(material.quantity ?? 0),
-      balanceQuantity:
-        material.balance_quantity !== null && material.balance_quantity !== undefined
-          ? Number(material.balance_quantity)
-          : null,
-      organizationId: material.organization_id,
-      createdAt: material.created_at ?? '',
-      updatedAt: material.updated_at ?? '',
-    })),
+    materials: (row.materials ?? []).map(
+      (material: WorkProgressMaterialRow): WorkProgressMaterial => ({
+        id: material.id,
+        workProgressId: material.work_progress_id,
+        materialId: material.material_id,
+        materialName: material.material_name,
+        unit: material.unit,
+        quantity: Number(material.quantity ?? 0),
+        balanceQuantity:
+          material.balance_quantity !== null && material.balance_quantity !== undefined
+            ? Number(material.balance_quantity)
+            : null,
+        organizationId: material.organization_id,
+        createdAt: material.created_at ?? '',
+        updatedAt: material.updated_at ?? '',
+      }),
+    ),
     createdAt: row.created_at ?? '',
     updatedAt: row.updated_at ?? '',
     createdBy: row.created_by ?? undefined,
@@ -168,7 +208,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load work progress data.' }, { status: 500 });
     }
 
-    const entries = (data ?? []).map(mapRowToWorkProgress);
+    const entries = (data ?? []).map((row) =>
+      mapRowToWorkProgress(row as unknown as WorkProgressRow),
+    );
     return NextResponse.json({ entries });
   } catch (error) {
     console.error('Unexpected error fetching work progress entries', error);
@@ -186,9 +228,17 @@ export async function POST(request: Request) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -262,8 +312,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create work progress entry.' }, { status: 500 });
     }
 
+    const insertedRow = insertedEntry as WorkProgressRow;
+
     const materialsPayload = (body.materials ?? []).map((material) => ({
-      work_progress_id: insertedEntry.id,
+      work_progress_id: insertedRow.id,
       organization_id: ctx.organizationId,
       material_id: material.materialId ?? null,
       material_name: material.materialName,
@@ -282,7 +334,7 @@ export async function POST(request: Request) {
       if (materialsError) {
         console.error('Error inserting work progress materials', materialsError);
         // Attempt to clean up orphan entry
-        await supabase.from('work_progress_entries').delete().eq('id', insertedEntry.id);
+        await supabase.from('work_progress_entries').delete().eq('id', insertedRow.id);
         return NextResponse.json(
           { error: 'Failed to create work progress entry materials.' },
           { status: 500 },
@@ -329,7 +381,7 @@ export async function POST(request: Request) {
         )
       `,
       )
-      .eq('id', insertedEntry.id)
+      .eq('id', insertedRow.id)
       .maybeSingle();
 
     if (fetchError || !entryWithMaterials) {
@@ -340,7 +392,9 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ entry: mapRowToWorkProgress(entryWithMaterials) });
+    return NextResponse.json({
+      entry: mapRowToWorkProgress(entryWithMaterials as unknown as WorkProgressRow),
+    });
   } catch (error) {
     console.error('Unexpected error creating work progress entry', error);
     return NextResponse.json(
@@ -349,4 +403,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

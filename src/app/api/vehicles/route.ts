@@ -73,7 +73,40 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-function mapRowToVehicle(row: any): Vehicle {
+type VehicleRow = {
+  id: string;
+  organization_id: string;
+  vehicle_number: string;
+  name: string | null;
+  type: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  status: string;
+  site_id: string | null;
+  site_name: string | null;
+  operator: string | null;
+  is_rental: boolean | null;
+  vendor: string | null;
+  rental_cost_per_day: number | string | null;
+  rental_start_date: string | null;
+  rental_end_date: string | null;
+  total_rental_days: number | string | null;
+  total_rental_cost: number | string | null;
+  fuel_capacity: number | string | null;
+  current_fuel_level: number | string | null;
+  mileage: number | string | null;
+  last_maintenance_date: string | null;
+  next_maintenance_date: string | null;
+  insurance_expiry: string | null;
+  registration_expiry: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+};
+
+function mapRowToVehicle(row: VehicleRow): Vehicle {
   return {
     id: row.id,
     vehicleNumber: row.vehicle_number,
@@ -82,13 +115,14 @@ function mapRowToVehicle(row: any): Vehicle {
     make: row.make ?? undefined,
     model: row.model ?? undefined,
     year: row.year ?? undefined,
-    status: row.status,
+    status: row.status as Vehicle['status'],
     siteId: row.site_id ?? undefined,
     siteName: row.site_name ?? undefined,
     operator: row.operator ?? undefined,
     isRental: row.is_rental ?? false,
     vendor: row.vendor ?? undefined,
-    rentalCostPerDay: row.rental_cost_per_day !== null ? Number(row.rental_cost_per_day) : undefined,
+    rentalCostPerDay:
+      row.rental_cost_per_day !== null ? Number(row.rental_cost_per_day) : undefined,
     rentalStartDate: row.rental_start_date ?? undefined,
     rentalEndDate: row.rental_end_date ?? undefined,
     totalRentalDays: row.total_rental_days !== null ? Number(row.total_rental_days) : undefined,
@@ -176,7 +210,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load vehicles.' }, { status: 500 });
     }
 
-    const vehicles = (data ?? []).map(mapRowToVehicle);
+    const vehicles = (data ?? []).map((row) => mapRowToVehicle(row as VehicleRow));
     return NextResponse.json({ vehicles });
   } catch (error) {
     console.error('Unexpected error fetching vehicles', error);
@@ -194,9 +228,17 @@ export async function POST(request: Request) {
     }
 
     if (
-      !['owner', 'admin', 'manager', 'project-manager', 'site-supervisor', 'materials-manager', 'finance-manager', 'executive', 'user'].includes(
-        ctx.role,
-      )
+      ![
+        'owner',
+        'admin',
+        'manager',
+        'project-manager',
+        'site-supervisor',
+        'materials-manager',
+        'finance-manager',
+        'executive',
+        'user',
+      ].includes(ctx.role)
     ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
@@ -281,10 +323,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create vehicle.' }, { status: 500 });
     }
 
-    return NextResponse.json({ vehicle: mapRowToVehicle(data) }, { status: 201 });
+    return NextResponse.json({ vehicle: mapRowToVehicle(data as VehicleRow) }, { status: 201 });
   } catch (error) {
     console.error('Unexpected error creating vehicle', error);
     return NextResponse.json({ error: 'Unexpected error creating vehicle.' }, { status: 500 });
   }
 }
-

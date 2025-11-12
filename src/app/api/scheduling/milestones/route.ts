@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { ensureMutationAccess, mapRowToMilestone, resolveContext } from '../_utils';
+import type { MilestoneRow } from '../_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectMilestone } from '@/types';
 
-import { ensureMutationAccess, mapRowToMilestone, resolveContext } from '../_utils';
 
 const MILESTONE_SELECT = `
   id,
@@ -41,7 +43,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load milestones.' }, { status: 500 });
     }
 
-    const milestones = (data ?? []).map(mapRowToMilestone);
+    const milestones = (data ?? []).map((row) => mapRowToMilestone(row as MilestoneRow));
     return NextResponse.json({ milestones });
   } catch (error) {
     console.error('Unexpected error fetching project milestones:', error);
@@ -97,11 +99,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create milestone.' }, { status: 500 });
     }
 
-    const milestone = mapRowToMilestone(data);
+    const milestone = mapRowToMilestone(data as MilestoneRow);
     return NextResponse.json({ milestone });
   } catch (error) {
     console.error('Unexpected error creating project milestone:', error);
     return NextResponse.json({ error: 'Unexpected error creating milestone.' }, { status: 500 });
   }
 }
-

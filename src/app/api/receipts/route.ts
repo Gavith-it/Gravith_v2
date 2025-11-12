@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
+import { mapRowToReceipt, MUTATION_ROLES, resolveContext } from './_utils';
+import type { ReceiptRow } from './_utils';
+
 import { createClient } from '@/lib/supabase/server';
 import type { MaterialReceipt } from '@/types/entities';
-import { mapRowToReceipt, MUTATION_ROLES, resolveContext } from './_utils';
 
 export async function GET() {
   try {
@@ -45,7 +47,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load receipts.' }, { status: 500 });
     }
 
-    const receipts = (data ?? []).map(mapRowToReceipt);
+    const receipts = (data ?? []).map((row) => mapRowToReceipt(row as ReceiptRow));
     return NextResponse.json({ receipts });
   } catch (error) {
     console.error('Unexpected error fetching receipts', error);
@@ -89,10 +91,7 @@ export async function POST(request: Request) {
       typeof filledWeight !== 'number' ||
       typeof emptyWeight !== 'number'
     ) {
-      return NextResponse.json(
-        { error: 'Missing required receipt fields.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Missing required receipt fields.' }, { status: 400 });
     }
 
     const netWeight = Number(filledWeight) - Number(emptyWeight);
@@ -152,11 +151,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create receipt.' }, { status: 500 });
     }
 
-    const receipt = mapRowToReceipt(data);
+    const receipt = mapRowToReceipt(data as ReceiptRow);
     return NextResponse.json({ receipt });
   } catch (error) {
     console.error('Unexpected error creating receipt', error);
     return NextResponse.json({ error: 'Unexpected error creating receipt.' }, { status: 500 });
   }
 }
-
