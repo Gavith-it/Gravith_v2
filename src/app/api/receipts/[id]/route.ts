@@ -6,9 +6,9 @@ import type { MaterialReceipt } from '@/types/entities';
 import { mapRowToReceipt, MUTATION_ROLES, resolveContext } from '../_utils';
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 const RECEIPT_SELECT = `
@@ -39,10 +39,12 @@ export async function GET(_: Request, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
+    const { id } = await params;
+
     const { data, error } = await supabase
       .from('material_receipts')
       .select(RECEIPT_SELECT)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
@@ -75,10 +77,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
+    const { id } = await params;
+
     const { data: existing, error: fetchError } = await supabase
       .from('material_receipts')
       .select(RECEIPT_SELECT)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
@@ -175,7 +179,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const { data, error } = await supabase
       .from('material_receipts')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .select(RECEIPT_SELECT)
       .single();
@@ -205,10 +209,12 @@ export async function DELETE(_: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
+    const { id } = await params;
+
     const { data, error } = await supabase
       .from('material_receipts')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .select('id')
       .maybeSingle();
