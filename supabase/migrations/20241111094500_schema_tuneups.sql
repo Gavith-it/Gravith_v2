@@ -10,6 +10,9 @@ ALTER TYPE vehicle_status RENAME TO vehicle_status_old;
 CREATE TYPE vehicle_status AS ENUM ('available', 'in_use', 'maintenance', 'idle', 'returned');
 
 ALTER TABLE vehicles
+  ALTER COLUMN status DROP DEFAULT;
+
+ALTER TABLE vehicles
   ALTER COLUMN status TYPE vehicle_status USING
     CASE status::text
       WHEN 'Active' THEN 'available'
@@ -19,6 +22,9 @@ ALTER TABLE vehicles
       WHEN 'in-use' THEN 'in_use'
       ELSE status::text
     END::vehicle_status;
+
+ALTER TABLE vehicles
+  ALTER COLUMN status SET DEFAULT 'available';
 
 DROP TYPE vehicle_status_old;
 
@@ -87,8 +93,13 @@ ALTER TYPE vendor_status RENAME TO vendor_status_old;
 CREATE TYPE vendor_status AS ENUM ('active', 'inactive', 'blocked');
 
 ALTER TABLE vendors
+  ALTER COLUMN status DROP DEFAULT;
+
+ALTER TABLE vendors
   ALTER COLUMN status TYPE vendor_status USING LOWER(status::text)::vendor_status;
 
+ALTER TABLE vendors
+  ALTER COLUMN status SET DEFAULT 'active';
 DROP TYPE vendor_status_old;
 
 -- ============================================

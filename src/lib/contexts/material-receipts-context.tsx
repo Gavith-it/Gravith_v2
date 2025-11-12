@@ -1,169 +1,230 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 
 import type { MaterialReceipt } from '@/types';
 
 interface MaterialReceiptsContextType {
   receipts: MaterialReceipt[];
-  addReceipt: (receipt: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateReceipt: (id: string, receipt: Partial<MaterialReceipt>) => void;
-  deleteReceipt: (id: string) => void;
-  linkReceiptToPurchase: (receiptId: string, purchaseId: string) => boolean;
-  unlinkReceipt: (receiptId: string) => void;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+  addReceipt: (
+    receipt: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>,
+  ) => Promise<MaterialReceipt | null>;
+  updateReceipt: (
+    id: string,
+    updates: Partial<MaterialReceipt>,
+  ) => Promise<MaterialReceipt | null>;
+  deleteReceipt: (id: string) => Promise<boolean>;
+  linkReceiptToPurchase: (receiptId: string, purchaseId: string) => Promise<boolean>;
+  unlinkReceipt: (receiptId: string) => Promise<boolean>;
   getUnlinkedReceipts: () => MaterialReceipt[];
   getReceiptById: (id: string) => MaterialReceipt | undefined;
 }
 
 const MaterialReceiptsContext = createContext<MaterialReceiptsContextType | undefined>(undefined);
 
-// Mock initial data
-const initialReceipts: MaterialReceipt[] = [
-  {
-    id: '1',
-    date: '2024-10-15',
-    vehicleNumber: 'KA-01-AB-1234',
-    materialId: '1',
-    materialName: 'Ordinary Portland Cement (OPC 53)',
-    filledWeight: 5500,
-    emptyWeight: 50,
-    netWeight: 5450,
-    vendorId: '2',
-    vendorName: 'Tata Steel Limited',
-    linkedPurchaseId: '1',
-    organizationId: 'org-1',
-    createdAt: '2024-10-15T10:30:00Z',
-    updatedAt: '2024-10-15T10:30:00Z',
-  },
-  {
-    id: '2',
-    date: '2024-10-16',
-    vehicleNumber: 'KA-02-CD-5678',
-    materialId: '2',
-    materialName: 'TMT Steel Bars 12mm',
-    filledWeight: 3050,
-    emptyWeight: 50,
-    netWeight: 3000,
-    vendorId: '2',
-    vendorName: 'Tata Steel Limited',
-    organizationId: 'org-1',
-    createdAt: '2024-10-16T09:15:00Z',
-    updatedAt: '2024-10-16T09:15:00Z',
-  },
-  {
-    id: '3',
-    date: '2024-10-17',
-    vehicleNumber: 'KA-03-EF-9012',
-    materialId: '5',
-    materialName: 'River Sand (Fine)',
-    filledWeight: 8200,
-    emptyWeight: 200,
-    netWeight: 8000,
-    vendorId: '4',
-    vendorName: 'City Transport Services',
-    organizationId: 'org-1',
-    createdAt: '2024-10-17T11:45:00Z',
-    updatedAt: '2024-10-17T11:45:00Z',
-  },
-];
+async function fetchReceipts(): Promise<MaterialReceipt[]> {
+  const response = await fetch('/api/receipts', { cache: 'no-store' });
+  const payload = (await response.json().catch(() => ({}))) as {
+    receipts?: MaterialReceipt[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error || 'Failed to load receipts.');
+  }
+
+  return payload.receipts ?? [];
+}
 
 export function MaterialReceiptsProvider({ children }: { children: ReactNode }) {
-  const [receipts, setReceipts] = useState<MaterialReceipt[]>(initialReceipts);
+  const [receipts, setReceipts] = useState<MaterialReceipt[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const result = await fetchReceipts();
+      setReceipts(result);
+    } catch (error) {
+      console.error('Error loading material receipts', error);
+      setReceipts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const addReceipt = useCallback(
-    (receipt: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt'>) => {
-      const now = new Date().toISOString();
-      setReceipts((prev) => {
-        const newReceipt: MaterialReceipt = {
-          ...receipt,
-          id: (prev.length + 1).toString(),
-          createdAt: now,
-          updatedAt: now,
-        };
-        return [...prev, newReceipt];
+    async (
+      receipt: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>,
+    ): Promise<MaterialReceipt | null> => {
+      const response = await fetch('/api/receipts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receipt),
       });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        receipt?: MaterialReceipt;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.receipt) {
+        throw new Error(payload.error || 'Failed to create receipt.');
+      }
+
+      setReceipts((prev) => [payload.receipt!, ...prev]);
+      return payload.receipt ?? null;
     },
     [],
   );
 
-  const updateReceipt = useCallback((id: string, updates: Partial<MaterialReceipt>) => {
-    setReceipts((prev) =>
-      prev.map((receipt) =>
-        receipt.id === id
-          ? { ...receipt, ...updates, updatedAt: new Date().toISOString() }
-          : receipt,
-      ),
-    );
-  }, []);
+  const updateReceipt = useCallback(
+    async (id: string, updates: Partial<MaterialReceipt>): Promise<MaterialReceipt | null> => {
+      const response = await fetch(`/api/receipts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
 
-  const deleteReceipt = useCallback((id: string) => {
-    setReceipts((prev) => prev.filter((receipt) => receipt.id !== id));
-  }, []);
+      const payload = (await response.json().catch(() => ({}))) as {
+        receipt?: MaterialReceipt;
+        error?: string;
+      };
 
-  const linkReceiptToPurchase = useCallback((receiptId: string, purchaseId: string): boolean => {
-    let foundReceipt: MaterialReceipt | undefined;
-
-    setReceipts((prev) => {
-      foundReceipt = prev.find((r) => r.id === receiptId);
-
-      if (!foundReceipt) {
-        toast.error('Receipt not found');
-        return prev;
+      if (!response.ok || !payload.receipt) {
+        throw new Error(payload.error || 'Failed to update receipt.');
       }
 
-      if (foundReceipt.linkedPurchaseId) {
-        toast.error('This receipt is already linked to a purchase');
-        return prev;
-      }
-
-      return prev.map((receipt) =>
-        receipt.id === receiptId
-          ? { ...receipt, linkedPurchaseId: purchaseId, updatedAt: new Date().toISOString() }
-          : receipt,
+      setReceipts((prev) =>
+        prev.map((receipt) => (receipt.id === id ? payload.receipt! : receipt)),
       );
-    });
 
-    return !!foundReceipt && !foundReceipt.linkedPurchaseId;
+      return payload.receipt ?? null;
+    },
+    [],
+  );
+
+  const deleteReceipt = useCallback(async (id: string): Promise<boolean> => {
+    const response = await fetch(`/api/receipts/${id}`, { method: 'DELETE' });
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: string;
+    };
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Failed to delete receipt.');
+    }
+
+    setReceipts((prev) => prev.filter((receipt) => receipt.id !== id));
+    return true;
   }, []);
 
-  const unlinkReceipt = useCallback((receiptId: string) => {
-    setReceipts((prev) =>
-      prev.map((receipt) =>
-        receipt.id === receiptId
-          ? { ...receipt, linkedPurchaseId: undefined, updatedAt: new Date().toISOString() }
-          : receipt,
-      ),
-    );
-  }, []);
+  const linkReceiptToPurchase = useCallback(
+    async (receiptId: string, purchaseId: string): Promise<boolean> => {
+      const receipt = receipts.find((r) => r.id === receiptId);
+
+      if (!receipt) {
+        toast.error('Receipt not found.');
+        return false;
+      }
+
+      if (receipt.linkedPurchaseId) {
+        toast.error('This receipt is already linked to a purchase.');
+        return false;
+      }
+
+      try {
+        await updateReceipt(receiptId, { linkedPurchaseId: purchaseId });
+        return true;
+      } catch (error) {
+        console.error('Error linking receipt to purchase', error);
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to link receipt to purchase.',
+        );
+        return false;
+      }
+    },
+    [receipts, updateReceipt],
+  );
+
+  const unlinkReceipt = useCallback(
+    async (receiptId: string): Promise<boolean> => {
+      const receipt = receipts.find((r) => r.id === receiptId);
+
+      if (!receipt) {
+        toast.error('Receipt not found.');
+        return false;
+      }
+
+      if (!receipt.linkedPurchaseId) {
+        return true;
+      }
+
+      try {
+        await updateReceipt(receiptId, { linkedPurchaseId: null });
+        return true;
+      } catch (error) {
+        console.error('Error unlinking receipt', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to unlink receipt.');
+        return false;
+      }
+    },
+    [receipts, updateReceipt],
+  );
 
   const getUnlinkedReceipts = useCallback(() => {
     return receipts.filter((receipt) => !receipt.linkedPurchaseId);
   }, [receipts]);
 
   const getReceiptById = useCallback(
-    (id: string) => {
-      return receipts.find((receipt) => receipt.id === id);
-    },
+    (id: string) => receipts.find((receipt) => receipt.id === id),
     [receipts],
   );
 
+  const value = useMemo<MaterialReceiptsContextType>(
+    () => ({
+      receipts,
+      isLoading,
+      refresh,
+      addReceipt,
+      updateReceipt,
+      deleteReceipt,
+      linkReceiptToPurchase,
+      unlinkReceipt,
+      getUnlinkedReceipts,
+      getReceiptById,
+    }),
+    [
+      receipts,
+      isLoading,
+      refresh,
+      addReceipt,
+      updateReceipt,
+      deleteReceipt,
+      linkReceiptToPurchase,
+      unlinkReceipt,
+      getUnlinkedReceipts,
+      getReceiptById,
+    ],
+  );
+
   return (
-    <MaterialReceiptsContext.Provider
-      value={{
-        receipts,
-        addReceipt,
-        updateReceipt,
-        deleteReceipt,
-        linkReceiptToPurchase,
-        unlinkReceipt,
-        getUnlinkedReceipts,
-        getReceiptById,
-      }}
-    >
-      {children}
-    </MaterialReceiptsContext.Provider>
+    <MaterialReceiptsContext.Provider value={value}>{children}</MaterialReceiptsContext.Provider>
   );
 }
 

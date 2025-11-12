@@ -3,12 +3,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Scale, Truck } from 'lucide-react';
 import * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
-
-import { getActiveMaterials } from '../shared/materialMasterData';
-
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -23,15 +21,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useMaterialReceipts, useVendors } from '@/lib/contexts';
-import type { MaterialReceipt } from '@/types';
+import type { MaterialMaster, MaterialReceipt } from '@/types/entities';
 
 interface MaterialReceiptFormProps {
   editingReceipt?: MaterialReceipt | null;
-  onSubmit?: (receiptData: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onSubmit?: (
+    receiptData: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>,
+  ) => void;
   onCancel?: () => void;
 }
 
-// Form schema with Zod validation
 const receiptFormSchema = z.object({
   date: z.date(),
   vehicleNumber: z
@@ -54,87 +53,171 @@ export function MaterialReceiptForm({
   onCancel,
 }: MaterialReceiptFormProps) {
   const { addReceipt, updateReceipt } = useMaterialReceipts();
-  const { vendors } = useVendors();
-  const isEditMode = !!editingReceipt;
+  const { vendors, isLoading: isVendorsLoading } = useVendors();
+  const isEditMode = Boolean(editingReceipt);
   const formId = isEditMode ? 'receipt-edit-form' : 'receipt-new-form';
-  const [isClient, setIsClient] = React.useState(false);
+  const [isClient, setIsClient] = useState(false);
+  const [materialOptions, setMaterialOptions] = useState<MaterialMaster[]>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(true);
 
   const form = useForm<ReceiptFormData>({
     resolver: zodResolver(receiptFormSchema),
     defaultValues: {
       date: editingReceipt?.date ? new Date(editingReceipt.date) : undefined,
-      vehicleNumber: editingReceipt?.vehicleNumber || '',
-      materialId: editingReceipt?.materialId || '',
-      materialName: editingReceipt?.materialName || '',
-      vendorId: editingReceipt?.vendorId || '',
-      vendorName: editingReceipt?.vendorName || '',
-      filledWeight: editingReceipt?.filledWeight || undefined,
-      emptyWeight: editingReceipt?.emptyWeight || undefined,
+      vehicleNumber: editingReceipt?.vehicleNumber ?? '',
+      materialId: editingReceipt?.materialId ?? '',
+      materialName: editingReceipt?.materialName ?? '',
+      vendorId: editingReceipt?.vendorId ?? undefined,
+      vendorName: editingReceipt?.vendorName ?? undefined,
+      filledWeight: editingReceipt?.filledWeight ?? undefined,
+      emptyWeight: editingReceipt?.emptyWeight ?? undefined,
     },
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     setIsClient(true);
   }, []);
 
-  function handleFormSubmit(data: ReceiptFormData) {
-    const netWeight = data.filledWeight - data.emptyWeight;
+  useEffect(() => {
+    const loadMaterials = async () => {
+      try {
+        setIsLoadingMaterials(true);
+        const response = await fetch('/api/materials', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          materials?: MaterialMaster[];
+          error?: string;
+        };
 
-    const receiptData: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt'> = {
-      date: data.date.toISOString().split('T')[0],
-      vehicleNumber: data.vehicleNumber,
-      materialId: data.materialId,
-      materialName: data.materialName,
-      filledWeight: data.filledWeight,
-      emptyWeight: data.emptyWeight,
-      netWeight,
-      vendorId: data.vendorId,
-      vendorName: data.vendorName,
-      linkedPurchaseId: editingReceipt?.linkedPurchaseId,
-      organizationId: 'org-1', // TODO: Get from auth context
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load materials.');
+        }
+
+        setMaterialOptions(payload.materials ?? []);
+      } catch (error) {
+        console.error('Failed to load materials list', error);
+        toast.error('Unable to load materials. Add materials first.', {
+          description: 'Please create materials in the Materials page before recording receipts.',
+        });
+        setMaterialOptions([]);
+      } finally {
+        setIsLoadingMaterials(false);
+      }
     };
 
-    if (editingReceipt) {
-      updateReceipt(editingReceipt.id, receiptData);
-      toast.success('Material receipt updated successfully!', {
-        description: `Receipt for ${data.materialName} has been updated.`,
-      });
-    } else {
-      addReceipt(receiptData);
-      toast.success('Material receipt recorded successfully!', {
-        description: `Receipt for ${data.materialName} has been added.`,
-      });
+    void loadMaterials();
+  }, []);
+
+  useEffect(() => {
+    if (!materialOptions.length) {
+      form.setValue('materialId', '');
+      form.setValue('materialName', '');
+      return;
     }
 
-    onSubmit?.(receiptData);
-  }
+    const currentId = form.getValues('materialId');
+    const currentMaterial = currentId
+      ? materialOptions.find((material) => material.id === currentId)
+      : undefined;
 
-  // Watch material selection to auto-fill material name
+    if (currentMaterial) {
+      form.setValue('materialName', currentMaterial.name, { shouldValidate: true });
+      return;
+    }
+
+    if (!isEditMode) {
+      const [first] = materialOptions;
+      form.setValue('materialId', first.id, { shouldValidate: true });
+      form.setValue('materialName', first.name, { shouldValidate: true });
+    }
+  }, [form, isEditMode, materialOptions]);
+
+  const handleFormSubmit = React.useCallback(
+    async (data: ReceiptFormData) => {
+      const netWeight = data.filledWeight - data.emptyWeight;
+
+      if (netWeight < 0) {
+        toast.error('Net weight cannot be negative. Please check the weight values.');
+        return;
+      }
+
+      const receiptData: Omit<
+        MaterialReceipt,
+        'id' | 'createdAt' | 'updatedAt' | 'organizationId'
+      > = {
+        date: data.date.toISOString().split('T')[0],
+        vehicleNumber: data.vehicleNumber,
+        materialId: data.materialId,
+        materialName: data.materialName,
+        filledWeight: data.filledWeight,
+        emptyWeight: data.emptyWeight,
+        netWeight,
+        vendorId: data.vendorId ?? null,
+        vendorName: data.vendorName ?? null,
+        linkedPurchaseId: editingReceipt?.linkedPurchaseId ?? null,
+        siteId: editingReceipt?.siteId,
+        siteName: editingReceipt?.siteName ?? null,
+      };
+
+      try {
+        if (editingReceipt) {
+          await updateReceipt(editingReceipt.id, receiptData);
+          toast.success('Material receipt updated successfully!');
+        } else {
+          await addReceipt(receiptData);
+          toast.success('Material receipt recorded successfully!');
+        }
+
+        onSubmit?.(receiptData);
+      } catch (error) {
+        console.error('Failed to save material receipt', error);
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to save material receipt right now.',
+        );
+      }
+    },
+    [addReceipt, editingReceipt, onSubmit, updateReceipt],
+  );
+
   const selectedMaterialId = form.watch('materialId');
-  React.useEffect(() => {
-    if (selectedMaterialId && !isEditMode) {
-      const material = getActiveMaterials().find((m) => m.id === selectedMaterialId);
-      if (material) {
-        form.setValue('materialName', material.name);
-      }
+  useEffect(() => {
+    if (!selectedMaterialId) {
+      form.setValue('materialName', '');
+      return;
     }
-  }, [selectedMaterialId, form, isEditMode]);
 
-  // Watch vendor selection to auto-fill vendor name
-  const selectedVendorId = form.watch('vendorId');
-  React.useEffect(() => {
-    if (selectedVendorId && !isEditMode) {
-      const vendor = vendors.find((v) => v.id === selectedVendorId);
-      if (vendor) {
-        form.setValue('vendorName', vendor.name);
-      }
+    const material = materialOptions.find((option) => option.id === selectedMaterialId);
+    if (material) {
+      form.setValue('materialName', material.name, { shouldValidate: true });
     }
-  }, [selectedVendorId, vendors, form, isEditMode]);
+  }, [form, materialOptions, selectedMaterialId]);
+
+  const selectedVendorId = form.watch('vendorId');
+  useEffect(() => {
+    if (!selectedVendorId) {
+      form.setValue('vendorName', undefined);
+      return;
+    }
+
+    const vendor = vendors.find((v) => v.id === selectedVendorId);
+    if (vendor) {
+      form.setValue('vendorName', vendor.name, { shouldValidate: true });
+    }
+  }, [form, selectedVendorId, vendors]);
 
   const filledWeight = form.watch('filledWeight');
   const emptyWeight = form.watch('emptyWeight');
-  const netWeight =
-    filledWeight && emptyWeight !== undefined ? filledWeight - emptyWeight : undefined;
+
+  const netWeight = useMemo(() => {
+    if (typeof filledWeight !== 'number' || typeof emptyWeight !== 'number') {
+      return undefined;
+    }
+    return filledWeight - emptyWeight;
+  }, [filledWeight, emptyWeight]);
+
+  const isSubmitDisabled =
+    form.formState.isSubmitting ||
+    isLoadingMaterials ||
+    (materialOptions.length === 0 && !isEditMode);
 
   const getSubmitButtonText = () =>
     form.formState.isSubmitting
@@ -145,15 +228,14 @@ export function MaterialReceiptForm({
         ? 'Update Receipt'
         : 'Record Receipt';
 
-  // Prevent hydration issues by only rendering after client-side mount
   if (!isClient) {
     return (
       <Card className="w-full">
         <CardContent className="pt-6">
           <div className="animate-pulse space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-4 rounded bg-muted w-1/4" />
+            <div className="h-4 rounded bg-muted w-1/2" />
+            <div className="h-4 rounded bg-muted w-3/4" />
           </div>
         </CardContent>
       </Card>
@@ -165,7 +247,6 @@ export function MaterialReceiptForm({
       <CardContent className="pt-6">
         <form id={formId} onSubmit={form.handleSubmit(handleFormSubmit)}>
           <FieldGroup>
-            {/* Date and Vehicle Number Row */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="date"
@@ -203,14 +284,13 @@ export function MaterialReceiptForm({
                       placeholder="KA-01-AB-1234"
                       autoComplete="off"
                     />
-                    <FieldDescription>e.g., KA-01-AB-1234.</FieldDescription>
+                    <FieldDescription>Format: KA-01-AB-1234.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
               />
             </div>
 
-            {/* Material and Vendor Selection Row */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="materialId"
@@ -220,20 +300,43 @@ export function MaterialReceiptForm({
                     <FieldLabel htmlFor={`${formId}-material`}>
                       Material <span className="text-destructive">*</span>
                     </FieldLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      value={field.value ?? ''}
+                      onValueChange={field.onChange}
+                      disabled={isLoadingMaterials || materialOptions.length === 0}
+                    >
                       <SelectTrigger id={`${formId}-material`} aria-invalid={fieldState.invalid}>
-                        <SelectValue placeholder="Select material" />
+                        <SelectValue
+                          placeholder={
+                            isLoadingMaterials
+                              ? 'Loading materials...'
+                              : materialOptions.length === 0
+                                ? 'No materials available'
+                                : 'Select material'
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        {getActiveMaterials().map((material) => (
-                          <SelectItem key={material.id} value={material.id}>
-                            {material.name}
-                          </SelectItem>
-                        ))}
+                        {materialOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No materials found. Add materials first.
+                          </div>
+                        ) : (
+                          materialOptions.map((material) => (
+                            <SelectItem key={material.id} value={material.id}>
+                              {material.name}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
-                    <FieldDescription>Choose the material received.</FieldDescription>
+                    <FieldDescription>
+                      {materialOptions.length === 0
+                        ? 'Add a material in Materials before recording receipts.'
+                        : 'Choose the material received.'}
+                    </FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                    <input type="hidden" {...form.register('materialName')} />
                   </Field>
                 )}
               />
@@ -244,18 +347,40 @@ export function MaterialReceiptForm({
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
                     <FieldLabel htmlFor={`${formId}-vendor`}>Vendor</FieldLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      value={field.value ?? ''}
+                      onValueChange={field.onChange}
+                      disabled={isVendorsLoading || vendors.length === 0}
+                    >
                       <SelectTrigger id={`${formId}-vendor`} aria-invalid={fieldState.invalid}>
-                        <SelectValue placeholder="Select vendor (optional)" />
+                        <SelectValue
+                          placeholder={
+                            isVendorsLoading
+                              ? 'Loading vendors…'
+                              : vendors.length === 0
+                                ? 'No vendors available'
+                                : 'Select vendor (optional)'
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        {vendors
-                          .filter((v) => v.status === 'active')
-                          .map((vendor) => (
-                            <SelectItem key={vendor.id} value={vendor.id}>
-                              {vendor.name}
-                            </SelectItem>
-                          ))}
+                        {isVendorsLoading ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            Loading vendors…
+                          </div>
+                        ) : vendors.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No active vendors found. Add vendors first.
+                          </div>
+                        ) : (
+                          vendors
+                            .filter((vendor) => vendor.status === 'active')
+                            .map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>
+                                {vendor.name}
+                              </SelectItem>
+                            ))
+                        )}
                       </SelectContent>
                     </Select>
                     <FieldDescription>Choose the vendor (optional).</FieldDescription>
@@ -265,7 +390,6 @@ export function MaterialReceiptForm({
               />
             </div>
 
-            {/* Weight Measurements Row */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="filledWeight"
@@ -282,13 +406,13 @@ export function MaterialReceiptForm({
                       step="0.01"
                       aria-invalid={fieldState.invalid}
                       placeholder="Enter filled weight"
-                      onChange={(e) => {
-                        const value = e.target.value;
+                      onChange={(event) => {
+                        const value = event.target.value;
                         field.onChange(value === '' ? undefined : Number(value));
                       }}
                       value={field.value ?? ''}
                     />
-                    <FieldDescription>Weight of vehicle with material.</FieldDescription>
+                    <FieldDescription>Weight of the vehicle with material.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -309,21 +433,20 @@ export function MaterialReceiptForm({
                       step="0.01"
                       aria-invalid={fieldState.invalid}
                       placeholder="Enter empty weight"
-                      onChange={(e) => {
-                        const value = e.target.value;
+                      onChange={(event) => {
+                        const value = event.target.value;
                         field.onChange(value === '' ? undefined : Number(value));
                       }}
                       value={field.value ?? ''}
                     />
-                    <FieldDescription>Weight of empty vehicle.</FieldDescription>
+                    <FieldDescription>Weight of the empty vehicle.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
               />
             </div>
 
-            {/* Net Weight Display */}
-            {netWeight !== undefined && netWeight >= 0 && (
+            {typeof netWeight === 'number' && netWeight >= 0 && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-muted-foreground">
@@ -341,10 +464,15 @@ export function MaterialReceiptForm({
       </CardContent>
       <CardFooter className="border-t">
         <Field orientation="horizontal" className="justify-end">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={form.formState.isSubmitting}
+          >
             Cancel
           </Button>
-          <Button type="submit" form={formId} disabled={form.formState.isSubmitting}>
+          <Button type="submit" form={formId} disabled={isSubmitDisabled}>
             <Truck className="h-4 w-4 mr-2" />
             {getSubmitButtonText()}
           </Button>

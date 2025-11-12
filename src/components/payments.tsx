@@ -1,52 +1,25 @@
 'use client';
 
-import {
-  Plus,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Building2,
-  User,
-  Calendar,
-  CreditCard,
-  Receipt,
-  FileText,
-  Filter,
-  Info,
-  BarChart3,
-  Search,
-  Edit,
-  Trash2,
-} from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from 'recharts';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2, Plus, Trash2, Pencil } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
-import { DataTable } from '@/components/common/DataTable';
-import { FormDialog } from '@/components/common/FormDialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -54,1291 +27,485 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Tooltip as UITooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { useDialogState } from '@/lib/hooks/useDialogState';
-import { useTableState } from '@/lib/hooks/useTableState';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { usePayments } from '@/lib/contexts';
+import { formatDate } from '@/lib/utils';
+import type { Payment } from '@/types';
+import { toast } from 'sonner';
 
-interface Payment {
-  id: string;
-  clientName: string;
-  projectName: string;
-  contractValue: number;
-  amountPaid: number;
-  amountOutstanding: number;
-  dueDate: string;
-  status: 'paid' | 'partial' | 'overdue' | 'pending';
-  lastPaymentDate?: string;
-  paymentTerms: string;
-  invoiceNumber: string;
-  notes?: string;
+const paymentSchema = z.object({
+  clientName: z.string().min(1, 'Client name is required.'),
+  amount: z.number().min(0, 'Amount must be non-negative.'),
+  status: z.enum(['pending', 'completed', 'overdue']),
+  dueDate: z.date().optional().nullable(),
+  paidDate: z.date().optional().nullable(),
+  siteId: z.string().optional(),
+  siteName: z.string().optional(),
+});
+
+type PaymentFormData = z.infer<typeof paymentSchema>;
+
+type SiteOption = { id: string; name: string };
+
+const STATUS_LABELS: Record<Payment['status'], string> = {
+  pending: 'Pending',
+  completed: 'Completed',
+  overdue: 'Overdue',
+};
+
+function deriveStats(payments: Payment[]) {
+  const total = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const pending = payments.filter((payment) => payment.status === 'pending').length;
+  const completed = payments.filter((payment) => payment.status === 'completed').length;
+  const overdue = payments.filter((payment) => payment.status === 'overdue').length;
+
+  return {
+    total,
+    pending,
+    completed,
+    overdue,
+  };
 }
-
-interface PaymentRecord {
-  id: string;
-  paymentId: string;
-  amount: number;
-  paymentDate: string;
-  paymentMethod: 'bank_transfer' | 'cheque' | 'cash' | 'online';
-  transactionId?: string;
-  receivedBy: string;
-  notes?: string;
-}
-
-type RecordPaymentFormState = {
-  paymentId: string;
-  amount: string;
-  paymentDate: string;
-  paymentMethod: PaymentRecord['paymentMethod'];
-  transactionId: string;
-  receivedBy: string;
-  notes: string;
-};
-
-const INITIAL_RECORD_PAYMENT_FORM: RecordPaymentFormState = {
-  paymentId: '',
-  amount: '',
-  paymentDate: '',
-  paymentMethod: 'bank_transfer',
-  transactionId: '',
-  receivedBy: '',
-  notes: '',
-};
-
-const mockPayments: Payment[] = [
-  {
-    id: '1',
-    clientName: 'Acme Real Estate Pvt. Ltd.',
-    projectName: 'Green Valley Apartments',
-    contractValue: 50000000,
-    amountPaid: 35000000,
-    amountOutstanding: 15000000,
-    dueDate: '2024-02-15',
-    status: 'partial',
-    lastPaymentDate: '2024-01-25',
-    paymentTerms: '30 days',
-    invoiceNumber: 'INV-2024-001',
-    notes: 'Milestone payment pending',
-  },
-  {
-    id: '2',
-    clientName: 'Skyline Construction Co.',
-    projectName: 'Metro Mall Complex',
-    contractValue: 80000000,
-    amountPaid: 80000000,
-    amountOutstanding: 0,
-    dueDate: '2024-01-30',
-    status: 'paid',
-    lastPaymentDate: '2024-01-28',
-    paymentTerms: '45 days',
-    invoiceNumber: 'INV-2024-002',
-  },
-  {
-    id: '3',
-    clientName: 'City Infrastructure Ltd.',
-    projectName: 'Highway Bridge Project',
-    contractValue: 120000000,
-    amountPaid: 72000000,
-    amountOutstanding: 48000000,
-    dueDate: '2024-01-10',
-    status: 'overdue',
-    lastPaymentDate: '2023-12-15',
-    paymentTerms: '60 days',
-    invoiceNumber: 'INV-2024-003',
-    notes: 'Follow up required - overdue by 25 days',
-  },
-  {
-    id: '4',
-    clientName: 'Residential Developers Inc.',
-    projectName: 'Luxury Villas Phase 2',
-    contractValue: 35000000,
-    amountPaid: 0,
-    amountOutstanding: 35000000,
-    dueDate: '2024-02-28',
-    status: 'pending',
-    paymentTerms: '30 days',
-    invoiceNumber: 'INV-2024-004',
-  },
-];
-
-const mockPaymentRecords: PaymentRecord[] = [
-  {
-    id: '1',
-    paymentId: '1',
-    amount: 15000000,
-    paymentDate: '2024-01-25',
-    paymentMethod: 'bank_transfer',
-    transactionId: 'TXN123456789',
-    receivedBy: 'Finance Team',
-    notes: 'First milestone payment',
-  },
-  {
-    id: '2',
-    paymentId: '1',
-    amount: 20000000,
-    paymentDate: '2024-01-10',
-    paymentMethod: 'bank_transfer',
-    transactionId: 'TXN987654321',
-    receivedBy: 'Finance Team',
-    notes: 'Initial advance payment',
-  },
-];
-
-const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6b7280'];
-
-const enhancedTooltipStyle = {
-  contentStyle: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    border: '2px solid rgba(6, 182, 212, 0.3)',
-    borderRadius: '12px',
-    boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
-    backdropFilter: 'blur(12px)',
-    padding: '12px 16px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-  },
-  labelStyle: {
-    color: '#1e40af',
-    fontWeight: '700',
-    fontSize: '15px',
-    marginBottom: '10px',
-    textAlign: 'center' as const,
-    borderBottom: '1px solid rgba(6, 182, 212, 0.2)',
-    paddingBottom: '6px',
-  },
-  itemStyle: {
-    color: '#374151',
-    fontSize: '14px',
-    fontWeight: '500',
-    margin: '4px 0',
-  },
-};
 
 export function PaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>(mockPayments);
-  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(mockPaymentRecords);
+  const { payments, isLoading, addPayment, updatePayment, deletePayment } = usePayments();
 
-  // Use shared state hooks
-  const tableState = useTableState({
-    initialSortField: 'clientName',
-    initialSortDirection: 'asc',
-    initialItemsPerPage: 10,
-  });
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | Payment['status']>('all');
+  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
 
-  const paymentDialog = useDialogState();
-  const recordPaymentDialog = useDialogState<PaymentRecord>();
-
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
-
-  const [paymentForm, setPaymentForm] = useState({
-    clientName: '',
-    projectName: '',
-    contractValue: '',
-    dueDate: '',
-    paymentTerms: '',
-    invoiceNumber: '',
-    notes: '',
-  });
-
-  const [recordPaymentForm, setRecordPaymentForm] = useState<RecordPaymentFormState>(() => ({
-    ...INITIAL_RECORD_PAYMENT_FORM,
-  }));
-
-  const calculatePaymentStatus = useCallback(
-    (payment: Payment, amountPaid: number, amountOutstanding: number): Payment['status'] => {
-      if (amountOutstanding <= 0) {
-        return 'paid';
-      }
-
-      const dueDateObj = payment.dueDate ? new Date(payment.dueDate) : undefined;
-      const isValidDueDate = dueDateObj && !Number.isNaN(dueDateObj.getTime());
-      const isOverdue = amountOutstanding > 0 && isValidDueDate ? dueDateObj! < new Date() : false;
-
-      if (amountPaid === 0) {
-        return isOverdue ? 'overdue' : 'pending';
-      }
-
-      return isOverdue ? 'overdue' : 'partial';
+  const form = useForm<PaymentFormData>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      clientName: '',
+      amount: 0,
+      status: 'pending',
+      dueDate: undefined,
+      paidDate: undefined,
+      siteId: undefined,
+      siteName: '',
     },
-    [],
-  );
+  });
 
-  const getLatestPaymentDate = useCallback((paymentId: string, records: PaymentRecord[]) => {
-    const relatedRecords = records.filter((record) => record.paymentId === paymentId);
-    if (relatedRecords.length === 0) {
-      return undefined;
-    }
-    return relatedRecords
-      .map((record) => record.paymentDate)
-      .sort()
-      .pop();
+  useEffect(() => {
+    const loadSites = async () => {
+      try {
+        setIsLoadingSites(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Array<{ id: string; name: string }>;
+        };
+
+        if (response.ok) {
+          setSiteOptions(payload.sites ?? []);
+        } else {
+          setSiteOptions([]);
+        }
+      } catch (error) {
+        console.error('Failed to load sites for payments form', error);
+        setSiteOptions([]);
+      } finally {
+        setIsLoadingSites(false);
+      }
+    };
+
+    void loadSites();
   }, []);
 
   useEffect(() => {
-    if (!recordPaymentDialog.isDialogOpen) {
-      setRecordPaymentForm({ ...INITIAL_RECORD_PAYMENT_FORM });
-      return;
-    }
-
-    if (recordPaymentDialog.editingItem) {
-      const item = recordPaymentDialog.editingItem;
-      setRecordPaymentForm({
-        paymentId: item.paymentId,
-        amount: item.amount.toString(),
-        paymentDate: item.paymentDate,
-        paymentMethod: item.paymentMethod,
-        transactionId: item.transactionId || '',
-        receivedBy: item.receivedBy,
-        notes: item.notes || '',
+    if (!isDialogOpen) {
+      form.reset({
+        clientName: '',
+        amount: 0,
+        status: 'pending',
+        dueDate: undefined,
+        paidDate: undefined,
+        siteId: undefined,
+        siteName: '',
       });
-    } else {
-      setRecordPaymentForm({ ...INITIAL_RECORD_PAYMENT_FORM });
-    }
-  }, [recordPaymentDialog.editingItem, recordPaymentDialog.isDialogOpen]);
-
-  const handlePaymentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const newPayment: Payment = {
-      id: (payments.length + 1).toString(),
-      clientName: paymentForm.clientName,
-      projectName: paymentForm.projectName,
-      contractValue: Number(paymentForm.contractValue),
-      amountPaid: 0,
-      amountOutstanding: Number(paymentForm.contractValue),
-      dueDate: paymentForm.dueDate,
-      status: 'pending',
-      paymentTerms: paymentForm.paymentTerms,
-      invoiceNumber: paymentForm.invoiceNumber,
-      notes: paymentForm.notes,
-    };
-
-    setPayments((prev) => [...prev, newPayment]);
-    setPaymentForm({
-      clientName: '',
-      projectName: '',
-      contractValue: '',
-      dueDate: '',
-      paymentTerms: '',
-      invoiceNumber: '',
-      notes: '',
-    });
-    paymentDialog.closeDialog();
-  };
-
-  const handleRecordPaymentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const amountValue = Number(recordPaymentForm.amount);
-
-    if (!recordPaymentForm.paymentId || Number.isNaN(amountValue)) {
+      setEditingPayment(null);
       return;
     }
 
-    if (recordPaymentDialog.editingItem) {
-      const editingRecord = recordPaymentDialog.editingItem;
-      const updatedRecord: PaymentRecord = {
-        ...editingRecord,
-        paymentId: recordPaymentForm.paymentId,
-        amount: amountValue,
-        paymentDate: recordPaymentForm.paymentDate,
-        paymentMethod: recordPaymentForm.paymentMethod,
-        transactionId: recordPaymentForm.transactionId || undefined,
-        receivedBy: recordPaymentForm.receivedBy,
-        notes: recordPaymentForm.notes || undefined,
-      };
-
-      const updatedRecords = paymentRecords.map((record) =>
-        record.id === editingRecord.id ? updatedRecord : record,
-      );
-
-      setPaymentRecords(updatedRecords);
-      const impactedIds = new Set([editingRecord.paymentId, updatedRecord.paymentId]);
-
-      setPayments((prev) =>
-        prev.map((payment) => {
-          if (!impactedIds.has(payment.id)) {
-            return payment;
-          }
-
-          const relatedRecords = updatedRecords.filter((record) => record.paymentId === payment.id);
-          const amountPaid = relatedRecords.reduce((sum, record) => sum + record.amount, 0);
-          const amountOutstanding = Math.max(payment.contractValue - amountPaid, 0);
-
-          return {
-            ...payment,
-            amountPaid,
-            amountOutstanding,
-            lastPaymentDate: getLatestPaymentDate(payment.id, updatedRecords),
-            status: calculatePaymentStatus(payment, amountPaid, amountOutstanding),
-          };
-        }),
-      );
-    } else {
-      const newRecord: PaymentRecord = {
-        id: Date.now().toString(),
-        paymentId: recordPaymentForm.paymentId,
-        amount: amountValue,
-        paymentDate: recordPaymentForm.paymentDate,
-        paymentMethod: recordPaymentForm.paymentMethod,
-        transactionId: recordPaymentForm.transactionId || undefined,
-        receivedBy: recordPaymentForm.receivedBy,
-        notes: recordPaymentForm.notes || undefined,
-      };
-
-      const updatedRecords = [...paymentRecords, newRecord];
-      setPaymentRecords(updatedRecords);
-      setPayments((prev) =>
-        prev.map((payment) => {
-          if (payment.id !== newRecord.paymentId) {
-            return payment;
-          }
-
-          const relatedRecords = updatedRecords.filter((record) => record.paymentId === payment.id);
-          const amountPaid = relatedRecords.reduce((sum, record) => sum + record.amount, 0);
-          const amountOutstanding = Math.max(payment.contractValue - amountPaid, 0);
-
-          return {
-            ...payment,
-            amountPaid,
-            amountOutstanding,
-            lastPaymentDate: getLatestPaymentDate(payment.id, updatedRecords),
-            status: calculatePaymentStatus(payment, amountPaid, amountOutstanding),
-          };
-        }),
-      );
+    if (editingPayment) {
+      form.reset({
+        clientName: editingPayment.clientName,
+        amount: editingPayment.amount,
+        status: editingPayment.status,
+        dueDate: editingPayment.dueDate ? new Date(editingPayment.dueDate) : undefined,
+        paidDate: editingPayment.paidDate ? new Date(editingPayment.paidDate) : undefined,
+        siteId: editingPayment.siteId,
+        siteName: editingPayment.siteName,
+      });
     }
+  }, [editingPayment, form, isDialogOpen]);
 
-    setRecordPaymentForm({ ...INITIAL_RECORD_PAYMENT_FORM });
-    recordPaymentDialog.closeDialog();
+  const filteredPayments = useMemo(() => {
+    return payments.filter((payment) => {
+      const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
+      const matchesSearch =
+        searchQuery.trim().length === 0 ||
+        payment.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (payment.siteName ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+  }, [payments, searchQuery, statusFilter]);
+
+  const stats = useMemo(() => deriveStats(payments), [payments]);
+
+  const handleSubmit = async (data: PaymentFormData) => {
+    try {
+      const payload = {
+        clientName: data.clientName,
+        amount: data.amount,
+        status: data.status,
+        dueDate: data.dueDate ? data.dueDate.toISOString().split('T')[0] : undefined,
+        paidDate: data.paidDate ? data.paidDate.toISOString().split('T')[0] : undefined,
+        siteId: data.siteId && data.siteId.length > 0 ? data.siteId : null,
+        siteName: data.siteName && data.siteName.length > 0 ? data.siteName : null,
+      } satisfies Parameters<typeof addPayment>[0];
+
+      if (editingPayment) {
+        await updatePayment(editingPayment.id, payload);
+        toast.success('Payment updated successfully');
+      } else {
+        await addPayment(payload);
+        toast.success('Payment created successfully');
+      }
+
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to save payment', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save payment.');
+    }
   };
 
-  const handleEditPaymentRecord = (record: PaymentRecord) => {
-    recordPaymentDialog.openDialog(record);
-  };
-
-  const handleDeletePaymentRecord = (record: PaymentRecord) => {
+  const handleDelete = async (payment: Payment) => {
     if (typeof window !== 'undefined') {
-      const confirmed = window.confirm('Are you sure you want to delete this payment record?');
+      const confirmed = window.confirm(`Delete payment for ${payment.clientName}?`);
       if (!confirmed) {
         return;
       }
     }
 
-    const updatedRecords = paymentRecords.filter((item) => item.id !== record.id);
-    setPaymentRecords(updatedRecords);
-    setPayments((prev) =>
-      prev.map((payment) => {
-        if (payment.id !== record.paymentId) {
-          return payment;
-        }
-
-        const relatedRecords = updatedRecords.filter((item) => item.paymentId === payment.id);
-        const amountPaid = relatedRecords.reduce((sum, item) => sum + item.amount, 0);
-        const amountOutstanding = Math.max(payment.contractValue - amountPaid, 0);
-
-        return {
-          ...payment,
-          amountPaid,
-          amountOutstanding,
-          lastPaymentDate: getLatestPaymentDate(payment.id, updatedRecords),
-          status: calculatePaymentStatus(payment, amountPaid, amountOutstanding),
-        };
-      }),
-    );
-
-    if (recordPaymentDialog.isDialogOpen && recordPaymentDialog.editingItem?.id === record.id) {
-      recordPaymentDialog.closeDialog();
+    try {
+      await deletePayment(payment.id);
+      toast.success('Payment deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete payment', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete payment.');
     }
   };
 
-  const getStatusBadge = (status: Payment['status']) => {
-    switch (status) {
-      case 'paid':
-        return (
-          <Badge className="bg-green-100 text-green-800 border-green-200">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Paid
-          </Badge>
-        );
-      case 'partial':
-        return (
-          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
-            <Clock className="h-3 w-3 mr-1" />
-            Partial
-          </Badge>
-        );
-      case 'overdue':
-        return (
-          <Badge className="bg-red-100 text-red-800 border-red-200">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Overdue
-          </Badge>
-        );
-      case 'pending':
-        return (
-          <Badge className="bg-gray-100 text-gray-800 border-gray-200">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
-        );
-      default:
-        return null;
-    }
+  const openForCreate = () => {
+    setEditingPayment(null);
+    setIsDialogOpen(true);
   };
 
-  const getPaymentMethodIcon = (method: PaymentRecord['paymentMethod']) => {
-    switch (method) {
-      case 'bank_transfer':
-        return <CreditCard className="h-4 w-4" />;
-      case 'cheque':
-        return <FileText className="h-4 w-4" />;
-      case 'cash':
-        return <DollarSign className="h-4 w-4" />;
-      case 'online':
-        return <CreditCard className="h-4 w-4" />;
-      default:
-        return <Receipt className="h-4 w-4" />;
-    }
+  const openForEdit = (payment: Payment) => {
+    setEditingPayment(payment);
+    setIsDialogOpen(true);
   };
 
-  const filteredPayments = payments
-    .filter((payment) => {
-      const matchesStatus =
-        selectedStatusFilter === 'all' || payment.status === selectedStatusFilter;
-      const matchesSearch =
-        payment.clientName?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
-        payment.projectName?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
-        payment.invoiceNumber?.toLowerCase().includes(tableState.searchTerm.toLowerCase());
-      return matchesStatus && matchesSearch;
-    })
-    .sort((a, b) => {
-      const aValue = a[tableState.sortField as keyof Payment];
-      const bValue = b[tableState.sortField as keyof Payment];
-
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return tableState.sortDirection === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      }
-
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-
-      return 0;
-    });
-
-  const selectablePayments = useMemo(
-    () =>
-      payments.filter(
-        (payment) =>
-          payment.amountOutstanding > 0 ||
-          (recordPaymentDialog.editingItem &&
-            recordPaymentDialog.editingItem.paymentId === payment.id),
-      ),
-    [payments, recordPaymentDialog.editingItem],
-  );
-
-  // Analytics calculations
-  const totalContractValue = payments.reduce((sum, payment) => sum + payment.contractValue, 0);
-  const totalAmountPaid = payments.reduce((sum, payment) => sum + payment.amountPaid, 0);
-  const totalOutstanding = payments.reduce((sum, payment) => sum + payment.amountOutstanding, 0);
-  const overduePayments = payments.filter((p) => p.status === 'overdue');
-  const overdueAmount = overduePayments.reduce(
-    (sum, payment) => sum + payment.amountOutstanding,
-    0,
-  );
-
-  // Status distribution for pie chart
-  const statusDistribution = [
-    {
-      name: 'Paid',
-      value: payments.filter((p) => p.status === 'paid').length,
-      amount: payments
-        .filter((p) => p.status === 'paid')
-        .reduce((sum, p) => sum + p.contractValue, 0),
-    },
-    {
-      name: 'Partial',
-      value: payments.filter((p) => p.status === 'partial').length,
-      amount: payments
-        .filter((p) => p.status === 'partial')
-        .reduce((sum, p) => sum + p.contractValue, 0),
-    },
-    {
-      name: 'Overdue',
-      value: payments.filter((p) => p.status === 'overdue').length,
-      amount: payments
-        .filter((p) => p.status === 'overdue')
-        .reduce((sum, p) => sum + p.contractValue, 0),
-    },
-    {
-      name: 'Pending',
-      value: payments.filter((p) => p.status === 'pending').length,
-      amount: payments
-        .filter((p) => p.status === 'pending')
-        .reduce((sum, p) => sum + p.contractValue, 0),
-    },
-  ];
-
-  // Monthly payment trends
-  const monthlyTrends = [
-    { month: 'Oct', received: 25000000, due: 30000000 },
-    { month: 'Nov', received: 45000000, due: 40000000 },
-    { month: 'Dec', received: 35000000, due: 50000000 },
-    { month: 'Jan', received: 80000000, due: 70000000 },
-    { month: 'Feb', received: 15000000, due: 63000000 },
-  ];
-
-  // Client-wise payment analysis
-  const clientAnalysis = payments.map((payment) => ({
-    client:
-      payment.clientName.length > 20
-        ? payment.clientName.substring(0, 20) + '...'
-        : payment.clientName,
-    contractValue: payment.contractValue,
-    paid: payment.amountPaid,
-    outstanding: payment.amountOutstanding,
-    paymentPercentage: (payment.amountPaid / payment.contractValue) * 100,
-  }));
+  const onSiteChange = (siteId: string | undefined) => {
+    const site = siteOptions.find((option) => option.id === siteId);
+    form.setValue('siteId', siteId);
+    form.setValue('siteName', site?.name ?? '');
+  };
 
   return (
-    <div className="h-full w-full bg-background flex flex-col">
-      <Tabs defaultValue="payments" className="flex-1 flex flex-col overflow-hidden">
-        {/* Navigation Tabs - Topmost */}
-        <Card className="border-0 shadow-none rounded-none border-b bg-gradient-to-r from-background to-muted/20">
-          <CardContent className="px-6 py-4">
-            <TabsList>
-              <TabsTrigger value="payments">Payment Tracking</TabsTrigger>
-              <TabsTrigger value="records">Payment History</TabsTrigger>
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            </TabsList>
+    <div className="w-full space-y-6 p-4 md:p-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
+          <p className="text-muted-foreground">Track client payments and outstanding amounts.</p>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Search by client or site"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="w-full md:w-72"
+          />
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="overdue">Overdue</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={openForCreate} className="whitespace-nowrap">
+            <Plus className="mr-2 h-4 w-4" /> Add Payment
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">₹{stats.total.toLocaleString()}</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{stats.pending}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{stats.completed}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{stats.overdue}</p>
+          </CardContent>
+        </Card>
+      </div>
 
-        {/* Payments Tab */}
-        <TabsContent value="payments" className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full">
-            <div className="p-6 space-y-6">
-              {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/10 hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1">
-                          <p className="text-sm font-medium text-muted-foreground">
-                            Total Contracts
-                          </p>
-                          <TooltipProvider>
-                            <UITooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">Total number of active client contracts</p>
-                              </TooltipContent>
-                            </UITooltip>
-                          </TooltipProvider>
-                        </div>
-                        <p className="text-2xl font-bold text-blue-600">
-                          ₹{(totalContractValue / 10000000).toFixed(1)}Cr
-                        </p>
-                        <p className="text-xs text-blue-600">{payments.length} contracts</p>
-                      </div>
-                      <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                        <Building2 className="h-6 w-6 text-blue-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/10 hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1">
-                          <p className="text-sm font-medium text-muted-foreground">
-                            Amount Received
-                          </p>
-                          <TooltipProvider>
-                            <UITooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">Total payments received from all clients</p>
-                              </TooltipContent>
-                            </UITooltip>
-                          </TooltipProvider>
-                        </div>
-                        <p className="text-2xl font-bold text-green-600">
-                          ₹{(totalAmountPaid / 10000000).toFixed(1)}Cr
-                        </p>
-                        <p className="text-xs text-green-600">
-                          {((totalAmountPaid / totalContractValue) * 100).toFixed(1)}% of total
-                        </p>
-                      </div>
-                      <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                        <TrendingUp className="h-6 w-6 text-green-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/10 hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1">
-                          <p className="text-sm font-medium text-muted-foreground">Outstanding</p>
-                          <TooltipProvider>
-                            <UITooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">
-                                  Total outstanding amount across all contracts
-                                </p>
-                              </TooltipContent>
-                            </UITooltip>
-                          </TooltipProvider>
-                        </div>
-                        <p className="text-2xl font-bold text-orange-600">
-                          ₹{(totalOutstanding / 10000000).toFixed(1)}Cr
-                        </p>
-                        <p className="text-xs text-orange-600">
-                          {((totalOutstanding / totalContractValue) * 100).toFixed(1)}% pending
-                        </p>
-                      </div>
-                      <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
-                        <TrendingDown className="h-6 w-6 text-orange-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-sm bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/10 hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1">
-                          <p className="text-sm font-medium text-muted-foreground">Overdue</p>
-                          <TooltipProvider>
-                            <UITooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">Payments that are past their due date</p>
-                              </TooltipContent>
-                            </UITooltip>
-                          </TooltipProvider>
-                        </div>
-                        <p className="text-2xl font-bold text-red-600">
-                          ₹{(overdueAmount / 10000000).toFixed(1)}Cr
-                        </p>
-                        <p className="text-xs text-red-600">{overduePayments.length} overdue</p>
-                      </div>
-                      <div className="h-12 w-12 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
-                        <AlertCircle className="h-6 w-6 text-red-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Overdue Alerts */}
-              {overduePayments.length > 0 && (
-                <div className="space-y-2">
-                  {overduePayments.map((payment) => (
-                    <Alert key={payment.id} variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Overdue Payment:</strong> {payment.clientName} -{' '}
-                        {payment.projectName} - ₹{(payment.amountOutstanding / 10000000).toFixed(1)}
-                        Cr due since {payment.dueDate}
-                      </AlertDescription>
-                    </Alert>
-                  ))}
-                </div>
-              )}
-
-              {/* Filters and Actions */}
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Client Payments</h3>
-                    <div className="flex items-center gap-2">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search payments..."
-                          value={tableState.searchTerm}
-                          onChange={(e) => tableState.setSearchTerm(e.target.value)}
-                          className="pl-10 w-64"
-                        />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Filter className="h-4 w-4 text-muted-foreground" />
-                        <Select
-                          value={selectedStatusFilter}
-                          onValueChange={setSelectedStatusFilter}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredPayments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <p className="text-lg font-medium">No payments found</p>
+              <p className="text-sm text-muted-foreground">
+                {payments.length === 0
+                  ? 'Add your first payment to start tracking revenue.'
+                  : 'Try adjusting your filters or search.'}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Amount (₹)</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Paid Date</TableHead>
+                  <TableHead>Site</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredPayments.map((payment) => (
+                  <TableRow key={payment.id}>
+                    <TableCell>
+                      <div className="font-medium">{payment.clientName}</div>
+                      {payment.siteName && (
+                        <div className="text-xs text-muted-foreground">{payment.siteName}</div>
+                      )}
+                    </TableCell>
+                    <TableCell>₹{payment.amount.toLocaleString()}</TableCell>
+                    <TableCell className="capitalize">{STATUS_LABELS[payment.status]}</TableCell>
+                    <TableCell>{payment.dueDate ? formatDate(payment.dueDate) : '—'}</TableCell>
+                    <TableCell>{payment.paidDate ? formatDate(payment.paidDate) : '—'}</TableCell>
+                    <TableCell>{payment.siteName ?? '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="icon" onClick={() => openForEdit(payment)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => handleDelete(payment)}
                         >
-                          <SelectTrigger className="w-40">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="paid">Paid</SelectItem>
-                            <SelectItem value="partial">Partial</SelectItem>
-                            <SelectItem value="overdue">Overdue</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => recordPaymentDialog.openDialog(null)}
-                        className="gap-2"
-                      >
-                        <Receipt className="h-4 w-4" />
-                        Record Payment
-                      </Button>
-                      <Button onClick={paymentDialog.openDialog} className="gap-2">
-                        <Plus className="h-4 w-4" />
-                        New Contract
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Table */}
-                  <div className="overflow-x-auto">
-                    <DataTable
-                      columns={[
-                        { key: 'client', label: 'Client & Project', sortable: true },
-                        { key: 'contractValue', label: 'Contract Value', sortable: true },
-                        { key: 'amountPaid', label: 'Amount Paid', sortable: true },
-                        { key: 'amountOutstanding', label: 'Outstanding', sortable: true },
-                        { key: 'paymentProgress', label: 'Payment Progress', sortable: false },
-                        { key: 'dueDate', label: 'Due Date', sortable: true },
-                        { key: 'status', label: 'Status', sortable: true },
-                      ]}
-                      data={filteredPayments.map((payment) => ({
-                        client: (
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium">{payment.clientName}</p>
-                              <p className="text-xs text-muted-foreground">{payment.projectName}</p>
-                            </div>
-                          </div>
-                        ),
-                        contractValue: (
-                          <p className="font-medium">
-                            ₹{(payment.contractValue / 10000000).toFixed(1)}Cr
-                          </p>
-                        ),
-                        amountPaid: (
-                          <p className="font-medium text-green-600">
-                            ₹{(payment.amountPaid / 10000000).toFixed(1)}Cr
-                          </p>
-                        ),
-                        amountOutstanding: (
-                          <p className="font-medium text-orange-600">
-                            ₹{(payment.amountOutstanding / 10000000).toFixed(1)}Cr
-                          </p>
-                        ),
-                        paymentProgress: (
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-xs">
-                              <span>
-                                {((payment.amountPaid / payment.contractValue) * 100).toFixed(1)}%
-                              </span>
-                            </div>
-                            <Progress
-                              value={(payment.amountPaid / payment.contractValue) * 100}
-                              className="h-2"
-                            />
-                          </div>
-                        ),
-                        dueDate: (
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm">{payment.dueDate}</span>
-                          </div>
-                        ),
-                        status: getStatusBadge(payment.status),
-                      }))}
-                      onSort={tableState.setSortField}
-                      onPageChange={tableState.setCurrentPage}
-                      pageSize={tableState.itemsPerPage}
-                      currentPage={tableState.currentPage}
-                      totalPages={tableState.totalPages(filteredPayments.length)}
-                      sortField={tableState.sortField}
-                      sortDirection={tableState.sortDirection}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        {/* Payment History Tab */}
-        <TabsContent value="records" className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full">
-            <div className="p-6 space-y-6">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Payment History</h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <DataTable
-                      columns={[
-                        { key: 'paymentDate', label: 'Date', sortable: true },
-                        { key: 'client', label: 'Client', sortable: true },
-                        { key: 'amount', label: 'Amount', sortable: true },
-                        { key: 'paymentMethod', label: 'Method', sortable: true },
-                        { key: 'transactionId', label: 'Transaction ID', sortable: false },
-                        { key: 'receivedBy', label: 'Received By', sortable: true },
-                        { key: 'notes', label: 'Notes', sortable: false },
-                        {
-                          key: 'actions',
-                          label: 'Actions',
-                          sortable: false,
-                          align: 'right' as const,
-                        },
-                      ]}
-                      data={paymentRecords.map((record) => {
-                        const payment = payments.find((p) => p.id === record.paymentId);
-                        return {
-                          paymentDate: record.paymentDate,
-                          client: (
-                            <div>
-                              <p className="font-medium">{payment?.clientName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {payment?.projectName}
-                              </p>
-                            </div>
-                          ),
-                          amount: (
-                            <p className="font-medium text-green-600">
-                              ₹{(record.amount / 10000000).toFixed(1)}Cr
-                            </p>
-                          ),
-                          paymentMethod: (
-                            <div className="flex items-center gap-2">
-                              {getPaymentMethodIcon(record.paymentMethod)}
-                              <span className="text-sm capitalize">
-                                {record.paymentMethod.replace('_', ' ')}
-                              </span>
-                            </div>
-                          ),
-                          transactionId: (
-                            <span className="text-sm font-mono">{record.transactionId || '-'}</span>
-                          ),
-                          receivedBy: record.receivedBy,
-                          notes: (
-                            <span className="text-sm text-muted-foreground">
-                              {record.notes || '-'}
-                            </span>
-                          ),
-                          actions: (
-                            <div className="flex items-center gap-2 justify-end">
-                              <TooltipProvider>
-                                <UITooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={() => handleEditPaymentRecord(record)}
-                                      aria-label="Edit payment record"
-                                      className="h-8 w-8"
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Edit</TooltipContent>
-                                </UITooltip>
-                              </TooltipProvider>
-                              <TooltipProvider>
-                                <UITooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={() => handleDeletePaymentRecord(record)}
-                                      aria-label="Delete payment record"
-                                      className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Delete</TooltipContent>
-                                </UITooltip>
-                              </TooltipProvider>
-                            </div>
-                          ),
-                        };
-                      })}
-                      onSort={() => {}}
-                      pageSize={10}
-                      currentPage={1}
-                      totalPages={1}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        {/* Analytics Tab */}
-        <TabsContent value="analytics" className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full">
-            <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Payment Status Distribution */}
-                <Card className="border shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Payment Status Distribution
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={statusDistribution}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={100}
-                          dataKey="value"
-                          label={({ name, value }) => `${name}: ${value}`}
-                        >
-                          {statusDistribution.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip {...enhancedTooltipStyle} />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                {/* Monthly Payment Trends */}
-                <Card className="border shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Monthly Payment Trends
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={monthlyTrends}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis tickFormatter={(value) => `₹${(value / 10000000).toFixed(1)}Cr`} />
-                        <Tooltip
-                          {...enhancedTooltipStyle}
-                          formatter={(value) => [`₹${(Number(value) / 10000000).toFixed(1)}Cr`, '']}
-                        />
-                        <Legend />
-                        <Bar dataKey="received" fill="#10b981" name="Received" />
-                        <Bar dataKey="due" fill="#f59e0b" name="Due" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                {/* Client Payment Analysis */}
-                <Card className="lg:col-span-2 border shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Client Payment Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart data={clientAnalysis} layout="horizontal">
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          type="number"
-                          tickFormatter={(value) => `₹${(value / 10000000).toFixed(1)}Cr`}
-                        />
-                        <YAxis dataKey="client" type="category" width={150} />
-                        <Tooltip
-                          {...enhancedTooltipStyle}
-                          formatter={(value) => [`₹${(Number(value) / 10000000).toFixed(1)}Cr`, '']}
-                        />
-                        <Legend />
-                        <Bar dataKey="paid" fill="#10b981" name="Amount Paid" />
-                        <Bar dataKey="outstanding" fill="#f59e0b" name="Outstanding" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
-
-      {/* Dialog Forms */}
-      <FormDialog
-        title="Record Payment Received"
-        description="Update payment records for existing contracts"
-        isOpen={recordPaymentDialog.isDialogOpen}
-        onOpenChange={(open) =>
-          open
-            ? recordPaymentDialog.openDialog(recordPaymentDialog.editingItem)
-            : recordPaymentDialog.closeDialog()
-        }
-        maxWidth="max-w-2xl"
-      >
-        <form onSubmit={handleRecordPaymentSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Select Contract</Label>
-            <Select
-              value={recordPaymentForm.paymentId}
-              onValueChange={(value) =>
-                setRecordPaymentForm((prev) => ({ ...prev, paymentId: value }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Choose contract" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectablePayments.map((payment) => (
-                  <SelectItem key={payment.id} value={payment.id}>
-                    {payment.clientName} - {payment.projectName} (Outstanding: ₹
-                    {(payment.amountOutstanding / 10000000).toFixed(1)}Cr)
-                  </SelectItem>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Amount Received (₹)</Label>
-              <Input
-                type="number"
-                value={recordPaymentForm.amount}
-                onChange={(e) =>
-                  setRecordPaymentForm((prev) => ({ ...prev, amount: e.target.value }))
-                }
-                placeholder="15000000"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Payment Date</Label>
-              <DatePicker
-                date={
-                  recordPaymentForm.paymentDate
-                    ? new Date(recordPaymentForm.paymentDate)
-                    : undefined
-                }
-                onSelect={(date) =>
-                  setRecordPaymentForm((prev) => ({
-                    ...prev,
-                    paymentDate: date ? date.toISOString().split('T')[0] : '',
-                  }))
-                }
-                placeholder="Select payment date"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Payment Method</Label>
-              <Select
-                value={recordPaymentForm.paymentMethod}
-                onValueChange={(value) =>
-                  setRecordPaymentForm((prev) => ({
-                    ...prev,
-                    paymentMethod: value as PaymentRecord['paymentMethod'],
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="online">Online Payment</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Transaction ID</Label>
-              <Input
-                value={recordPaymentForm.transactionId}
-                onChange={(e) =>
-                  setRecordPaymentForm((prev) => ({ ...prev, transactionId: e.target.value }))
-                }
-                placeholder="TXN123456789"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Received By</Label>
-            <Input
-              value={recordPaymentForm.receivedBy}
-              onChange={(e) =>
-                setRecordPaymentForm((prev) => ({ ...prev, receivedBy: e.target.value }))
-              }
-              placeholder="Finance Team"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Notes (Optional)</Label>
-            <Input
-              value={recordPaymentForm.notes}
-              onChange={(e) => setRecordPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Milestone payment, advance, etc."
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => recordPaymentDialog.closeDialog()}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!recordPaymentForm.paymentId}>
-              Record Payment
-            </Button>
-          </div>
-        </form>
-      </FormDialog>
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
-      <FormDialog
-        title="Add New Payment Contract"
-        description="Create a new client payment tracking record"
-        isOpen={paymentDialog.isDialogOpen}
-        onOpenChange={(open) =>
-          open ? paymentDialog.openDialog(paymentDialog.editingItem) : paymentDialog.closeDialog()
-        }
-        maxWidth="max-w-2xl"
-      >
-        <form onSubmit={handlePaymentSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Client Name</Label>
-              <Input
-                value={paymentForm.clientName}
-                onChange={(e) =>
-                  setPaymentForm((prev) => ({ ...prev, clientName: e.target.value }))
-                }
-                placeholder="Acme Real Estate Pvt. Ltd."
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Project Name</Label>
-              <Input
-                value={paymentForm.projectName}
-                onChange={(e) =>
-                  setPaymentForm((prev) => ({ ...prev, projectName: e.target.value }))
-                }
-                placeholder="Green Valley Apartments"
-                required
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Contract Value (₹)</Label>
-              <Input
-                type="number"
-                value={paymentForm.contractValue}
-                onChange={(e) =>
-                  setPaymentForm((prev) => ({ ...prev, contractValue: e.target.value }))
-                }
-                placeholder="50000000"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Due Date</Label>
-              <DatePicker
-                date={paymentForm.dueDate ? new Date(paymentForm.dueDate) : undefined}
-                onSelect={(date) =>
-                  setPaymentForm((prev) => ({
-                    ...prev,
-                    dueDate: date ? date.toISOString().split('T')[0] : '',
-                  }))
-                }
-                placeholder="Select due date"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Payment Terms</Label>
-              <Select
-                value={paymentForm.paymentTerms}
-                onValueChange={(value) =>
-                  setPaymentForm((prev) => ({ ...prev, paymentTerms: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select payment terms" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15 days">15 days</SelectItem>
-                  <SelectItem value="30 days">30 days</SelectItem>
-                  <SelectItem value="45 days">45 days</SelectItem>
-                  <SelectItem value="60 days">60 days</SelectItem>
-                  <SelectItem value="90 days">90 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Invoice Number</Label>
-              <Input
-                value={paymentForm.invoiceNumber}
-                onChange={(e) =>
-                  setPaymentForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))
-                }
-                placeholder="INV-2024-001"
-                required
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Notes (Optional)</Label>
-            <Input
-              value={paymentForm.notes}
-              onChange={(e) => setPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Additional payment terms or notes"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => paymentDialog.closeDialog()}>
-              Cancel
-            </Button>
-            <Button type="submit">Create Contract</Button>
-          </div>
-        </form>
-      </FormDialog>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingPayment ? 'Edit Payment' : 'Add Payment'}</DialogTitle>
+            <DialogDescription>
+              {editingPayment
+                ? 'Update the payment details and save your changes.'
+                : 'Create a new payment entry for your client.'}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(handleSubmit)}
+              className="space-y-6"
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="clientName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Client *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Acme Constructions" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount (₹) *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          {...field}
+                          onChange={(event) => field.onChange(Number(event.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="dueDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Due Date</FormLabel>
+                      <FormControl>
+                        <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="paidDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Paid Date</FormLabel>
+                      <FormControl>
+                        <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="siteId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Site</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          onSiteChange(value);
+                        }}
+                        disabled={isLoadingSites || siteOptions.length === 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isLoadingSites
+                                  ? 'Loading sites…'
+                                  : siteOptions.length === 0
+                                    ? 'No sites available'
+                                    : 'Select site'
+                              }
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {siteOptions.map((site) => (
+                            <SelectItem key={site.id} value={site.id}>
+                              {site.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">{editingPayment ? 'Save Changes' : 'Create Payment'}</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

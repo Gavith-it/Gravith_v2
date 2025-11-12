@@ -15,25 +15,25 @@ import {
   Star,
   Phone,
   Mail,
-  MapPin,
-  CreditCard,
-  FileText,
   MoreHorizontal,
   Trash2,
+  Loader2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import { useTableState } from '../lib/hooks/useTableState';
 import { formatDate } from '../lib/utils';
 
 import VendorNewForm, { type VendorFormData } from './forms/VendorForm';
 import type { Vendor } from './vendors-columns';
-import { vendorColumns, createVendorTableData } from './vendors-columns';
+import { createVendorTableData } from './vendors-columns';
+import { toast } from 'sonner';
+import { useVendors } from '@/lib/contexts';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -41,7 +41,6 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -50,8 +49,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -60,7 +57,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -69,110 +65,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-const mockVendors: Vendor[] = [
-  {
-    id: '1',
-    name: 'Heavy Equipment Rentals',
-    category: 'Equipment',
-    contactPerson: 'Suresh Patil',
-    phone: '+91 98765 43210',
-    email: 'suresh@heavyequipment.com',
-    address: 'Industrial Area, Navi Mumbai, MH 400710',
-    gstNumber: '27ABCDE1234F1Z5',
-    panNumber: 'ABCDE1234F',
-    bankAccount: '1234567890',
-    ifscCode: 'SBIN0001234',
-    paymentTerms: '30 days',
-    rating: 4.5,
-    totalPaid: 2500000,
-    pendingAmount: 125000,
-    lastPayment: '2024-02-20',
-    status: 'active',
-    registrationDate: '2023-01-15',
-    notes: 'Reliable equipment supplier with good maintenance record',
-    organizationId: 'org-1',
-    createdAt: '2023-01-15T00:00:00Z',
-    updatedAt: '2024-02-20T00:00:00Z',
-  },
-  {
-    id: '2',
-    name: 'Tata Steel Limited',
-    category: 'Materials',
-    contactPerson: 'Rajesh Kumar',
-    phone: '+91 98765 43211',
-    email: 'rajesh@tatasteel.com',
-    address: 'Steel Plant Road, Jamshedpur, JH 831001',
-    gstNumber: '20AABCT1332L1ZA',
-    panNumber: 'AABCT1332L',
-    bankAccount: '9876543210',
-    ifscCode: 'HDFC0001234',
-    paymentTerms: '45 days',
-    rating: 5.0,
-    totalPaid: 4500000,
-    pendingAmount: 325000,
-    lastPayment: '2024-02-25',
-    status: 'active',
-    registrationDate: '2023-01-10',
-    notes: 'Premium steel supplier with excellent quality standards',
-    organizationId: 'org-1',
-    createdAt: '2023-01-10T00:00:00Z',
-    updatedAt: '2024-02-25T00:00:00Z',
-  },
-  {
-    id: '3',
-    name: 'Local Contractors Association',
-    category: 'Labour',
-    contactPerson: 'Amit Sharma',
-    phone: '+91 98765 43212',
-    email: 'amit@localcontractors.com',
-    address: 'Contractor Colony, Pune, MH 411001',
-    gstNumber: '27DEFGH5678K1Z9',
-    panNumber: 'DEFGH5678K',
-    bankAccount: '1357924680',
-    ifscCode: 'ICIC0001234',
-    paymentTerms: '15 days',
-    rating: 4.2,
-    totalPaid: 1200000,
-    pendingAmount: 95000,
-    lastPayment: '2024-02-22',
-    status: 'active',
-    registrationDate: '2023-02-01',
-    notes: 'Skilled labour contractors with timely delivery',
-    organizationId: 'org-1',
-    createdAt: '2023-02-01T00:00:00Z',
-    updatedAt: '2024-02-22T00:00:00Z',
-  },
-  {
-    id: '4',
-    name: 'City Transport Services',
-    category: 'Transport',
-    contactPerson: 'Prakash Joshi',
-    phone: '+91 98765 43213',
-    email: 'prakash@citytransport.com',
-    address: 'Transport Nagar, Mumbai, MH 400001',
-    gstNumber: '27IJKLM9012N1Z3',
-    panNumber: 'IJKLM9012N',
-    bankAccount: '2468135790',
-    ifscCode: 'AXIS0001234',
-    paymentTerms: '7 days',
-    rating: 4.0,
-    totalPaid: 350000,
-    pendingAmount: 25000,
-    lastPayment: '2024-02-28',
-    status: 'active',
-    registrationDate: '2023-03-15',
-    notes: 'Reliable transport services for material delivery',
-    organizationId: 'org-1',
-    createdAt: '2023-03-15T00:00:00Z',
-    updatedAt: '2024-02-28T00:00:00Z',
-  },
-];
-
 export function VendorsPage() {
-  const [vendors, setVendors] = useState<Vendor[]>(mockVendors);
+  const {
+    vendors,
+    isLoading,
+    addVendor,
+    updateVendor,
+    deleteVendor,
+    toggleVendorStatus,
+  } = useVendors();
   const [selectedCategory, setSelectedCategory] = useState<string>('all-categories');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -187,43 +90,65 @@ export function VendorsPage() {
   });
 
   // Filter and sort vendors
-  const sortedAndFilteredVendors = vendors
-    .filter((vendor) => {
-      const matchesSearch =
-        searchQuery === '' ||
-        vendor.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.contactPerson?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vendor.phone?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory =
-        selectedCategory === 'all-categories' || vendor.category === selectedCategory;
-      const matchesStatus = statusFilter === 'all' || vendor.status === statusFilter;
-      return matchesSearch && matchesCategory && matchesStatus;
-    })
-    .sort((a, b) => {
-      const aValue = a[tableState.sortField as keyof Vendor];
-      const bValue = b[tableState.sortField as keyof Vendor];
+  const sortedAndFilteredVendors = useMemo(() => {
+    return vendors
+      .filter((vendor) => {
+        const matchesSearch =
+          searchQuery === '' ||
+          vendor.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          vendor.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          vendor.contactPerson?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          vendor.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          vendor.phone?.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory =
+          selectedCategory === 'all-categories' || vendor.category === selectedCategory;
+        const matchesStatus = statusFilter === 'all' || vendor.status === statusFilter;
+        return matchesSearch && matchesCategory && matchesStatus;
+      })
+      .sort((a, b) => {
+        const aValue = a[tableState.sortField as keyof Vendor];
+        const bValue = b[tableState.sortField as keyof Vendor];
 
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return tableState.sortDirection === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      }
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return tableState.sortDirection === 'asc'
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        }
 
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        }
 
-      return 0;
-    });
+        return 0;
+      });
+  }, [vendors, searchQuery, selectedCategory, statusFilter, tableState.sortField, tableState.sortDirection]);
 
   // Analytics calculations
-  const totalVendors = vendors.length;
-  const totalPaid = vendors.reduce((sum, vendor) => sum + (vendor.totalPaid || 0), 0);
-  const totalPending = vendors.reduce((sum, vendor) => sum + (vendor.pendingAmount || 0), 0);
-  const averageRating =
-    vendors.reduce((sum, vendor) => sum + (vendor.rating || 0), 0) / vendors.length;
+  const { totalVendors, totalPaid, totalPending, averageRating } = useMemo(() => {
+    if (vendors.length === 0) {
+      return { totalVendors: 0, totalPaid: 0, totalPending: 0, averageRating: 0 };
+    }
+
+    const totals = vendors.reduce(
+      (acc, vendor) => {
+        acc.totalPaid += vendor.totalPaid || 0;
+        acc.totalPending += vendor.pendingAmount || 0;
+        acc.totalRating += vendor.rating || 0;
+        return acc;
+      },
+      { totalPaid: 0, totalPending: 0, totalRating: 0 },
+    );
+
+    return {
+      totalVendors: vendors.length,
+      totalPaid: totals.totalPaid,
+      totalPending: totals.totalPending,
+      averageRating: totals.totalRating / vendors.length,
+    };
+  }, [vendors]);
+
+  const filteredCount = sortedAndFilteredVendors.length;
+  const isFilteredEmpty = !isLoading && filteredCount === 0;
 
   // Helper functions
   const handleEditVendor = (vendor: Vendor) => {
@@ -236,94 +161,103 @@ export function VendorsPage() {
     setIsVendorDialogOpen(true);
   };
 
-  const handleVendorFormSubmit = (formData: VendorFormData) => {
-    if (editingVendor) {
-      // Update existing vendor
-      const updatedVendor: Vendor = {
-        ...editingVendor,
-        name: formData.name,
-        contactPerson: formData.contactPerson,
-        phone: formData.phone,
-        email: formData.email || '',
-        address: formData.address,
-        gstNumber: formData.gstNumber || '',
-        panNumber: formData.panNumber || '',
-        bankAccount: formData.bankAccountNumber || '',
-        ifscCode: formData.ifscCode || '',
-        paymentTerms: formData.paymentTerms || '',
-        notes: formData.notes || '',
-      };
+  const handleVendorFormSubmit = useCallback(
+    async (formData: VendorFormData) => {
+      try {
+        if (editingVendor) {
+          await updateVendor(editingVendor.id, {
+            name: formData.name,
+            category: formData.category,
+            contactPerson: formData.contactPerson,
+            phone: formData.phone,
+            email: formData.email || '',
+            address: formData.address,
+            gstNumber: formData.gstNumber || '',
+            panNumber: formData.panNumber || '',
+            bankAccount: formData.bankAccountNumber || '',
+            ifscCode: formData.ifscCode || '',
+            paymentTerms: formData.paymentTerms || '',
+            notes: formData.notes || '',
+          });
+          toast.success('Vendor updated successfully');
+        } else {
+          await addVendor({
+            name: formData.name,
+            category: formData.category,
+            contactPerson: formData.contactPerson,
+            phone: formData.phone,
+            email: formData.email || '',
+            address: formData.address,
+            gstNumber: formData.gstNumber || '',
+            panNumber: formData.panNumber || '',
+            bankAccount: formData.bankAccountNumber || '',
+            ifscCode: formData.ifscCode || '',
+            paymentTerms: formData.paymentTerms || '',
+            notes: formData.notes || '',
+            status: 'active',
+            totalPaid: 0,
+            pendingAmount: 0,
+            rating: 0,
+            lastPayment: '',
+            registrationDate: new Date().toISOString().split('T')[0],
+          });
+          toast.success('Vendor added successfully');
+        }
 
-      setVendors((prev) =>
-        prev.map((vendor) => (vendor.id === editingVendor.id ? updatedVendor : vendor)),
-      );
-    } else {
-      // Create new vendor
-      const now = new Date().toISOString();
-      const newVendor: Vendor = {
-        id: (vendors.length + 1).toString(),
-        name: formData.name,
-        category: 'Materials', // Default category since it's removed from form
-        contactPerson: formData.contactPerson,
-        phone: formData.phone,
-        email: formData.email || '',
-        address: formData.address,
-        gstNumber: formData.gstNumber || '',
-        panNumber: formData.panNumber || '',
-        bankAccount: formData.bankAccountNumber || '',
-        ifscCode: formData.ifscCode || '',
-        paymentTerms: formData.paymentTerms || '',
-        rating: 0,
-        totalPaid: 0,
-        pendingAmount: 0,
-        lastPayment: '',
-        status: 'active',
-        registrationDate: now.split('T')[0],
-        notes: formData.notes || '',
-        organizationId: 'org-1',
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      setVendors((prev) => [...prev, newVendor]);
-    }
-
-    setEditingVendor(null);
-    setIsVendorDialogOpen(false);
-  };
+        setEditingVendor(null);
+        setIsVendorDialogOpen(false);
+      } catch (error) {
+        console.error('Error saving vendor', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to save vendor');
+      }
+    },
+    [addVendor, editingVendor, updateVendor],
+  );
 
   const handleVendorFormCancel = () => {
     setEditingVendor(null);
     setIsVendorDialogOpen(false);
   };
 
-  const toggleVendorStatus = (vendorId: string) => {
-    const updatedVendors = vendors.map((vendor) =>
-      vendor.id === vendorId
-        ? {
-            ...vendor,
-            status: vendor.status === 'active' ? ('inactive' as const) : ('active' as const),
-          }
-        : vendor,
-    );
-    setVendors(updatedVendors);
-  };
-
-  const handleDeleteVendor = (vendorId: string) => {
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm('Are you sure you want to delete this vendor?');
-      if (!confirmed) {
-        return;
+  const handleDeleteVendor = useCallback(
+    async (vendor: Vendor) => {
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm('Are you sure you want to delete this vendor?');
+        if (!confirmed) {
+          return;
+        }
       }
-    }
 
-    setVendors((prev) => prev.filter((vendor) => vendor.id !== vendorId));
+      try {
+        await deleteVendor(vendor.id);
+        if (editingVendor?.id === vendor.id) {
+          setEditingVendor(null);
+          setIsVendorDialogOpen(false);
+        }
+        toast.success('Vendor deleted successfully');
+      } catch (error) {
+        console.error('Error deleting vendor', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to delete vendor');
+      }
+    },
+    [deleteVendor, editingVendor],
+  );
 
-    if (editingVendor?.id === vendorId) {
-      setEditingVendor(null);
-      setIsVendorDialogOpen(false);
-    }
-  };
+  const handleToggleVendorStatus = useCallback(
+    async (vendor: Vendor) => {
+      const nextStatus = vendor.status === 'active' ? ('inactive' as const) : ('active' as const);
+      try {
+        await toggleVendorStatus(vendor.id, nextStatus);
+        toast.success(
+          nextStatus === 'active' ? 'Vendor activated successfully' : 'Vendor deactivated successfully',
+        );
+      } catch (error) {
+        console.error('Error updating vendor status', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to update vendor status');
+      }
+    },
+    [toggleVendorStatus],
+  );
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -505,6 +439,7 @@ export function VendorsPage() {
                           initialData={
                             editingVendor
                               ? {
+                                  category: editingVendor.category,
                                   name: editingVendor.name,
                                   contactPerson: editingVendor.contactPerson,
                                   phone: editingVendor.phone,
@@ -530,15 +465,22 @@ export function VendorsPage() {
               </div>
 
               <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium w-fit">
-                {sortedAndFilteredVendors.length} vendor
-                {sortedAndFilteredVendors.length !== 1 ? 's' : ''} found
+                {isLoading
+                  ? 'Loading vendors…'
+                  : `${filteredCount} vendor${filteredCount !== 1 ? 's' : ''} found`}
               </Badge>
             </div>
           </CardContent>
         </Card>
 
         {/* Vendors Table */}
-        {sortedAndFilteredVendors.length === 0 ? (
+        {isLoading ? (
+          <Card className="w-full">
+            <CardContent className="p-6 md:p-12 flex items-center justify-center">
+              <Loader2 className="h-12 w-12 text-primary animate-spin" />
+            </CardContent>
+          </Card>
+        ) : isFilteredEmpty ? (
           <Card className="w-full">
             <CardContent className="p-6 md:p-12">
               <div className="flex flex-col items-center justify-center">
@@ -678,7 +620,7 @@ export function VendorsPage() {
                                       size="icon"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        toggleVendorStatus(vendor.id);
+                                        handleToggleVendorStatus(vendor);
                                       }}
                                       className="h-8 w-8"
                                       aria-label={
@@ -709,7 +651,7 @@ export function VendorsPage() {
                                       size="icon"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleDeleteVendor(vendor.id);
+                                        handleDeleteVendor(vendor);
                                       }}
                                       className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
                                       aria-label="Delete vendor"

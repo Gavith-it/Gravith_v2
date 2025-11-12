@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
@@ -46,7 +47,8 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useMaterials } from '@/lib/contexts';
+import { useMaterials, useWorkProgress } from '@/lib/contexts';
+import type { WorkProgressEntry as WorkProgressEntity } from '@/types/entities';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDateShort } from '@/lib/utils';
@@ -60,7 +62,7 @@ interface SiteOption {
   progress?: number;
 }
 
-interface WorkProgressEntry {
+interface WorkProgressFormEntry {
   id: string;
   siteId: string;
   siteName: string;
@@ -86,6 +88,18 @@ interface WorkProgressEntry {
   status: 'In Progress' | 'Completed' | 'On Hold';
 }
 
+const STATUS_LABEL_MAP: Record<WorkProgressEntity['status'], WorkProgressFormEntry['status']> = {
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  on_hold: 'On Hold',
+};
+
+const STATUS_VALUE_MAP: Record<WorkProgressFormEntry['status'], WorkProgressEntity['status']> = {
+  'In Progress': 'in_progress',
+  Completed: 'completed',
+  'On Hold': 'on_hold',
+};
+
 interface WorkProgressProps {
   selectedSite?: string;
   onSiteSelect?: (siteId: string) => void;
@@ -95,6 +109,13 @@ interface WorkProgressProps {
 export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
   const searchParams = useSearchParams();
   const { materials, updateMaterial } = useMaterials();
+  const {
+    entries: workProgressEntriesRaw,
+    isLoading: isWorkProgressLoading,
+    addEntry: addWorkProgressEntry,
+    updateEntry: updateWorkProgressEntry,
+    deleteEntry: deleteWorkProgressEntry,
+  } = useWorkProgress();
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -103,10 +124,12 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     initialItemsPerPage: 10,
   });
 
-  const dialog = useDialogState<WorkProgressEntry>();
+  const dialog = useDialogState<WorkProgressFormEntry>();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [workTypeFilter, setWorkTypeFilter] = useState<string>('all');
+  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
+  const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
 
   // Auto-open dialog if openDialog URL parameter is present
   useEffect(() => {
@@ -116,130 +139,112 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const baseSiteOptions: SiteOption[] = React.useMemo(
-    () => [
-      {
-        id: '1',
-        name: 'Residential Complex A',
-        location: 'Sector 15, Navi Mumbai',
-        status: 'Active',
-        progress: 64,
-        imageUrl:
-          'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=300&q=80',
-      },
-      {
-        id: '2',
-        name: 'Commercial Plaza B',
-        location: 'Business District, Pune',
-        status: 'Active',
-        progress: 55,
-        imageUrl:
-          'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=300&q=80',
-      },
-      {
-        id: '3',
-        name: 'Highway Bridge Project',
-        location: 'Mumbai-Pune Highway',
-        status: 'Completed',
-        progress: 96,
-        imageUrl:
-          'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=300&q=80',
-      },
-    ],
-    [],
-  );
+  useEffect(() => {
+    const loadSites = async () => {
+      try {
+        setIsSitesLoading(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Array<{
+            id: string;
+            name: string;
+            location?: string;
+            status?: SiteOption['status'];
+            progress?: number | null;
+          }>;
+          error?: string;
+        };
 
-  const siteOptions = useMemo(() => {
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load sites.');
+        }
+
+        const mappedSites =
+          payload.sites?.map((site) => ({
+            id: site.id,
+            name: site.name,
+            location: site.location,
+            status: site.status ?? 'Active',
+            progress: site.progress ?? undefined,
+          })) ?? [];
+
+        setSiteOptions(mappedSites);
+      } catch (error) {
+        console.error('Failed to load sites list', error);
+        toast.error('Failed to load sites list.');
+        setSiteOptions([]);
+      } finally {
+        setIsSitesLoading(false);
+      }
+    };
+
+    void loadSites();
+  }, []);
+
+  const siteOptionsWithFilter = useMemo(() => {
     if (!filterBySite) {
-      return baseSiteOptions;
+      return siteOptions;
     }
 
-    const existingSite = baseSiteOptions.find((site) => site.name === filterBySite);
+    const existingSite = siteOptions.find((site) => site.name === filterBySite);
     if (existingSite) {
-      return baseSiteOptions;
+      return siteOptions;
     }
 
     const slug = filterBySite
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
+
     return [
-      ...baseSiteOptions,
+      ...siteOptions,
       {
         id: `auto-${slug || 'site'}`,
         name: filterBySite,
       },
     ];
-  }, [baseSiteOptions, filterBySite]);
-
-  // Mock data for work progress entries
-  const [workProgressEntries, setWorkProgressEntries] = useState<WorkProgressEntry[]>([
-    {
-      id: '1',
-      siteId: '1',
-      siteName: 'Residential Complex A',
-      workType: 'Foundation',
-      description: 'Concrete foundation work for Building A',
-      date: '2024-01-15',
-      unit: 'cum',
-      length: 10,
-      breadth: 8,
-      thickness: 0.5,
-      totalQuantity: 40,
-      materialsUsed: [
-        {
-          materialId: '1',
-          materialName: 'Ordinary Portland Cement (OPC 53)',
-          quantity: 50,
-          unit: 'bags',
-          balanceStock: 35,
-        },
-        {
-          materialId: '2',
-          materialName: 'TMT Steel Bars (12mm)',
-          quantity: 2,
-          unit: 'tons',
-          balanceStock: 18,
-        },
-      ],
-      laborHours: 40,
-      progressPercentage: 75,
-      notes: 'Foundation work progressing well',
-      photos: [],
-      status: 'In Progress',
-    },
-    {
-      id: '2',
-      siteId: '1',
-      siteName: 'Residential Complex A',
-      workType: 'Plumbing',
-      description: 'Water supply installation',
-      date: '2024-01-20',
-      unit: 'meters',
-      totalQuantity: 100,
-      materialsUsed: [
-        {
-          materialId: '3',
-          materialName: 'PVC Pipes',
-          quantity: 100,
-          unit: 'meters',
-          balanceStock: 50,
-        },
-      ],
-      laborHours: 24,
-      progressPercentage: 100,
-      notes: 'Plumbing work completed',
-      photos: [],
-      status: 'Completed',
-    },
-  ]);
+  }, [siteOptions, filterBySite]);
 
   const resolvedSite = useMemo(
-    () => (filterBySite ? siteOptions.find((site) => site.name === filterBySite) : undefined),
-    [filterBySite, siteOptions],
+    () =>
+      filterBySite
+        ? siteOptionsWithFilter.find((site) => site.name === filterBySite)
+        : undefined,
+    [filterBySite, siteOptionsWithFilter],
+  );
+
+  const workProgressEntries = useMemo<WorkProgressFormEntry[]>(
+    () =>
+      workProgressEntriesRaw.map((entry) => ({
+        id: entry.id,
+        siteId: entry.siteId ?? '',
+        siteName: entry.siteName,
+        workType: entry.workType,
+        description: entry.description ?? '',
+        date: entry.workDate,
+        unit: entry.unit,
+        length: entry.length ?? 0,
+        breadth: entry.breadth ?? 0,
+        thickness: entry.thickness ?? 0,
+        totalQuantity: entry.totalQuantity,
+        materialsUsed: (entry.materials ?? []).map((material) => ({
+          materialId: material.materialId ?? '',
+          materialName: material.materialName,
+          quantity: material.quantity,
+          unit: material.unit,
+          balanceStock: material.balanceQuantity ?? 0,
+        })),
+        laborHours: entry.laborHours,
+        progressPercentage: entry.progressPercentage,
+        notes: entry.notes ?? '',
+        photos: entry.photos ?? [],
+        status: STATUS_LABEL_MAP[entry.status] ?? 'In Progress',
+      })),
+    [workProgressEntriesRaw],
   );
 
   const createEmptyWorkForm = (site?: { id: string; name: string }) => ({
+    id: '',
     siteId: site?.id ?? '',
     siteName: site?.name ?? '',
     workType: '',
@@ -261,7 +266,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     progressPercentage: 0,
     notes: '',
     photos: [] as string[],
-    status: 'In Progress' as WorkProgressEntry['status'],
+    status: 'In Progress' as WorkProgressFormEntry['status'],
   });
 
   const [workProgressForm, setWorkProgressForm] = useState(() => createEmptyWorkForm(resolvedSite));
@@ -281,6 +286,34 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedSite]);
+
+  const buildPayload = useCallback(
+    (form: WorkProgressFormEntry) => ({
+      siteId: form.siteId || null,
+      siteName: form.siteName,
+      workType: form.workType,
+      description: form.description || null,
+      workDate: form.date,
+      unit: form.unit,
+      length: form.length || null,
+      breadth: form.breadth || null,
+      thickness: form.thickness || null,
+      totalQuantity: form.totalQuantity,
+      laborHours: form.laborHours,
+      progressPercentage: form.progressPercentage,
+      status: STATUS_VALUE_MAP[form.status],
+      notes: form.notes || null,
+      photos: form.photos,
+      materials: form.materialsUsed.map((material) => ({
+        materialId: material.materialId || null,
+        materialName: material.materialName,
+        unit: material.unit,
+        quantity: material.quantity,
+        balanceQuantity: material.balanceStock,
+      })),
+    }),
+    [],
+  );
 
   // Filter work progress entries
   const filteredEntries = workProgressEntries.filter((entry) => {
@@ -306,53 +339,68 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
   ).length;
   const totalLaborHours = entriesForStats.reduce((sum, entry) => sum + entry.laborHours, 0);
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (dialog.editingItem) {
-      // Update existing entry
-      const updatedEntries = workProgressEntries.map((entry) =>
-        entry.id === dialog.editingItem!.id
-          ? {
-              ...entry,
-              ...workProgressForm,
-            }
-          : entry,
-      );
-      setWorkProgressEntries(updatedEntries);
-    } else {
-      // Add new entry
-      const newEntry: WorkProgressEntry = {
-        id: (workProgressEntries.length + 1).toString(),
-        ...workProgressForm,
-      };
-      setWorkProgressEntries([...workProgressEntries, newEntry]);
+    if (
+      !workProgressForm.siteName ||
+      !workProgressForm.workType ||
+      !workProgressForm.date ||
+      !workProgressForm.unit
+    ) {
+      toast.error('Please complete all required fields.');
+      return;
     }
 
-    // Deduct materials from inventory
-    workProgressForm.materialsUsed.forEach((material) => {
-      const existingMaterial = materials.find((m) => m.id === material.materialId);
-      if (existingMaterial) {
-        const newConsumedQuantity = (existingMaterial.consumedQuantity || 0) + material.quantity;
-        const newRemainingQuantity = (existingMaterial.quantity || 0) - newConsumedQuantity;
+    const payload = buildPayload(workProgressForm);
 
-        updateMaterial(existingMaterial.id, {
-          ...existingMaterial,
-          consumedQuantity: newConsumedQuantity,
-          remainingQuantity: Math.max(0, newRemainingQuantity),
+    try {
+      if (dialog.editingItem) {
+        await updateWorkProgressEntry(dialog.editingItem.id, payload);
+        toast.success('Work progress updated successfully!');
+      } else {
+        await addWorkProgressEntry(payload);
+        toast.success('Work progress recorded successfully!');
+
+        // Deduct materials from inventory only for new entries
+        workProgressForm.materialsUsed.forEach((material) => {
+          const existingMaterial = materials.find((m) => m.id === material.materialId);
+          if (existingMaterial) {
+            const newConsumedQuantity =
+              (existingMaterial.consumedQuantity || 0) + material.quantity;
+            const newRemainingQuantity =
+              (existingMaterial.quantity || 0) - newConsumedQuantity;
+
+            void updateMaterial(existingMaterial.id, {
+              ...existingMaterial,
+              consumedQuantity: newConsumedQuantity,
+              remainingQuantity: Math.max(0, newRemainingQuantity),
+            }).catch((error) => {
+              console.error('Failed to update material consumption', error);
+              toast.error('Failed to update material consumption.');
+            });
+          }
         });
       }
-    });
 
-    dialog.closeDialog();
-    setWorkProgressForm(createEmptyWorkForm(resolvedSite));
-    setSelectedMaterial('');
-    setMaterialQuantity(0);
+      dialog.closeDialog();
+      setWorkProgressForm(createEmptyWorkForm(resolvedSite));
+      setSelectedMaterial('');
+      setMaterialQuantity(0);
+    } catch (error) {
+      console.error('Failed to save work progress entry', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Unable to save work progress entry. Please try again.',
+      );
+    }
   };
 
-  const handleEdit = (entry: WorkProgressEntry) => {
+  const handleEdit = (entry: WorkProgressFormEntry) => {
     dialog.openDialog(entry);
     setWorkProgressForm({
+      id: entry.id,
       siteId: entry.siteId,
       siteName: entry.siteName,
       workType: entry.workType,
@@ -442,8 +490,18 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     );
   };
 
-  const handleDelete = (entryId: string) => {
-    setWorkProgressEntries(workProgressEntries.filter((entry) => entry.id !== entryId));
+  const handleDelete = async (entryId: string) => {
+    try {
+      await deleteWorkProgressEntry(entryId);
+      toast.success('Work progress entry deleted successfully.');
+    } catch (error) {
+      console.error('Failed to delete work progress entry', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete work progress entry right now.',
+      );
+    }
   };
 
   const getWorkTypeIcon = (workType: string) => {
@@ -460,6 +518,19 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
         return Target;
     }
   };
+
+  if (isWorkProgressLoading && workProgressEntries.length === 0) {
+    return (
+      <div className="w-full min-w-0 bg-background">
+        <div className="flex h-64 items-center justify-center">
+          <div className="space-y-3 text-center">
+            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+            <p className="text-sm text-muted-foreground">Loading work progress...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-w-0 bg-background">
@@ -605,6 +676,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                           setSelectedMaterial('');
                           setMaterialQuantity(0);
                         }}
+                        disabled={isSitesLoading || siteOptionsWithFilter.length === 0}
                         className="gap-2 transition-all hover:shadow-md whitespace-nowrap"
                       >
                         <Plus className="h-4 w-4" />
@@ -668,9 +740,13 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               <Label>Site</Label>
                               <Select
                                 value={workProgressForm.siteId}
-                                disabled={Boolean(resolvedSite)}
+                                disabled={
+                                  Boolean(resolvedSite) ||
+                                  isSitesLoading ||
+                                  siteOptionsWithFilter.length === 0
+                                }
                                 onValueChange={(value) => {
-                                  const site = siteOptions.find((s) => s.id === value);
+                                  const site = siteOptionsWithFilter.find((s) => s.id === value);
                                   setWorkProgressForm((prev) => ({
                                     ...prev,
                                     siteId: value,
@@ -682,14 +758,34 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                 }}
                               >
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select site" />
+                                  <SelectValue
+                                    placeholder={
+                                      resolvedSite
+                                        ? resolvedSite.name
+                                        : isSitesLoading
+                                          ? 'Loading sites...'
+                                          : siteOptionsWithFilter.length === 0
+                                            ? 'No sites available'
+                                            : 'Select site'
+                                    }
+                                  />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {siteOptions.map((site) => (
-                                    <SelectItem key={site.id} value={site.id}>
-                                      {site.name}
+                                  {isSitesLoading ? (
+                                    <SelectItem value="__loading" disabled>
+                                      Loading sites...
                                     </SelectItem>
-                                  ))}
+                                  ) : siteOptionsWithFilter.length === 0 ? (
+                                    <SelectItem value="__none" disabled>
+                                      No sites available. Create a site first.
+                                    </SelectItem>
+                                  ) : (
+                                    siteOptionsWithFilter.map((site) => (
+                                      <SelectItem key={site.id} value={site.id}>
+                                        {site.name}
+                                      </SelectItem>
+                                    ))
+                                  )}
                                 </SelectContent>
                               </Select>
                             </div>
@@ -970,7 +1066,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                 onValueChange={(value) =>
                                   setWorkProgressForm((prev) => ({
                                     ...prev,
-                                    status: value as WorkProgressEntry['status'],
+                                    status: value as WorkProgressFormEntry['status'],
                                   }))
                                 }
                               >

@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 export default function VendorNewPage() {
   const router = useRouter();
 
-  const handleSubmit = (data: VendorFormData) => {
+  const handleSubmit = async (data: VendorFormData) => {
     // Handle form submission logic here
     console.log('New vendor data:', data);
     // You can add API call to save the vendor

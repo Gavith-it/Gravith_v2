@@ -21,7 +21,8 @@ import {
   ShoppingCart,
   Target,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { ExpensesPage } from './expenses';
 import { PurchasePage } from './purchase';
@@ -29,6 +30,7 @@ import { SchedulingPage } from './scheduling';
 import { WorkProgressPage } from './work-progress';
 
 import SiteForm from '@/components/forms/SiteForm';
+import type { Site, SiteInput } from '@/types/sites';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,377 +62,169 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDate, formatDateShort } from '@/lib/utils';
 
-interface Site {
-  id: string;
-  name: string;
-  location: string;
-  startDate: string;
-  expectedEndDate: string;
-  status: 'Active' | 'Stopped' | 'Completed' | 'Canceled';
-  budget: number;
-  spent: number;
-  description: string;
-  progress: number;
-  imageUrl?: string;
-}
-
-interface SiteExpense {
-  id: string;
-  siteId: string;
-  category: 'Labour' | 'Materials' | 'Equipment' | 'Transport' | 'Utilities' | 'Other';
-  description: string;
-  amount: number;
-  date: string;
-  vendor: string;
-  receipt: string;
-}
-
-interface SiteDocument {
-  id: string;
-  siteId: string;
-  name: string;
-  type: 'drawings' | 'plans' | 'permits' | 'contracts' | 'reports' | 'other';
-  uploadDate: string;
-  size: string;
-  uploadedBy: string;
-}
-
-interface SiteLabour {
-  id: string;
-  siteId: string;
-  name: string;
-  age: number;
-  contactNo: string;
-  dailyWage: number;
-  hourlyRate: number;
-  daysWorked: number;
-  hoursWorked: number;
-  skillCategory:
-    | 'Mason'
-    | 'Helper'
-    | 'Electrician'
-    | 'Plumber'
-    | 'Carpenter'
-    | 'Operator'
-    | 'Other';
-  joinDate: string;
-  status: 'active' | 'inactive';
-}
-
-interface SiteVehicle {
-  id: string;
-  siteId: string;
-  vehicleName: string;
-  vehicleType:
-    | 'Excavator'
-    | 'Crane'
-    | 'Truck'
-    | 'Mixer'
-    | 'JCB'
-    | 'Loader'
-    | 'Compactor'
-    | 'Generator'
-    | 'Other';
-  registrationNumber: string;
-  operator: string;
-  rentalCostPerDay: number;
-  fuelCostPerDay: number;
-  startDate: string;
-  endDate: string;
-  totalDays: number;
-  totalCost: number;
-  vendor: string;
-  status: 'active' | 'maintenance' | 'idle' | 'returned';
-  fuelConsumed: number;
-  lastMaintenanceDate: string;
-}
-
-const mockSites: Site[] = [
-  {
-    id: '1',
-    name: 'Residential Complex A',
-    location: 'Sector 15, Navi Mumbai',
-    startDate: '2024-01-15',
-    expectedEndDate: '2024-12-15',
-    status: 'Active',
-    budget: 50000000,
-    spent: 32000000,
-    description: 'Premium residential complex with 200 units',
-    progress: 64,
-    imageUrl:
-      'https://images.unsplash.com/photo-1501183638710-841dd1904471?auto=format&fit=crop&w=160&q=80',
-  },
-  {
-    id: '2',
-    name: 'Commercial Plaza B',
-    location: 'Business District, Pune',
-    startDate: '2024-02-01',
-    expectedEndDate: '2025-01-31',
-    status: 'Active',
-    budget: 75000000,
-    spent: 41250000,
-    description: 'Modern commercial complex with retail and office spaces',
-    progress: 55,
-    imageUrl:
-      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=160&q=80',
-  },
-  {
-    id: '3',
-    name: 'Highway Bridge Project',
-    location: 'Mumbai-Pune Highway',
-    startDate: '2024-03-01',
-    expectedEndDate: '2024-10-30',
-    status: 'Completed',
-    budget: 35000000,
-    spent: 33600000,
-    description: 'Four-lane highway bridge construction',
-    progress: 96,
-    imageUrl:
-      'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=160&q=80',
-  },
-];
-
-const mockSiteExpenses: SiteExpense[] = [
-  {
-    id: '1',
-    siteId: '1',
-    category: 'Labour',
-    description: 'Mason work - Week 3',
-    amount: 125000,
-    date: '2024-01-28',
-    vendor: 'Local Contractors',
-    receipt: 'RCT001',
-  },
-  {
-    id: '2',
-    siteId: '1',
-    category: 'Equipment',
-    description: 'Excavator rental',
-    amount: 85000,
-    date: '2024-01-30',
-    vendor: 'Heavy Equipment Rentals',
-    receipt: 'RCT002',
-  },
-  {
-    id: '3',
-    siteId: '2',
-    category: 'Materials',
-    description: 'Steel procurement',
-    amount: 325000,
-    date: '2024-02-10',
-    vendor: 'Tata Steel',
-    receipt: 'RCT003',
-  },
-];
-
-const mockSiteDocuments: SiteDocument[] = [
-  {
-    id: '1',
-    siteId: '1',
-    name: 'Site Plan Drawing',
-    type: 'drawings',
-    uploadDate: '2024-01-15',
-    size: '2.5 MB',
-    uploadedBy: 'Rajesh Kumar',
-  },
-  {
-    id: '2',
-    siteId: '1',
-    name: 'Foundation Plan',
-    type: 'plans',
-    uploadDate: '2024-01-18',
-    size: '1.8 MB',
-    uploadedBy: 'Rajesh Kumar',
-  },
-  {
-    id: '3',
-    siteId: '2',
-    name: 'Building Permit',
-    type: 'permits',
-    uploadDate: '2024-01-30',
-    size: '0.5 MB',
-    uploadedBy: 'Priya Sharma',
-  },
-];
-
-const mockSiteLabour: SiteLabour[] = [
-  {
-    id: '1',
-    siteId: '1',
-    name: 'Ramesh Patil',
-    age: 32,
-    contactNo: '+91 98765 43210',
-    dailyWage: 800,
-    hourlyRate: 100,
-    daysWorked: 25,
-    hoursWorked: 200,
-    skillCategory: 'Mason',
-    joinDate: '2024-01-20',
-    status: 'active',
-  },
-  {
-    id: '2',
-    siteId: '1',
-    name: 'Suresh Kumar',
-    age: 28,
-    contactNo: '+91 98765 43211',
-    dailyWage: 600,
-    hourlyRate: 75,
-    daysWorked: 20,
-    hoursWorked: 160,
-    skillCategory: 'Helper',
-    joinDate: '2024-01-22',
-    status: 'active',
-  },
-  {
-    id: '3',
-    siteId: '2',
-    name: 'Prakash Joshi',
-    age: 35,
-    contactNo: '+91 98765 43212',
-    dailyWage: 1200,
-    hourlyRate: 150,
-    daysWorked: 18,
-    hoursWorked: 144,
-    skillCategory: 'Electrician',
-    joinDate: '2024-02-05',
-    status: 'active',
-  },
-];
-
-const mockSiteVehicles: SiteVehicle[] = [
-  {
-    id: '1',
-    siteId: '1',
-    vehicleName: 'CAT 320D Excavator',
-    vehicleType: 'Excavator',
-    registrationNumber: 'MH-12-AB-1234',
-    operator: 'Ravi Kumar',
-    rentalCostPerDay: 8500,
-    fuelCostPerDay: 2500,
-    startDate: '2024-01-20',
-    endDate: '2024-03-20',
-    totalDays: 60,
-    totalCost: 660000,
-    vendor: 'Heavy Equipment Rentals',
-    status: 'active',
-    fuelConsumed: 150000,
-    lastMaintenanceDate: '2024-02-15',
-  },
-  {
-    id: '2',
-    siteId: '1',
-    vehicleName: 'Ashok Leyland Truck',
-    vehicleType: 'Truck',
-    registrationNumber: 'MH-12-CD-5678',
-    operator: 'Sunil Patil',
-    rentalCostPerDay: 3500,
-    fuelCostPerDay: 1800,
-    startDate: '2024-01-15',
-    endDate: '2024-12-15',
-    totalDays: 335,
-    totalCost: 1775500,
-    vendor: 'City Transport Services',
-    status: 'active',
-    fuelConsumed: 603000,
-    lastMaintenanceDate: '2024-02-01',
-  },
-  {
-    id: '3',
-    siteId: '2',
-    vehicleName: 'Tower Crane TC-6013',
-    vehicleType: 'Crane',
-    registrationNumber: 'PU-15-EF-9012',
-    operator: 'Mahesh Joshi',
-    rentalCostPerDay: 12000,
-    fuelCostPerDay: 3000,
-    startDate: '2024-02-01',
-    endDate: '2024-12-31',
-    totalDays: 334,
-    totalCost: 5010000,
-    vendor: 'Mega Cranes Ltd',
-    status: 'active',
-    fuelConsumed: 1002000,
-    lastMaintenanceDate: '2024-02-20',
-  },
-  {
-    id: '4',
-    siteId: '1',
-    vehicleName: 'DG Set 125 KVA',
-    vehicleType: 'Generator',
-    registrationNumber: 'N/A',
-    operator: 'Site Electrician',
-    rentalCostPerDay: 2200,
-    fuelCostPerDay: 1500,
-    startDate: '2024-01-15',
-    endDate: '2024-12-15',
-    totalDays: 335,
-    totalCost: 1239500,
-    vendor: 'Power Solutions Inc',
-    status: 'active',
-    fuelConsumed: 502500,
-    lastMaintenanceDate: '2024-02-10',
-  },
-];
-
 interface SiteManagementProps {
   selectedSite?: string;
   onSiteSelect?: (siteId: string) => void;
 }
 
 export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: SiteManagementProps) {
-  const [sites, setSites] = useState<Site[]>(mockSites);
-  const [selectedSite, setSelectedSite] = useState<string>(propSelectedSite || '1');
-
-  // Update selectedSite when prop changes
-  React.useEffect(() => {
-    if (propSelectedSite) {
-      setSelectedSite(propSelectedSite);
-    }
-  }, [propSelectedSite]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [selectedSite, setSelectedSite] = useState<string | null>(propSelectedSite ?? null);
+  const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
   const [isSiteDialogOpen, setIsSiteDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('overview');
 
-  // Filter sites based on status and search query
-  const filteredSites = sites.filter((site) => {
-    const matchesStatus = statusFilter === 'all' || site.status === statusFilter;
-    const matchesSearch =
-      searchQuery === '' ||
-      site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      site.location.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
-  });
+  const fetchSites = useCallback(
+    async (focusId?: string) => {
+      try {
+        setIsSitesLoading(true);
+        const response = await fetch('/api/sites');
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Site[];
+          error?: string;
+        };
 
-  const currentSite = sites.find((site) => site.id === selectedSite);
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load sites.');
+        }
 
-  const handleSiteSubmit = (siteData: Omit<Site, 'id' | 'spent' | 'progress'>) => {
-    if (editingSite) {
-      // Update existing site
-      const updatedSite: Site = {
-        ...editingSite,
-        ...siteData,
-      };
+        const fetchedSites = payload.sites ?? [];
+        setSites(fetchedSites);
 
-      setSites((prev) => prev.map((site) => (site.id === editingSite.id ? updatedSite : site)));
-    } else {
-      // Create new site
-      const newSite: Site = {
-        ...siteData,
-        id: (sites.length + 1).toString(),
-        spent: 0,
-        progress: 0,
-      };
+        const nextSelection =
+          (focusId && fetchedSites.some((site) => site.id === focusId) && focusId) ||
+          (propSelectedSite &&
+            fetchedSites.some((site) => site.id === propSelectedSite) &&
+            propSelectedSite) ||
+          (selectedSite && fetchedSites.some((site) => site.id === selectedSite) && selectedSite) ||
+          (fetchedSites.length ? fetchedSites[0].id : null);
 
-      setSites((prev) => [...prev, newSite]);
+        setSelectedSite(nextSelection);
+        return fetchedSites;
+      } catch (error) {
+        console.error('Failed to load sites', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to load sites.');
+        setSites([]);
+        setSelectedSite(null);
+        return [];
+      } finally {
+        setIsSitesLoading(false);
+      }
+    },
+    [propSelectedSite, selectedSite],
+  );
+
+  useEffect(() => {
+    void fetchSites();
+  }, [fetchSites]);
+
+  useEffect(() => {
+    if (propSelectedSite) {
+      setSelectedSite(propSelectedSite);
+    }
+  }, [propSelectedSite]);
+
+  useEffect(() => {
+    if (selectedSite) {
+      onSiteSelect?.(selectedSite);
+    }
+  }, [selectedSite, onSiteSelect]);
+
+  useEffect(() => {
+    if (isSitesLoading) {
+      return;
     }
 
-    // Reset form and close dialog
-    setEditingSite(null);
-    setIsSiteDialogOpen(false);
-  };
+    if (!sites.length) {
+      setSelectedSite(null);
+      return;
+    }
+
+    if (selectedSite && sites.some((site) => site.id === selectedSite)) {
+      return;
+    }
+
+    setSelectedSite(sites[0]?.id ?? null);
+  }, [sites, selectedSite, isSitesLoading]);
+
+  const filteredSites = useMemo(() => {
+    return sites.filter((site) => {
+      const matchesStatus = statusFilter === 'all' || site.status === statusFilter;
+      const matchesSearch =
+        searchQuery === '' ||
+        site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        site.location.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+  }, [sites, statusFilter, searchQuery]);
+
+  const currentSite = selectedSite
+    ? sites.find((site) => site.id === selectedSite) ?? null
+    : null;
+
+  const currentSiteMetrics = useMemo(() => {
+    if (!currentSite) {
+      return null;
+    }
+
+    const budgetValue = Number(currentSite.budget ?? 0);
+    const spentValue = Number(currentSite.spent ?? 0);
+    const progressValue = Number(currentSite.progress ?? 0);
+    const budgetCr = budgetValue / 10000000;
+    const spentCr = spentValue / 10000000;
+    const usagePercent = budgetValue > 0 ? (spentValue / budgetValue) * 100 : 0;
+    const expectedEnd = currentSite.expectedEndDate ? new Date(currentSite.expectedEndDate) : null;
+    const daysRemaining =
+      expectedEnd !== null
+        ? Math.max(0, Math.ceil((expectedEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+        : null;
+
+    return {
+      budgetValue,
+      spentValue,
+      progressValue,
+      budgetCr,
+      spentCr,
+      usagePercent,
+      daysRemaining,
+    };
+  }, [currentSite]);
+
+  const handleSiteSubmit = useCallback(
+    async (siteData: SiteInput) => {
+      try {
+        const isEditing = Boolean(editingSite);
+        const response = await fetch(isEditing ? `/api/sites/${editingSite?.id}` : '/api/sites', {
+          method: isEditing ? 'PATCH' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(siteData),
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          site?: Site;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.site) {
+          throw new Error(payload.error || 'Failed to save site.');
+        }
+
+        await fetchSites(payload.site.id);
+        toast.success(isEditing ? 'Site updated successfully.' : 'Site created successfully.');
+        setEditingSite(null);
+        setIsSiteDialogOpen(false);
+      } catch (error) {
+        console.error('Failed to save site', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to save site.');
+      }
+    },
+    [editingSite, fetchSites],
+  );
 
   const handleEditSite = (site: Site) => {
     setEditingSite(site);
@@ -551,7 +345,11 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
               </div>
 
               <Badge variant="secondary" className="px-4 py-2 text-sm font-medium">
-                {filteredSites.length} site{filteredSites.length !== 1 ? 's' : ''} found
+                {isSitesLoading
+                  ? 'Loading sites…'
+                  : filteredSites.length
+                    ? `${filteredSites.length} site${filteredSites.length !== 1 ? 's' : ''} found`
+                    : 'No sites found'}
               </Badge>
             </div>
           </CardContent>
@@ -561,187 +359,203 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         <ScrollArea className="flex-1">
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredSites.map((site) => {
-                const getStatusConfig = () => {
-                  switch (site.status) {
-                    case 'Active':
-                      return {
-                        color: 'bg-green-500',
-                        bgLight: 'bg-green-50 dark:bg-green-950/30',
-                        textColor: 'text-green-700 dark:text-green-400',
-                        icon: CheckCircle2,
-                      };
-                    case 'Stopped':
-                      return {
-                        color: 'bg-yellow-500',
-                        bgLight: 'bg-yellow-50 dark:bg-yellow-950/30',
-                        textColor: 'text-yellow-700 dark:text-yellow-400',
-                        icon: Pause,
-                      };
-                    case 'Completed':
-                      return {
-                        color: 'bg-blue-500',
-                        bgLight: 'bg-blue-50 dark:bg-blue-950/30',
-                        textColor: 'text-blue-700 dark:text-blue-400',
-                        icon: CheckCircle2,
-                      };
-                    case 'Canceled':
-                      return {
-                        color: 'bg-red-500',
-                        bgLight: 'bg-red-50 dark:bg-red-950/30',
-                        textColor: 'text-red-700 dark:text-red-400',
-                        icon: XCircle,
-                      };
-                    default:
-                      return {
-                        color: 'bg-muted-foreground',
-                        bgLight: 'bg-muted/30',
-                        textColor: 'text-muted-foreground',
-                        icon: Clock,
-                      };
-                  }
-                };
+              {!isSitesLoading && filteredSites.length === 0 ? (
+                <Card className="border-dashed border-2 border-border/70 bg-muted/10">
+                  <CardContent className="p-8 text-center space-y-3">
+                    <Building2 className="h-8 w-8 mx-auto text-muted-foreground" />
+                    <h3 className="text-lg font-semibold">No sites found</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Try adjusting your filters or create a new construction site to get started.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                filteredSites.map((site) => {
+                  const getStatusConfig = () => {
+                    switch (site.status) {
+                      case 'Active':
+                        return {
+                          color: 'bg-green-500',
+                          bgLight: 'bg-green-50 dark:bg-green-950/30',
+                          textColor: 'text-green-700 dark:text-green-400',
+                          icon: CheckCircle2,
+                        };
+                      case 'Stopped':
+                        return {
+                          color: 'bg-yellow-500',
+                          bgLight: 'bg-yellow-50 dark:bg-yellow-950/30',
+                          textColor: 'text-yellow-700 dark:text-yellow-400',
+                          icon: Pause,
+                        };
+                      case 'Completed':
+                        return {
+                          color: 'bg-blue-500',
+                          bgLight: 'bg-blue-50 dark:bg-blue-950/30',
+                          textColor: 'text-blue-700 dark:text-blue-400',
+                          icon: CheckCircle2,
+                        };
+                      case 'Canceled':
+                        return {
+                          color: 'bg-red-500',
+                          bgLight: 'bg-red-50 dark:bg-red-950/30',
+                          textColor: 'text-red-700 dark:text-red-400',
+                          icon: XCircle,
+                        };
+                      default:
+                        return {
+                          color: 'bg-muted-foreground',
+                          bgLight: 'bg-muted/30',
+                          textColor: 'text-muted-foreground',
+                          icon: Clock,
+                        };
+                    }
+                  };
 
-                const statusConfig = getStatusConfig();
-                const StatusIcon = statusConfig.icon;
-                const budgetUsagePercent = (site.spent / site.budget) * 100;
-                const isOverBudget = budgetUsagePercent > 90;
+                  const statusConfig = getStatusConfig();
+                  const StatusIcon = statusConfig.icon;
+                  const budgetValue = Number(site.budget ?? 0);
+                  const spentValue = Number(site.spent ?? 0);
+                  const progressValue = Number(site.progress ?? 0);
+                  const budgetUsagePercent = budgetValue > 0 ? (spentValue / budgetValue) * 100 : 0;
+                  const isOverBudget = budgetUsagePercent > 90;
+                  const budgetCrDisplay = (budgetValue / 10000000).toFixed(1);
+                  const spentCrDisplay = (spentValue / 10000000).toFixed(1);
+                  const startDateLabel = site.startDate ? formatDateShort(site.startDate) : '—';
+                  const endDateLabel = site.expectedEndDate
+                    ? formatDateShort(site.expectedEndDate)
+                    : '—';
 
-                return (
-                  <Card
-                    key={site.id}
-                    className={`group relative cursor-pointer transition-all duration-300 overflow-hidden ${
-                      selectedSite === site.id
-                        ? 'border-primary shadow-lg ring-2 ring-primary/30 scale-[1.02]'
-                        : 'border-border hover:border-primary/40 hover:shadow-md'
-                    }`}
-                    onClick={() => {
-                      setSelectedSite(site.id);
-                      onSiteSelect?.(site.id);
-                    }}
-                  >
-                    <CardContent className="p-5">
-                      {site.imageUrl && (
-                        <div className="mb-4 h-32 rounded-lg overflow-hidden border border-border/60">
-                          <img
-                            src={site.imageUrl}
-                            alt={site.name}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        </div>
-                      )}
-                      {/* Header Section */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1 min-w-0 pr-3">
-                          <h4 className="font-semibold text-lg leading-tight mb-2 truncate group-hover:text-primary transition-colors">
-                            {site.name}
-                          </h4>
-                          <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                            <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                            <span className="line-clamp-1">{site.location}</span>
+                  return (
+                    <Card
+                      key={site.id}
+                      className={`group relative cursor-pointer transition-all duration-300 overflow-hidden ${
+                        selectedSite === site.id
+                          ? 'border-primary shadow-lg ring-2 ring-primary/30 scale-[1.02]'
+                          : 'border-border hover:border-primary/40 hover:shadow-md'
+                      }`}
+                      onClick={() => {
+                        setSelectedSite(site.id);
+                        onSiteSelect?.(site.id);
+                      }}
+                    >
+                      <CardContent className="p-5">
+                      <div className="mb-4 h-32 rounded-lg overflow-hidden border border-border/60 bg-gradient-to-br from-muted/40 to-muted/10 flex items-center justify-center">
+                        <Building2 className="h-10 w-10 text-muted-foreground" />
+                      </div>
+                        {/* Header Section */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1 min-w-0 pr-3">
+                            <h4 className="font-semibold text-lg leading-tight mb-2 truncate group-hover:text-primary transition-colors">
+                              {site.name}
+                            </h4>
+                            <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
+                              <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                              <span className="line-clamp-1">{site.location}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                            <Badge
+                              className={`${statusConfig.bgLight} ${statusConfig.textColor} border-0 flex items-center gap-1.5 px-2.5 py-1`}
+                            >
+                              <StatusIcon className="h-3 w-3" />
+                              <span className="font-medium">{site.status}</span>
+                            </Badge>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      handleEditSite(site);
+                                    }}
+                                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
+                                    aria-label="Edit site"
+                                  >
+                                    <span>
+                                      <Edit className="h-4 w-4" />
+                                    </span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Edit site details</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         </div>
 
-                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                          <Badge
-                            className={`${statusConfig.bgLight} ${statusConfig.textColor} border-0 flex items-center gap-1.5 px-2.5 py-1`}
-                          >
-                            <StatusIcon className="h-3 w-3" />
-                            <span className="font-medium">{site.status}</span>
-                          </Badge>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    handleEditSite(site);
-                                  }}
-                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
-                                  aria-label="Edit site"
-                                >
-                                  <span>
-                                    <Edit className="h-4 w-4" />
-                                  </span>
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Edit site details</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                      </div>
-
-                      {/* Progress Section */}
-                      <div className="space-y-2 mb-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Project Progress
-                          </span>
-                          <span className="text-sm font-bold text-foreground">
-                            {site.progress}%
-                          </span>
-                        </div>
-                        <Progress value={site.progress} className="h-2.5" />
-                      </div>
-
-                      {/* Financial Overview */}
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="rounded-lg bg-primary/5 p-3 border border-primary/10">
-                          <div className="flex items-center gap-2 mb-1">
-                            <DollarSign className="h-3.5 w-3.5 text-primary" />
-                            <p className="text-xs font-medium text-muted-foreground">Budget</p>
-                          </div>
-                          <p className="font-bold text-base text-primary">
-                            ₹{(site.budget / 10000000).toFixed(1)}Cr
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-green-500/5 p-3 border border-green-500/10">
-                          <div className="flex items-center gap-2 mb-1">
-                            <TrendingUp className="h-3.5 w-3.5 text-green-600" />
-                            <p className="text-xs font-medium text-muted-foreground">Spent</p>
-                          </div>
-                          <p className="font-bold text-base text-green-600">
-                            ₹{(site.spent / 10000000).toFixed(1)}Cr
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Timeline & Budget Usage */}
-                      <div className="space-y-2.5 pt-3 border-t border-border/50">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>
-                              {formatDateShort(site.startDate)} -{' '}
-                              {formatDateShort(site.expectedEndDate)}
+                        {/* Progress Section */}
+                        <div className="space-y-2 mb-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              Project Progress
+                            </span>
+                            <span className="text-sm font-bold text-foreground">
+                              {progressValue}%
                             </span>
                           </div>
+                          <Progress
+                            value={Math.min(Math.max(progressValue, 0), 100)}
+                            className="h-2.5"
+                          />
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Budget Utilization
-                          </span>
-                          <Badge
-                            variant={isOverBudget ? 'destructive' : 'secondary'}
-                            className="text-xs font-semibold"
-                          >
-                            {budgetUsagePercent.toFixed(1)}%
-                          </Badge>
-                        </div>
-                      </div>
-                    </CardContent>
 
-                    {/* Hover Effect Overlay */}
-                    <div className="absolute inset-0 border-2 border-primary/0 group-hover:border-primary/20 rounded-lg transition-colors pointer-events-none" />
-                  </Card>
-                );
-              })}
+                        {/* Financial Overview */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div className="rounded-lg bg-primary/5 p-3 border border-primary/10">
+                            <div className="flex items-center gap-2 mb-1">
+                              <DollarSign className="h-3.5 w-3.5 text-primary" />
+                              <p className="text-xs font-medium text-muted-foreground">Budget</p>
+                            </div>
+                            <p className="font-bold text-base text-primary">
+                              ₹{budgetCrDisplay}Cr
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-green-500/5 p-3 border border-green-500/10">
+                            <div className="flex items-center gap-2 mb-1">
+                              <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+                              <p className="text-xs font-medium text-muted-foreground">Spent</p>
+                            </div>
+                            <p className="font-bold text-base text-green-600">
+                              ₹{spentCrDisplay}Cr
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Timeline & Budget Usage */}
+                        <div className="space-y-2.5 pt-3 border-t border-border/50">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <Calendar className="h-3.5 w-3.5" />
+                              <span>
+                                {startDateLabel} - {endDateLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              Budget Utilization
+                            </span>
+                            <Badge
+                              variant={isOverBudget ? 'destructive' : 'secondary'}
+                              className="text-xs font-semibold"
+                            >
+                              {budgetUsagePercent.toFixed(1)}%
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardContent>
+
+                      {/* Hover Effect Overlay */}
+                      <div className="absolute inset-0 border-2 border-primary/0 group-hover:border-primary/20 rounded-lg transition-colors pointer-events-none" />
+                    </Card>
+                  );
+                })
+              )}
             </div>
           </div>
         </ScrollArea>
@@ -758,13 +572,6 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-14 w-14 bg-primary/10">
-                        {currentSite.imageUrl && (
-                          <AvatarImage
-                            src={currentSite.imageUrl}
-                            alt={currentSite.name}
-                            className="object-cover"
-                          />
-                        )}
                         <AvatarFallback className="bg-primary/10 text-primary">
                           <Building2 className="h-7 w-7" />
                         </AvatarFallback>
@@ -833,7 +640,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                               Total Budget
                             </p>
                             <p className="text-2xl font-bold text-primary">
-                              ₹{(currentSite.budget / 10000000).toFixed(1)}Cr
+                              ₹{currentSiteMetrics ? currentSiteMetrics.budgetCr.toFixed(1) : '0.0'}Cr
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
@@ -850,7 +657,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                               Amount Spent
                             </p>
                             <p className="text-2xl font-bold text-green-600">
-                              ₹{(currentSite.spent / 10000000).toFixed(1)}Cr
+                              ₹{currentSiteMetrics ? currentSiteMetrics.spentCr.toFixed(1) : '0.0'}Cr
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
@@ -865,7 +672,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                           <div className="space-y-2">
                             <p className="text-sm font-medium text-muted-foreground">Progress</p>
                             <p className="text-2xl font-bold text-blue-600">
-                              {currentSite.progress}%
+                              {currentSiteMetrics?.progressValue ?? 0}%
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
@@ -882,11 +689,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                               Days Remaining
                             </p>
                             <p className="text-2xl font-bold text-orange-600">
-                              {Math.ceil(
-                                (new Date(currentSite.expectedEndDate).getTime() -
-                                  new Date().getTime()) /
-                                  (1000 * 60 * 60 * 24),
-                              )}
+                              {currentSiteMetrics?.daysRemaining ?? '—'}
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">

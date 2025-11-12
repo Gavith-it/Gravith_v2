@@ -13,32 +13,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-
-interface MaterialMasterFormData {
-  name: string;
-  category:
-    | 'Cement'
-    | 'Steel'
-    | 'Concrete'
-    | 'Bricks'
-    | 'Sand'
-    | 'Aggregate'
-    | 'Timber'
-    | 'Electrical'
-    | 'Plumbing'
-    | 'Paint'
-    | 'Other';
-  unit: string;
-  standardRate: number;
-  isActive: boolean;
-  hsn: string;
-  taxRate: number;
-}
+import type { MaterialMasterInput } from '@/types/materials';
 
 interface MaterialMasterFormProps {
-  onSubmit: (data: MaterialMasterFormData) => void;
+  onSubmit: (data: MaterialMasterInput) => Promise<void>;
   onCancel: () => void;
-  defaultValues?: Partial<MaterialMasterFormData>;
+  defaultValues?: Partial<MaterialMasterInput>;
   isEdit?: boolean;
 }
 
@@ -48,7 +28,7 @@ export default function MaterialMasterForm({
   defaultValues,
   isEdit = false,
 }: MaterialMasterFormProps) {
-  const [formData, setFormData] = useState<MaterialMasterFormData>({
+  const [formData, setFormData] = useState<MaterialMasterInput>({
     name: defaultValues?.name || '',
     category: defaultValues?.category || 'Cement',
     unit: defaultValues?.unit || '',
@@ -58,9 +38,16 @@ export default function MaterialMasterForm({
     taxRate: defaultValues?.taxRate || 18,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    setIsSubmitting(true);
+    try {
+      await onSubmit(formData);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -89,7 +76,7 @@ export default function MaterialMasterForm({
             onValueChange={(value) =>
               setFormData((prev) => ({
                 ...prev,
-                category: value as MaterialMasterFormData['category'],
+                category: value as MaterialMasterInput['category'],
               }))
             }
           >
@@ -190,10 +177,12 @@ export default function MaterialMasterForm({
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button type="submit">{isEdit ? 'Update Material' : 'Add Material'}</Button>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? (isEdit ? 'Updating…' : 'Adding…') : isEdit ? 'Update Material' : 'Add Material'}
+        </Button>
       </div>
     </form>
   );

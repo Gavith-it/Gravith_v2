@@ -13,7 +13,7 @@ import {
   Search,
   Filter,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
@@ -50,8 +50,19 @@ import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
 import type { MaterialReceipt } from '@/types';
 
 export function MaterialReceiptsPage() {
-  const { receipts, deleteReceipt, linkReceiptToPurchase, unlinkReceipt } = useMaterialReceipts();
-  const { materials } = useMaterials();
+  const {
+    receipts,
+    isLoading: isReceiptsLoading,
+    refresh: refreshReceipts,
+    deleteReceipt,
+    linkReceiptToPurchase,
+    unlinkReceipt,
+  } = useMaterialReceipts();
+  const {
+    materials,
+    isLoading: isMaterialsLoading,
+    refresh: refreshMaterials,
+  } = useMaterials();
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -71,12 +82,24 @@ export function MaterialReceiptsPage() {
     null,
   );
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string>('');
+  const [isLinking, setIsLinking] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Calculate summary statistics
-  const totalReceipts = receipts.length;
-  const totalNetWeight = receipts.reduce((sum, receipt) => sum + receipt.netWeight, 0);
-  const linkedCount = receipts.filter((r) => r.linkedPurchaseId).length;
-  const openCount = receipts.filter((r) => !r.linkedPurchaseId).length;
+  const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => {
+    const receiptCount = receipts.length;
+    const netWeightSum = receipts.reduce((sum, receipt) => sum + (receipt.netWeight ?? 0), 0);
+    const linked = receipts.filter((r) => r.linkedPurchaseId).length;
+    const open = receiptCount - linked;
+
+    return {
+      totalReceipts: receiptCount,
+      totalNetWeight: netWeightSum,
+      linkedCount: linked,
+      openCount: open,
+    };
+  }, [receipts]);
 
   const sortedAndFilteredReceipts = receipts
     .filter((receipt) => {
@@ -121,7 +144,7 @@ export function MaterialReceiptsPage() {
     dialog.openDialog(receipt);
   };
 
-  const handleDelete = (receiptId: string) => {
+  const handleDelete = async (receiptId: string) => {
     const receipt = receipts.find((r) => r.id === receiptId);
     if (receipt?.linkedPurchaseId) {
       toast.error('Cannot delete a linked receipt', {
@@ -129,8 +152,16 @@ export function MaterialReceiptsPage() {
       });
       return;
     }
-    deleteReceipt(receiptId);
-    toast.success('Receipt deleted successfully');
+    try {
+      setProcessingId(receiptId);
+      await deleteReceipt(receiptId);
+      toast.success('Receipt deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete receipt', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete receipt.');
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   const handleOpenLinkDialog = (receipt: MaterialReceipt) => {
@@ -139,31 +170,76 @@ export function MaterialReceiptsPage() {
     setLinkDialogOpen(true);
   };
 
-  const handleLinkConfirm = () => {
+  const handleLinkConfirm = async () => {
     if (!selectedReceiptForLink || !selectedPurchaseId) {
       toast.error('Please select a purchase bill');
       return;
     }
 
-    const success = linkReceiptToPurchase(selectedReceiptForLink.id, selectedPurchaseId);
+    setIsLinking(true);
+    const success = await linkReceiptToPurchase(selectedReceiptForLink.id, selectedPurchaseId);
     if (success) {
-      toast.success('Receipt linked successfully', {
-        description: `Receipt linked to purchase bill.`,
-      });
+      toast.success('Receipt linked successfully');
       setLinkDialogOpen(false);
       setSelectedReceiptForLink(null);
       setSelectedPurchaseId('');
     }
+    setIsLinking(false);
   };
 
-  const handleUnlink = (receipt: MaterialReceipt) => {
+  const handleUnlink = async (receipt: MaterialReceipt) => {
     if (!receipt.linkedPurchaseId) return;
-    unlinkReceipt(receipt.id);
-    toast.success('Receipt unlinked successfully');
+    try {
+      setProcessingId(receipt.id);
+      const success = await unlinkReceipt(receipt.id);
+      if (success) {
+        toast.success('Receipt unlinked successfully');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      setIsRefreshing(true);
+      await Promise.all([refreshReceipts(), refreshMaterials()]);
+      toast.success('Receipts refreshed');
+    } catch (error) {
+      console.error('Failed to refresh receipts', error);
+      toast.error('Unable to refresh receipts right now.');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Get purchases that don't have a receipt linked
-  const availablePurchases = materials.filter((m) => !m.linkedReceiptId);
+  const availablePurchases = useMemo(
+    () =>
+      materials.filter(
+        (material) => !receipts.some((receipt) => receipt.linkedPurchaseId === material.id),
+      ),
+    [materials, receipts],
+  );
+
+  if (isReceiptsLoading && receipts.length === 0) {
+    return (
+      <div className="w-full bg-background">
+        <PurchaseTabs />
+        <div className="p-4 md:p-6 space-y-6">
+          <Card className="w-full">
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div className="h-6 w-1/3 animate-pulse rounded bg-muted" />
+                <div className="h-32 w-full animate-pulse rounded bg-muted" />
+                <div className="h-48 w-full animate-pulse rounded bg-muted" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-background">
@@ -258,6 +334,15 @@ export function MaterialReceiptsPage() {
                   </Select>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing || isReceiptsLoading}
+                    className="gap-2 text-xs font-medium"
+                  >
+                    {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                  </Button>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -449,6 +534,7 @@ export function MaterialReceiptsPage() {
                                     e.stopPropagation();
                                     handleUnlink(receipt);
                                   }}
+                                  disabled={processingId === receipt.id}
                                   className="h-8 w-8 p-0 transition-all hover:bg-orange-100 dark:hover:bg-orange-900/30"
                                 >
                                   <Unlink className="h-3 w-3 text-muted-foreground hover:text-orange-600" />
@@ -491,6 +577,7 @@ export function MaterialReceiptsPage() {
                                   e.stopPropagation();
                                   handleDelete(receipt.id);
                                 }}
+                                  disabled={processingId === receipt.id}
                                 className="h-8 w-8 p-0 transition-all hover:bg-destructive/10"
                               >
                                 <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
@@ -528,13 +615,25 @@ export function MaterialReceiptsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Select value={selectedPurchaseId} onValueChange={setSelectedPurchaseId}>
+            <Select
+              value={selectedPurchaseId}
+              onValueChange={setSelectedPurchaseId}
+              disabled={availablePurchases.length === 0 || isMaterialsLoading}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select purchase bill" />
+                <SelectValue
+                  placeholder={
+                    isMaterialsLoading
+                      ? 'Loading purchase bills...'
+                      : availablePurchases.length === 0
+                        ? 'No available purchases'
+                        : 'Select purchase bill'
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {availablePurchases.length === 0 ? (
-                  <SelectItem value="none" disabled>
+                  <SelectItem value="__none" disabled>
                     No available purchases
                   </SelectItem>
                 ) : (
@@ -551,9 +650,12 @@ export function MaterialReceiptsPage() {
             <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleLinkConfirm} disabled={!selectedPurchaseId}>
+            <Button
+              onClick={handleLinkConfirm}
+              disabled={!selectedPurchaseId || selectedPurchaseId === '__none' || isLinking}
+            >
               <LinkIcon className="h-4 w-4 mr-2" />
-              Link
+              {isLinking ? 'Linking...' : 'Link'}
             </Button>
           </DialogFooter>
         </DialogContent>

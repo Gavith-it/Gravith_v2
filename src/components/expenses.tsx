@@ -9,9 +9,10 @@ import {
   Search,
   Filter,
   Receipt,
+  Loader2,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { getExpenseColumns } from './expenses-columns';
 
@@ -35,95 +36,8 @@ import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDate } from '@/lib/utils';
 import type { Expense } from '@/types';
-
-// Mock data - in real app this would come from API
-const mockExpenses: Expense[] = [
-  {
-    id: '1',
-    category: 'Materials',
-    subcategory: 'Cement',
-    description: 'Purchase of cement for foundation work',
-    amount: 50000,
-    date: '2024-01-15',
-    vendor: 'ABC Construction Materials',
-    siteId: 'site-1',
-    siteName: 'Residential Complex A',
-    receipt: 'RCP-001234',
-    status: 'paid',
-    approvedBy: 'Project Manager',
-    organizationId: 'org-1',
-    createdAt: '2024-01-15T10:00:00Z',
-    updatedAt: '2024-01-15T10:00:00Z',
-  },
-  {
-    id: '2',
-    category: 'Labour',
-    subcategory: 'Skilled Workers',
-    description: 'Payment for skilled construction workers',
-    amount: 75000,
-    date: '2024-01-20',
-    vendor: 'XYZ Labor Contractors',
-    siteId: 'site-1',
-    siteName: 'Residential Complex A',
-    receipt: 'RCP-001235',
-    status: 'pending',
-    approvedBy: 'Site Supervisor',
-    organizationId: 'org-1',
-    createdAt: '2024-01-20T10:00:00Z',
-    updatedAt: '2024-01-20T10:00:00Z',
-  },
-  {
-    id: '3',
-    category: 'Equipment',
-    subcategory: 'Crane Rental',
-    description: 'Monthly crane rental for heavy lifting',
-    amount: 120000,
-    date: '2024-01-25',
-    vendor: 'Heavy Equipment Rentals',
-    siteId: 'site-2',
-    siteName: 'Commercial Building B',
-    receipt: 'RCP-001236',
-    status: 'paid',
-    approvedBy: 'Project Manager',
-    organizationId: 'org-1',
-    createdAt: '2024-01-25T10:00:00Z',
-    updatedAt: '2024-01-25T10:00:00Z',
-  },
-  {
-    id: '4',
-    category: 'Transport',
-    subcategory: 'Material Transport',
-    description: 'Transportation of materials to site',
-    amount: 25000,
-    date: '2024-02-01',
-    vendor: 'Local Transport Services',
-    siteId: 'site-1',
-    siteName: 'Residential Complex A',
-    receipt: 'RCP-001237',
-    status: 'overdue',
-    approvedBy: 'Site Supervisor',
-    organizationId: 'org-1',
-    createdAt: '2024-02-01T10:00:00Z',
-    updatedAt: '2024-02-01T10:00:00Z',
-  },
-  {
-    id: '5',
-    category: 'Utilities',
-    subcategory: 'Electricity',
-    description: 'Site electricity bill for January',
-    amount: 15000,
-    date: '2024-02-05',
-    vendor: 'State Electricity Board',
-    siteId: 'site-2',
-    siteName: 'Commercial Building B',
-    receipt: 'RCP-001238',
-    status: 'pending',
-    approvedBy: 'Finance Manager',
-    organizationId: 'org-1',
-    createdAt: '2024-02-05T10:00:00Z',
-    updatedAt: '2024-02-05T10:00:00Z',
-  },
-];
+import { toast } from 'sonner';
+import { useExpenses } from '@/lib/contexts';
 
 // Utility functions
 
@@ -171,8 +85,14 @@ interface ExpensesPageProps {
 
 export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
   const searchParams = useSearchParams();
-  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
-  const [isLoading, setIsLoading] = useState(false);
+  const {
+    expenses,
+    isLoading: isExpensesLoading,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+  } = useExpenses();
+  const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dialogState = useDialogState<Expense>();
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
@@ -194,59 +114,51 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
   }, [searchParams]);
 
   const handleExpenseSubmit = async (formData: ExpenseFormData) => {
-    setIsLoading(true);
+    setIsSaving(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
       if (dialogState.editingItem) {
-        const updatedExpense: Expense = {
-          ...dialogState.editingItem,
+        const updated = await updateExpense(dialogState.editingItem.id, {
           category: formData.category,
           subcategory: formData.subcategory,
           description: formData.description,
           amount: formData.amount,
           date: formData.date.toISOString().split('T')[0],
           vendor: formData.vendor,
-          siteName: formData.site,
+          siteId: formData.siteId,
+          siteName: formData.siteName,
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
-          updatedAt: new Date().toISOString(),
-        };
+        });
 
-        setExpenses((prev) =>
-          prev.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense)),
-        );
+        if (updated && viewingExpense?.id === updated.id) {
+          setViewingExpense(updated);
+        }
+
+        toast.success('Expense updated successfully');
       } else {
-        const siteName = formData.site;
-        const siteSlug = siteName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-        const newExpense: Expense = {
-          id: (expenses.length + 1).toString(),
+        await addExpense({
           category: formData.category,
           subcategory: formData.subcategory,
           description: formData.description,
           amount: formData.amount,
           date: formData.date.toISOString().split('T')[0],
           vendor: formData.vendor,
-          siteId: `site-${siteSlug}`,
-          siteName,
+          siteId: formData.siteId,
+          siteName: formData.siteName,
           receipt: formData.receipt,
-          status: 'pending',
           approvedBy: formData.approvedBy,
-          organizationId: 'org-1',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
+          status: 'pending',
+        });
 
-        setExpenses((prev) => [...prev, newExpense]);
+        toast.success('Expense added successfully');
       }
 
       dialogState.closeDialog();
     } catch (error) {
-      console.error('Failed to add expense:', error);
+      console.error('Failed to save expense', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save expense');
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -258,7 +170,7 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     dialogState.openDialog(expense);
   };
 
-  const handleDeleteExpense = (expense: Expense) => {
+  const handleDeleteExpense = async (expense: Expense) => {
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm('Are you sure you want to delete this expense?');
       if (!confirmed) {
@@ -266,37 +178,49 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
       }
     }
 
-    setExpenses((prev) => prev.filter((item) => item.id !== expense.id));
-
-    if (dialogState.editingItem?.id === expense.id) {
-      dialogState.closeDialog();
-    }
-
-    if (viewingExpense?.id === expense.id) {
-      setViewingExpense(null);
+    try {
+      await deleteExpense(expense.id);
+      if (dialogState.editingItem?.id === expense.id) {
+        dialogState.closeDialog();
+      }
+      if (viewingExpense?.id === expense.id) {
+        setViewingExpense(null);
+      }
+      toast.success('Expense deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete expense', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete expense');
     }
   };
 
-  // Calculate analytics (filtered by site if applicable)
-  const expensesForCalc = filterBySite
-    ? expenses.filter((e) => e.siteName === filterBySite)
-    : expenses;
-  const { total, paid, pending, overdue } = calculateTotals(expensesForCalc);
+  const expensesForCalc = useMemo(() => {
+    const base = filterBySite ? expenses.filter((e) => e.siteName === filterBySite) : expenses;
+    return base;
+  }, [expenses, filterBySite]);
 
-  let filteredExpenses = filterExpenses(
-    expenses,
-    tableState.filter['category'],
-    tableState.filter['status'],
-    searchTerm,
-  );
+  const { total, paid, pending, overdue } = useMemo(() => calculateTotals(expensesForCalc), [expensesForCalc]);
 
-  // Apply site filter
-  if (filterBySite) {
-    filteredExpenses = filteredExpenses.filter((e) => e.siteName === filterBySite);
-  }
+  const categoryFilter = tableState.filter['category'];
+  const statusFilter = tableState.filter['status'];
 
-  // Get unique categories for filter
-  const categories = Array.from(new Set(expenses.map((expense) => expense.category)));
+  const filteredExpenses = useMemo(() => {
+    let data = filterExpenses(
+      expenses,
+      categoryFilter,
+      statusFilter,
+      searchTerm,
+    );
+
+    if (filterBySite) {
+      data = data.filter((expense) => expense.siteName === filterBySite);
+    }
+
+    return data;
+  }, [expenses, categoryFilter, statusFilter, searchTerm, filterBySite]);
+
+  const categories = useMemo(() => {
+    return Array.from(new Set(expenses.map((expense) => expense.category)));
+  }, [expenses]);
 
   return (
     <div className="w-full min-w-0 bg-background">
@@ -448,7 +372,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
               </div>
 
               <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium w-fit">
-                {filteredExpenses.length} expense{filteredExpenses.length !== 1 ? 's' : ''} found
+                {isExpensesLoading
+                  ? 'Loading expenses…'
+                  : `${filteredExpenses.length} expense${filteredExpenses.length !== 1 ? 's' : ''} found`}
               </Badge>
             </div>
           </CardContent>
@@ -456,7 +382,13 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
 
         {/* Main Content */}
         <div className="space-y-4">
-          {filteredExpenses.length === 0 ? (
+          {isExpensesLoading ? (
+            <Card className="w-full">
+              <CardContent className="p-6 md:p-12 flex items-center justify-center">
+                <Loader2 className="h-12 w-12 text-primary animate-spin" />
+              </CardContent>
+            </Card>
+          ) : filteredExpenses.length === 0 ? (
             <Card className="w-full">
               <CardContent className="p-6 md:p-12">
                 <div className="flex flex-col items-center justify-center">
@@ -517,7 +449,7 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           <ExpenseForm
             onSubmit={handleExpenseSubmit}
             onCancel={dialogState.closeDialog}
-            isLoading={isLoading}
+            isLoading={isSaving}
             lockedSite={filterBySite}
             submitLabel={dialogState.isEditing ? 'Update Expense' : 'Add Expense'}
             loadingLabel={dialogState.isEditing ? 'Updating...' : 'Adding...'}
@@ -530,7 +462,8 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                     amount: dialogState.editingItem.amount,
                     date: new Date(dialogState.editingItem.date),
                     vendor: dialogState.editingItem.vendor || '',
-                    site: dialogState.editingItem.siteName || '',
+                    siteId: dialogState.editingItem.siteId || '',
+                    siteName: dialogState.editingItem.siteName || '',
                     receipt: dialogState.editingItem.receipt || '',
                     approvedBy: dialogState.editingItem.approvedBy || '',
                   }

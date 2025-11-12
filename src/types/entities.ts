@@ -117,10 +117,14 @@ export interface MaterialPurchase {
   unitRate: number;
   totalAmount: number;
   vendorInvoiceNumber: string;
+  vendorName?: string;
   purchaseDate: string;
   filledWeight?: number;
   emptyWeight?: number;
   netWeight?: number;
+  weightUnit?: string;
+  consumedQuantity?: number;
+  remainingQuantity?: number;
   organizationId: string;
   createdAt: string;
   updatedAt: string;
@@ -139,10 +143,136 @@ export interface MaterialReceipt {
   filledWeight: number;
   emptyWeight: number;
   netWeight: number;
-  vendorId?: string;
-  vendorName?: string;
-  linkedPurchaseId?: string;
+  vendorId?: string | null;
+  vendorName?: string | null;
+  linkedPurchaseId?: string | null;
   siteId?: string;
+  siteName?: string | null;
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Work Progress entry with materials consumed
+ */
+export interface WorkProgressMaterial {
+  id: string;
+  workProgressId: string;
+  materialId?: string | null;
+  materialName: string;
+  unit: string;
+  quantity: number;
+  balanceQuantity?: number | null;
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkProgressEntry {
+  id: string;
+  organizationId: string;
+  siteId?: string | null;
+  siteName: string;
+  workType: string;
+  description?: string;
+  workDate: string;
+  unit: string;
+  length?: number | null;
+  breadth?: number | null;
+  thickness?: number | null;
+  totalQuantity: number;
+  laborHours: number;
+  progressPercentage: number;
+  status: 'in_progress' | 'completed' | 'on_hold';
+  notes?: string | null;
+  photos: string[];
+  materials: WorkProgressMaterial[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+}
+
+/**
+ * Vehicle entity
+ */
+export interface Vehicle {
+  id: string;
+  vehicleNumber: string;
+  name?: string;
+  type: string;
+  make?: string;
+  model?: string;
+  year?: number;
+  status: 'available' | 'in_use' | 'maintenance' | 'idle' | 'returned';
+  siteId?: string | null;
+  siteName?: string | null;
+  operator?: string | null;
+  isRental: boolean;
+  vendor?: string | null;
+  rentalCostPerDay?: number | null;
+  rentalStartDate?: string | null;
+  rentalEndDate?: string | null;
+  totalRentalDays?: number | null;
+  totalRentalCost?: number | null;
+  fuelCapacity?: number | null;
+  currentFuelLevel?: number | null;
+  mileage?: number | null;
+  lastMaintenanceDate?: string | null;
+  nextMaintenanceDate?: string | null;
+  insuranceExpiry?: string | null;
+  registrationExpiry?: string | null;
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+}
+
+export interface VehicleUsage {
+  id: string;
+  vehicleId: string;
+  vehicleNumber: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  startOdometer: number;
+  endOdometer: number;
+  totalDistance: number;
+  workDescription: string;
+  workCategory: 'construction' | 'transport' | 'delivery' | 'maintenance' | 'inspection' | 'other';
+  siteId: string;
+  siteName: string;
+  operator: string;
+  fuelConsumed: number;
+  isRental: boolean;
+  rentalCost?: number | null;
+  vendor?: string | null;
+  status: 'In Progress' | 'Completed' | 'Cancelled';
+  notes?: string | null;
+  recordedBy: string;
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VehicleRefueling {
+  id: string;
+  vehicleId: string;
+  vehicleNumber: string;
+  date: string;
+  fuelType: 'Petrol' | 'Diesel' | 'CNG' | 'Electric';
+  quantity: number;
+  unit: 'liters' | 'kWh';
+  cost: number;
+  odometerReading: number;
+  location: string;
+  vendor: string;
+  invoiceNumber: string;
+  receiptUrl?: string | null;
+  notes?: string | null;
+  recordedBy: string;
   organizationId: string;
   createdAt: string;
   updatedAt: string;
@@ -177,104 +307,6 @@ export interface Vendor {
 }
 
 /**
- * Vehicle entity
- */
-export interface Vehicle {
-  id: string;
-  name?: string;
-  vehicleNumber: string;
-  type: string;
-  make?: string;
-  model?: string;
-  year?: number;
-  status: 'available' | 'in-use' | 'maintenance' | 'Active' | 'Maintenance' | 'Idle' | 'Returned';
-  siteId?: string;
-  siteName?: string;
-  operator?: string;
-  isRental: boolean;
-  vendor?: string;
-  rentalCostPerDay?: number;
-  rentalStartDate?: string;
-  rentalEndDate?: string;
-  totalRentalDays?: number;
-  totalRentalCost?: number;
-  fuelCapacity?: number;
-  currentFuelLevel?: number;
-  mileage?: number;
-  lastMaintenanceDate?: string;
-  nextMaintenanceDate?: string;
-  insuranceExpiry?: string;
-  registrationExpiry?: string;
-  organizationId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Vehicle Usage entity
- */
-export interface VehicleUsage {
-  id: string;
-  vehicleId: string;
-  vehicleNumber: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  startOdometer: number;
-  endOdometer: number;
-  totalDistance: number;
-  distance?: number; // Legacy support
-  workDescription: string;
-  workCategory:
-    | 'Construction'
-    | 'Transport'
-    | 'Delivery'
-    | 'Maintenance'
-    | 'Other'
-    | 'Transportation'
-    | 'Material Hauling'
-    | 'Equipment Transport'
-    | 'Site Inspection';
-  siteId: string;
-  siteName: string;
-  operator: string;
-  fuelConsumed: number;
-  isRental: boolean;
-  rentalCost?: number;
-  vendor?: string;
-  status: 'In Progress' | 'Completed' | 'Cancelled';
-  notes?: string;
-  recordedBy: string;
-  organizationId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Vehicle Refueling entity
- */
-export interface VehicleRefueling {
-  id: string;
-  vehicleId: string;
-  vehicleNumber: string;
-  date: string;
-  fuelType: 'Petrol' | 'Diesel' | 'CNG' | 'Electric';
-  quantity: number;
-  unit: 'liters' | 'kWh';
-  cost: number;
-  odometerReading: number;
-  location: string;
-  vendor: string;
-  invoiceNumber: string;
-  receiptUrl?: string;
-  notes?: string;
-  recordedBy: string;
-  organizationId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
  * Expense entity
  */
 export interface Expense {
@@ -290,6 +322,7 @@ export interface Expense {
   receipt?: string;
   status: 'paid' | 'pending' | 'overdue';
   approvedBy?: string;
+  approvedByName?: string;
   organizationId: string;
   createdAt: string;
   updatedAt: string;
@@ -304,7 +337,7 @@ export interface Payment {
   clientName: string;
   amount: number;
   status: 'pending' | 'completed' | 'overdue';
-  dueDate: string;
+  dueDate?: string;
   paidDate?: string;
   siteId?: string;
   siteName?: string;
@@ -344,6 +377,7 @@ export interface ProjectActivity {
 export interface ProjectMilestone {
   id: string;
   siteId: string;
+  siteName?: string | null;
   name: string;
   date: string;
   description: string;

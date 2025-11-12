@@ -3,12 +3,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DollarSign, ShoppingCart } from 'lucide-react';
 import * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
-
-import { getActiveMaterials } from './materialMasterData';
-
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +40,7 @@ import {
 } from '@/components/ui/table';
 import type { SharedMaterial } from '@/lib/contexts';
 import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
+import type { MaterialMaster } from '@/types/entities';
 
 interface PurchaseFormProps {
   selectedSite?: string;
@@ -93,6 +92,7 @@ const units = [
 
 // Form schema with Zod validation
 const purchaseFormSchema = z.object({
+  materialId: z.string().optional(),
   vendor: z.string().min(1, 'Please select a vendor.'),
   site: z.string().min(1, 'Please select a site.'),
   materialName: z.string().min(1, 'Please select a material.'),
@@ -102,6 +102,10 @@ const purchaseFormSchema = z.object({
   invoiceNumber: z.string().min(1, 'Invoice number is required.'),
   purchaseDate: z.date(),
   linkedReceiptIds: z.array(z.string()).optional(),
+  filledWeight: z.number().optional(),
+  emptyWeight: z.number().optional(),
+  netWeight: z.number().optional(),
+  weightUnit: z.string().optional(),
 });
 
 type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
@@ -117,10 +121,13 @@ export function PurchaseForm({
   const isEditMode = !!editingMaterial;
   const formId = isEditMode ? 'purchase-edit-form' : 'purchase-new-form';
   const [isClient, setIsClient] = React.useState(false);
+  const [materialOptions, setMaterialOptions] = useState<MaterialMaster[]>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(true);
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
     defaultValues: {
+      materialId: editingMaterial?.materialId || undefined,
       vendor: editingMaterial?.vendor || '',
       site: selectedSite || editingMaterial?.site || '',
       materialName: editingMaterial?.materialName || '',
@@ -132,12 +139,71 @@ export function PurchaseForm({
         ? new Date(editingMaterial.purchaseDate)
         : undefined,
       linkedReceiptIds: editingMaterial?.linkedReceiptId ? [editingMaterial.linkedReceiptId] : [],
+      filledWeight: editingMaterial?.filledWeight,
+      emptyWeight: editingMaterial?.emptyWeight,
+      netWeight: editingMaterial?.netWeight,
+      weightUnit: editingMaterial?.weightUnit,
     },
   });
 
   React.useEffect(() => {
     setIsClient(true);
   }, []);
+
+  useEffect(() => {
+    const loadMaterials = async () => {
+      try {
+        setIsLoadingMaterials(true);
+        const response = await fetch('/api/materials', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          materials?: MaterialMaster[];
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load materials.');
+        }
+
+        setMaterialOptions(payload.materials ?? []);
+      } catch (error) {
+        console.error('Failed to load materials', error);
+        toast.error('Failed to load materials list.');
+        setMaterialOptions([]);
+      } finally {
+        setIsLoadingMaterials(false);
+      }
+    };
+
+    void loadMaterials();
+  }, []);
+
+  useEffect(() => {
+    if (!materialOptions.length) {
+      form.setValue('materialId', undefined);
+      form.setValue('materialName', '');
+      return;
+    }
+
+    const currentId = form.getValues('materialId');
+    const currentMaterial = currentId
+      ? materialOptions.find((material) => material.id === currentId)
+      : undefined;
+
+    if (currentMaterial) {
+      form.setValue('materialName', currentMaterial.name, { shouldValidate: true });
+      if (!editingMaterial) {
+        form.setValue('unit', currentMaterial.unit, { shouldValidate: true });
+      }
+      return;
+    }
+
+    if (!editingMaterial) {
+      const [first] = materialOptions;
+      form.setValue('materialId', first.id, { shouldValidate: true });
+      form.setValue('materialName', first.name, { shouldValidate: true });
+      form.setValue('unit', first.unit, { shouldValidate: true });
+    }
+  }, [editingMaterial, form, materialOptions]);
 
   // Get unlinked receipts directly from receipts array
   const unlinkedReceipts = React.useMemo(() => {
@@ -153,61 +219,91 @@ export function PurchaseForm({
     });
   }, []);
 
-  function handleFormSubmit(data: PurchaseFormData) {
-    const totalAmount = data.quantity * data.unitRate;
+  const handleFormSubmit = React.useCallback(
+    async (data: PurchaseFormData) => {
+      const totalAmount = data.quantity * data.unitRate;
+      const selectedMaterial = materialOptions.find((material) => material.id === data.materialId);
 
-    const materialData: Omit<SharedMaterial, 'id'> = {
-      materialName: data.materialName,
-      site: data.site,
-      quantity: data.quantity,
-      unit: data.unit,
-      unitRate: data.unitRate,
-      costPerUnit: data.unitRate,
-      totalAmount,
-      vendor: data.vendor,
-      invoiceNumber: data.invoiceNumber,
-      purchaseDate: data.purchaseDate.toISOString().split('T')[0],
-      addedBy: 'Current User',
-      consumedQuantity: 0,
-      remainingQuantity: data.quantity,
-      linkedReceiptId: data.linkedReceiptIds?.[0], // Store first receipt ID for backward compatibility
-    };
+      const materialData: Omit<SharedMaterial, 'id'> = {
+        materialId: data.materialId,
+        materialName: selectedMaterial?.name ?? data.materialName,
+        site: data.site,
+        quantity: data.quantity,
+        unit: data.unit,
+        unitRate: data.unitRate,
+        costPerUnit: data.unitRate,
+        totalAmount,
+        vendor: data.vendor,
+        invoiceNumber: data.invoiceNumber,
+        purchaseDate: data.purchaseDate.toISOString().split('T')[0],
+        addedBy: 'Current User',
+        consumedQuantity: editingMaterial?.consumedQuantity ?? 0,
+        remainingQuantity: editingMaterial?.remainingQuantity ?? data.quantity,
+        linkedReceiptId: data.linkedReceiptIds?.[0],
+        category: selectedMaterial?.category,
+        filledWeight: data.filledWeight ? Number(data.filledWeight) : undefined,
+        emptyWeight: data.emptyWeight ? Number(data.emptyWeight) : undefined,
+        netWeight: data.netWeight ? Number(data.netWeight) : undefined,
+        weightUnit: data.weightUnit || undefined,
+      };
 
-    let purchaseId: string;
-    if (editingMaterial) {
-      updateMaterial(editingMaterial.id, materialData);
-      purchaseId = editingMaterial.id;
-      toast.success('Purchase updated successfully!', {
-        description: `${data.materialName} has been updated.`,
-      });
-    } else {
-      addMaterial(materialData);
-      // In real app, we'd get the ID back from addMaterial
-      purchaseId = 'temp-id'; // Placeholder
-      toast.success('Purchase recorded successfully!', {
-        description: `${data.materialName} has been added to inventory.`,
-      });
-    }
-
-    // Link receipts if selected
-    if (data.linkedReceiptIds && data.linkedReceiptIds.length > 0 && purchaseId) {
-      let linkedCount = 0;
-      data.linkedReceiptIds.forEach((receiptId) => {
-        if (linkReceiptToPurchase(receiptId, purchaseId)) {
-          linkedCount++;
+      try {
+        let purchaseId = editingMaterial?.id ?? '';
+        if (editingMaterial) {
+          const updated = await updateMaterial(editingMaterial.id, materialData);
+          purchaseId = updated?.id ?? purchaseId;
+          toast.success('Purchase updated successfully!', {
+            description: `${materialData.materialName} has been updated.`,
+          });
+        } else {
+          const created = await addMaterial(materialData);
+          purchaseId = created?.id ?? '';
+          toast.success('Purchase recorded successfully!', {
+            description: `${materialData.materialName} has been added to inventory.`,
+          });
         }
-      });
-      if (linkedCount > 0) {
-        toast.success(`Linked ${linkedCount} receipt(s) to purchase`);
-      }
-    }
 
-    onSubmit?.(materialData);
-  }
+        if (data.linkedReceiptIds && data.linkedReceiptIds.length > 0 && purchaseId) {
+          let linkedCount = 0;
+          for (const receiptId of data.linkedReceiptIds) {
+            // eslint-disable-next-line no-await-in-loop
+            const success = await linkReceiptToPurchase(receiptId, purchaseId);
+            if (success) {
+              linkedCount++;
+            }
+          }
+          if (linkedCount > 0) {
+            toast.success(
+              `Linked ${linkedCount} receipt${linkedCount > 1 ? 's' : ''} to purchase`,
+            );
+          }
+        }
+
+        onSubmit?.(materialData);
+      } catch (error) {
+        console.error('Failed to save purchase', error);
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to save purchase. Please try again.',
+        );
+      }
+    },
+    [
+      addMaterial,
+      editingMaterial,
+      linkReceiptToPurchase,
+      materialOptions,
+      updateMaterial,
+      onSubmit,
+    ],
+  );
 
   const quantity = form.watch('quantity');
   const unitRate = form.watch('unitRate');
   const totalAmount = quantity && unitRate ? quantity * unitRate : 0;
+  const isSubmitDisabled =
+    form.formState.isSubmitting ||
+    isLoadingMaterials ||
+    (materialOptions.length === 0 && !editingMaterial);
 
   const getSubmitButtonText = () =>
     form.formState.isSubmitting
@@ -303,30 +399,66 @@ export function PurchaseForm({
           />
 
           <Controller
-            name="materialName"
+            name="materialId"
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor={`${formId}-material`}>
                   Material <span className="text-destructive">*</span>
                 </FieldLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  value={field.value ?? ''}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    const material = materialOptions.find((option) => option.id === value);
+                    if (material) {
+                      form.setValue('materialName', material.name, { shouldValidate: true });
+                      form.setValue('unit', material.unit, { shouldValidate: true });
+                    } else {
+                      form.setValue('materialName', '', { shouldValidate: true });
+                    }
+                  }}
+                  disabled={isLoadingMaterials || materialOptions.length === 0}
+                >
                   <SelectTrigger id={`${formId}-material`} aria-invalid={fieldState.invalid}>
-                    <SelectValue placeholder="Select material" />
+                    <SelectValue
+                      placeholder={
+                        isLoadingMaterials
+                          ? 'Loading materials…'
+                          : materialOptions.length === 0
+                            ? 'No materials available'
+                            : 'Select material'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {getActiveMaterials().map((material) => (
-                      <SelectItem key={material.id} value={material.name}>
-                        {material.name}
-                      </SelectItem>
-                    ))}
+                    {materialOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No active materials found. Add materials first.
+                      </div>
+                    ) : (
+                      materialOptions.map((material) => (
+                        <SelectItem key={material.id} value={material.id}>
+                          {material.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
-                <FieldDescription>Choose the material being purchased.</FieldDescription>
+                <FieldDescription>
+                  {materialOptions.length === 0
+                    ? 'Add a material in Materials before recording purchases.'
+                    : 'Choose the material being purchased.'}
+                </FieldDescription>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                {form.formState.errors.materialName && (
+                  <FieldError errors={[form.formState.errors.materialName]} />
+                )}
               </Field>
             )}
           />
+          {/* Hidden field to satisfy validation for materialName */}
+          <input type="hidden" {...form.register('materialName')} />
         </div>
 
         {/* Quantity, Unit, and Unit Rate Row */}
@@ -610,13 +742,14 @@ export function PurchaseForm({
           variant="outline"
           onClick={onCancel}
           aria-label="Cancel and close form"
+          disabled={form.formState.isSubmitting}
         >
           Cancel
         </Button>
         <Button
           type="submit"
           form={formId}
-          disabled={form.formState.isSubmitting}
+          disabled={isSubmitDisabled}
           aria-label={getSubmitButtonText()}
         >
           <ShoppingCart className="h-4 w-4 mr-2" />

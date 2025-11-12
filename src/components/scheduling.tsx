@@ -1,974 +1,1128 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  Loader2,
   Plus,
+  Trash2,
+  Pencil,
   Calendar,
+  Flag,
   AlertTriangle,
-  Target,
   Users,
-  Activity,
-  Zap,
-  Building2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
-import { useDialogState } from '../lib/hooks/useDialogState';
-import { useTableState } from '../lib/hooks/useTableState';
-import { formatDate } from '../lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { useScheduling } from '@/lib/contexts';
+import { formatDate } from '@/lib/utils';
+import type { ProjectActivity, ProjectMilestone } from '@/types';
+import { toast } from 'sonner';
 
-import { DataTable } from './common/DataTable';
-import { FormDialog } from './common/FormDialog';
-import { PageHeader } from './layout/PageHeader';
-import { Alert, AlertDescription } from './ui/alert';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { DatePicker } from './ui/date-picker';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Progress } from './ui/progress';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Textarea } from './ui/textarea';
+type SiteOption = { id: string; name: string };
 
-interface ProjectActivity {
-  id: string;
-  siteId: string;
-  siteName: string;
-  name: string;
-  description: string;
-  startDate: string;
-  endDate: string;
-  duration: number; // in days
-  progress: number; // percentage
-  status: 'not-started' | 'in-progress' | 'completed' | 'delayed';
-  dependencies: string[]; // array of activity IDs
-  assignedTeam: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  category: 'Foundation' | 'Structure' | 'MEP' | 'Finishing' | 'External';
-  resources: string[];
-  milestones: boolean;
+const activitySchema = z.object({
+  siteId: z.string().min(1, 'Select a site.'),
+  siteName: z.string().optional(),
+  name: z.string().min(2, 'Activity name is required.'),
+  description: z.string().optional(),
+  startDate: z.date(),
+  endDate: z.date(),
+  progress: z
+    .number()
+    .min(0, 'Progress cannot be negative.')
+    .max(100, 'Progress cannot exceed 100%.'),
+  status: z.enum(['not-started', 'in-progress', 'completed', 'delayed']),
+  assignedTeam: z.string().optional(),
+  priority: z.enum(['low', 'medium', 'high', 'critical']),
+  category: z.enum(['Foundation', 'Structure', 'MEP', 'Finishing', 'External']),
+  dependencies: z.string().optional(),
+  resources: z.string().optional(),
+  milestones: z.boolean().optional(),
+});
+
+const milestoneSchema = z.object({
+  siteId: z.string().min(1, 'Select a site.'),
+  siteName: z.string().optional(),
+  name: z.string().min(2, 'Milestone name is required.'),
+  date: z.date(),
+  description: z.string().optional(),
+  status: z.enum(['pending', 'achieved']),
+});
+
+type ActivityFormData = z.infer<typeof activitySchema>;
+type MilestoneFormData = z.infer<typeof milestoneSchema>;
+
+function deriveActivityStats(activities: ProjectActivity[]) {
+  const total = activities.length;
+  const completed = activities.filter((activity) => activity.status === 'completed').length;
+  const inProgress = activities.filter((activity) => activity.status === 'in-progress').length;
+  const delayed = activities.filter((activity) => activity.status === 'delayed').length;
+  const averageProgress =
+    activities.length > 0
+      ? Math.round(
+          activities.reduce((sum, activity) => sum + (activity.progress ?? 0), 0) / activities.length,
+        )
+      : 0;
+
+  return {
+    total,
+    completed,
+    inProgress,
+    delayed,
+    averageProgress,
+  };
 }
 
-interface ProjectMilestone {
-  id: string;
-  name: string;
-  date: string;
-  description: string;
-  status: 'pending' | 'achieved';
+function groupActivitiesBySite(activities: ProjectActivity[]) {
+  return activities.reduce<Record<string, ProjectActivity[]>>((acc, activity) => {
+    if (!acc[activity.siteId]) {
+      acc[activity.siteId] = [];
+    }
+    acc[activity.siteId].push(activity);
+    return acc;
+  }, {});
 }
 
-interface Site {
-  id: string;
-  name: string;
-  location: string;
-  startDate: string;
-  expectedEndDate: string;
-  status: 'Active' | 'Stopped' | 'Completed' | 'Canceled';
-  budget: number;
-  spent: number;
-  description: string;
-  progress: number;
-  imageUrl?: string;
+function findNextMilestone(milestones: ProjectMilestone[]) {
+  const upcoming = milestones
+    .filter((milestone) => milestone.status === 'pending')
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  return upcoming[0] ?? null;
 }
 
-const mockSites: Site[] = [
-  {
-    id: '1',
-    name: 'Residential Complex A',
-    location: 'Downtown District',
-    startDate: '2024-01-15',
-    expectedEndDate: '2024-12-30',
-    status: 'Active',
-    budget: 25000000,
-    spent: 8500000,
-    description: 'High-rise residential building with 200 units',
-    progress: 34,
-  },
-  {
-    id: '2',
-    name: 'Commercial Plaza B',
-    location: 'Business District',
-    startDate: '2024-02-01',
-    expectedEndDate: '2025-06-15',
-    status: 'Active',
-    budget: 45000000,
-    spent: 12500000,
-    description: 'Mixed-use commercial development',
-    progress: 28,
-  },
-  {
-    id: '3',
-    name: 'Industrial Warehouse C',
-    location: 'Industrial Zone',
-    startDate: '2024-03-10',
-    expectedEndDate: '2024-11-20',
-    status: 'Active',
-    budget: 18000000,
-    spent: 5200000,
-    description: 'Large-scale warehouse facility',
-    progress: 29,
-  },
-];
+export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {}) {
+  const {
+    activities,
+    milestones,
+    isLoading,
+    addActivity,
+    updateActivity,
+    deleteActivity,
+    addMilestone,
+    updateMilestone,
+    deleteMilestone,
+  } = useScheduling();
 
-const mockActivities: ProjectActivity[] = [
-  {
-    id: '1',
-    siteId: '1',
-    siteName: 'Residential Complex A',
-    name: 'Site Preparation',
-    description: 'Clear site, set up temporary facilities, survey',
-    startDate: '2024-01-15',
-    endDate: '2024-01-25',
-    duration: 10,
-    progress: 100,
-    status: 'completed',
-    dependencies: [],
-    assignedTeam: 'Site Team A',
-    priority: 'high',
-    category: 'Foundation',
-    resources: ['Excavator', 'Labor Team'],
-    milestones: false,
-  },
-  {
-    id: '2',
-    siteId: '1',
-    siteName: 'Residential Complex A',
-    name: 'Foundation Excavation',
-    description: 'Excavate foundation as per drawings',
-    startDate: '2024-01-26',
-    endDate: '2024-02-05',
-    duration: 10,
-    progress: 100,
-    status: 'completed',
-    dependencies: ['1'],
-    assignedTeam: 'Foundation Team',
-    priority: 'critical',
-    category: 'Foundation',
-    resources: ['Excavator', 'Dumper', 'Labor Team'],
-    milestones: false,
-  },
-  {
-    id: '3',
-    siteId: '1',
-    siteName: 'Residential Complex A',
-    name: 'Foundation Concrete',
-    description: 'Pour foundation concrete and curing',
-    startDate: '2024-02-06',
-    endDate: '2024-02-20',
-    duration: 14,
-    progress: 85,
-    status: 'in-progress',
-    dependencies: ['2'],
-    assignedTeam: 'Concrete Team',
-    priority: 'critical',
-    category: 'Foundation',
-    resources: ['Concrete Mixer', 'Crane', 'Labor Team'],
-    milestones: true,
-  },
-  {
-    id: '4',
-    siteId: '1',
-    siteName: 'Residential Complex A',
-    name: 'Column Construction',
-    description: 'Construct ground floor columns',
-    startDate: '2024-02-21',
-    endDate: '2024-03-10',
-    duration: 18,
-    progress: 0,
-    status: 'not-started',
-    dependencies: ['3'],
-    assignedTeam: 'Structure Team',
-    priority: 'high',
-    category: 'Structure',
-    resources: ['Crane', 'Concrete Mixer', 'Labor Team'],
-    milestones: false,
-  },
-  {
-    id: '5',
-    siteId: '1',
-    siteName: 'Residential Complex A',
-    name: 'First Floor Slab',
-    description: 'Cast first floor slab',
-    startDate: '2024-03-11',
-    endDate: '2024-03-25',
-    duration: 14,
-    progress: 0,
-    status: 'not-started',
-    dependencies: ['4'],
-    assignedTeam: 'Structure Team',
-    priority: 'high',
-    category: 'Structure',
-    resources: ['Crane', 'Concrete Mixer', 'Labor Team'],
-    milestones: true,
-  },
-  {
-    id: '6',
-    siteId: '2',
-    siteName: 'Commercial Plaza B',
-    name: 'Site Survey',
-    description: 'Complete site survey and measurements',
-    startDate: '2024-02-01',
-    endDate: '2024-02-10',
-    duration: 9,
-    progress: 100,
-    status: 'completed',
-    dependencies: [],
-    assignedTeam: 'Survey Team',
-    priority: 'high',
-    category: 'Foundation',
-    resources: ['Survey Equipment', 'GPS Device'],
-    milestones: false,
-  },
-  {
-    id: '7',
-    siteId: '3',
-    siteName: 'Industrial Warehouse C',
-    name: 'Ground Preparation',
-    description: 'Level ground and prepare for construction',
-    startDate: '2024-03-10',
-    endDate: '2024-03-20',
-    duration: 10,
-    progress: 60,
-    status: 'in-progress',
-    dependencies: [],
-    assignedTeam: 'Ground Team',
-    priority: 'medium',
-    category: 'Foundation',
-    resources: ['Bulldozer', 'Compactor', 'Labor Team'],
-    milestones: false,
-  },
-];
+  const [isActivityDialogOpen, setActivityDialogOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<ProjectActivity | null>(null);
+  const [isMilestoneDialogOpen, setMilestoneDialogOpen] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
+  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
 
-const mockMilestones: ProjectMilestone[] = [
-  {
-    id: '1',
-    name: 'Foundation Complete',
-    date: '2024-02-20',
-    description: 'Foundation work completed and approved',
-    status: 'pending',
-  },
-  {
-    id: '2',
-    name: 'Ground Floor Complete',
-    date: '2024-03-25',
-    description: 'Ground floor structure completed',
-    status: 'pending',
-  },
-];
-
-interface SchedulingPageProps {
-  filterBySite?: string;
-}
-
-export function SchedulingPage({ filterBySite }: SchedulingPageProps = {}) {
-  const [sites] = useState<Site[]>(mockSites);
-  const [activities, setActivities] = useState<ProjectActivity[]>(mockActivities);
-  const [milestones, setMilestones] = useState<ProjectMilestone[]>(mockMilestones);
-  const [selectedView, setSelectedView] = useState<'gantt' | 'timeline' | 'critical'>('gantt');
-
-  // Use shared state hooks
-  const tableState = useTableState({
-    initialSortField: 'name',
-    initialSortDirection: 'asc',
-    initialItemsPerPage: 10,
-  });
-
-  const activityDialog = useDialogState<ProjectActivity>();
-  const milestoneDialog = useDialogState<ProjectMilestone>();
-
-  const [activityForm, setActivityForm] = useState({
-    siteId: '',
-    name: '',
-    description: '',
-    startDate: '',
-    duration: '',
-    assignedTeam: '',
-    priority: 'medium' as ProjectActivity['priority'],
-    category: 'Foundation' as ProjectActivity['category'],
-    dependencies: [] as string[],
-    resources: '',
-    milestones: false,
-  });
-
-  const [milestoneForm, setMilestoneForm] = useState({
-    name: '',
-    date: '',
-    description: '',
-  });
-
-  const handleActivitySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const startDate = new Date(activityForm.startDate);
-    const endDate = new Date(
-      startDate.getTime() + Number(activityForm.duration) * 24 * 60 * 60 * 1000,
-    );
-
-    // Use filterBySite if provided, otherwise use form siteId
-    const effectiveSiteId = filterBySite
-      ? sites.find((s) => s.name === filterBySite)?.id || '1'
-      : activityForm.siteId;
-    const selectedSite = sites.find(
-      (site) => site.id === effectiveSiteId || site.name === filterBySite,
-    );
-
-    const newActivity: ProjectActivity = {
-      id: (activities.length + 1).toString(),
-      siteId: effectiveSiteId,
-      siteName: filterBySite || selectedSite?.name || '',
-      name: activityForm.name,
-      description: activityForm.description,
-      startDate: activityForm.startDate,
-      endDate: endDate.toISOString().split('T')[0],
-      duration: Number(activityForm.duration),
-      progress: 0,
-      status: 'not-started',
-      dependencies: activityForm.dependencies,
-      assignedTeam: activityForm.assignedTeam,
-      priority: activityForm.priority,
-      category: activityForm.category,
-      resources: activityForm.resources.split(',').map((r) => r.trim()),
-      milestones: activityForm.milestones,
-    };
-
-    setActivities((prev) => [...prev, newActivity]);
-    setActivityForm({
+  const activityForm = useForm<ActivityFormData>({
+    resolver: zodResolver(activitySchema),
+    defaultValues: {
       siteId: '',
+      siteName: '',
       name: '',
       description: '',
-      startDate: '',
-      duration: '',
+      startDate: undefined,
+      endDate: undefined,
+      progress: 0,
+      status: 'not-started',
       assignedTeam: '',
       priority: 'medium',
       category: 'Foundation',
-      dependencies: [],
+      dependencies: '',
       resources: '',
       milestones: false,
-    });
-    activityDialog.closeDialog();
-  };
+    },
+  });
 
-  const handleMilestoneSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const newMilestone: ProjectMilestone = {
-      id: (milestones.length + 1).toString(),
-      name: milestoneForm.name,
-      date: milestoneForm.date,
-      description: milestoneForm.description,
+  const milestoneForm = useForm<MilestoneFormData>({
+    resolver: zodResolver(milestoneSchema),
+    defaultValues: {
+      siteId: '',
+      siteName: '',
+      name: '',
+      description: '',
+      date: undefined,
       status: 'pending',
+    },
+  });
+
+  useEffect(() => {
+    const loadSites = async () => {
+      try {
+        setIsLoadingSites(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Array<{ id: string; name: string }>;
+        };
+
+        if (response.ok) {
+          setSiteOptions(payload.sites ?? []);
+        } else {
+          setSiteOptions([]);
+        }
+      } catch (error) {
+        console.error('Failed to load sites for scheduling', error);
+        setSiteOptions([]);
+      } finally {
+        setIsLoadingSites(false);
+      }
     };
 
-    setMilestones((prev) => [...prev, newMilestone]);
-    setMilestoneForm({ name: '', date: '', description: '' });
-    milestoneDialog.closeDialog();
-  };
+    void loadSites();
+  }, []);
 
-  const getStatusColor = (status: ProjectActivity['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'in-progress':
-        return 'bg-blue-100 text-blue-800';
-      case 'delayed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  useEffect(() => {
+    if (!isActivityDialogOpen) {
+      activityForm.reset();
+      setEditingActivity(null);
+      return;
+    }
+
+    if (editingActivity) {
+      activityForm.reset({
+        siteId: editingActivity.siteId,
+        siteName: editingActivity.siteName,
+        name: editingActivity.name,
+        description: editingActivity.description,
+        startDate: editingActivity.startDate ? new Date(editingActivity.startDate) : undefined,
+        endDate: editingActivity.endDate ? new Date(editingActivity.endDate) : undefined,
+        progress: editingActivity.progress ?? 0,
+        status: editingActivity.status,
+        assignedTeam: editingActivity.assignedTeam,
+        priority: editingActivity.priority,
+        category: editingActivity.category,
+        dependencies: editingActivity.dependencies?.join(', ') ?? '',
+        resources: editingActivity.resources?.join(', ') ?? '',
+        milestones: editingActivity.milestones ?? false,
+      });
+    } else if (filterBySite) {
+      const siteMatch = siteOptions.find((site) => site.name === filterBySite);
+      activityForm.setValue('siteId', siteMatch?.id ?? '');
+      activityForm.setValue('siteName', siteMatch?.name ?? filterBySite);
+    }
+  }, [activityForm, editingActivity, filterBySite, isActivityDialogOpen, siteOptions]);
+
+  useEffect(() => {
+    if (!isMilestoneDialogOpen) {
+      milestoneForm.reset();
+      setEditingMilestone(null);
+      return;
+    }
+
+    if (editingMilestone) {
+      milestoneForm.reset({
+        siteId: editingMilestone.siteId,
+        siteName: siteOptions.find((site) => site.id === editingMilestone.siteId)?.name ?? '',
+        name: editingMilestone.name,
+        description: editingMilestone.description,
+        date: editingMilestone.date ? new Date(editingMilestone.date) : undefined,
+        status: editingMilestone.status,
+      });
+    } else if (filterBySite) {
+      const siteMatch = siteOptions.find((site) => site.name === filterBySite);
+      milestoneForm.setValue('siteId', siteMatch?.id ?? '');
+      milestoneForm.setValue('siteName', siteMatch?.name ?? filterBySite);
+    }
+  }, [filterBySite, isMilestoneDialogOpen, milestoneForm, editingMilestone, siteOptions]);
+
+  const filteredActivities = useMemo(() => {
+    let result = activities;
+    if (filterBySite) {
+      result = result.filter((activity) => activity.siteName === filterBySite || activity.siteId === filterBySite);
+    }
+    return result.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+  }, [activities, filterBySite]);
+
+  const filteredMilestones = useMemo(() => {
+    let result = milestones;
+    if (filterBySite) {
+      result = result.filter((milestone) => milestone.siteId === filterBySite);
+    }
+    return result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [milestones, filterBySite]);
+
+  const activityStats = useMemo(() => deriveActivityStats(filteredActivities), [filteredActivities]);
+  const groupedActivities = useMemo(() => groupActivitiesBySite(filteredActivities), [filteredActivities]);
+  const nextMilestone = useMemo(() => findNextMilestone(filteredMilestones), [filteredMilestones]);
+
+  const handleActivitySubmit = async (data: ActivityFormData) => {
+    try {
+      const site = siteOptions.find((option) => option.id === data.siteId);
+      const startDate = data.startDate;
+      const endDate = data.endDate;
+
+      if (endDate.getTime() < startDate.getTime()) {
+        throw new Error('End date cannot be earlier than start date.');
+      }
+
+      const duration =
+        Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) || 0;
+
+      const payload = {
+        siteId: data.siteId,
+        siteName: site?.name ?? data.siteName ?? '',
+        name: data.name,
+        description: data.description ?? '',
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        duration,
+        progress: data.progress,
+        status: data.status,
+        dependencies:
+          data.dependencies?.split(',').map((item) => item.trim()).filter(Boolean) ?? [],
+        assignedTeam: data.assignedTeam ?? '',
+        priority: data.priority,
+        category: data.category,
+        resources: data.resources?.split(',').map((item) => item.trim()).filter(Boolean) ?? [],
+        milestones: Boolean(data.milestones),
+      } satisfies Parameters<typeof addActivity>[0];
+
+      if (editingActivity) {
+        await updateActivity(editingActivity.id, payload);
+        toast.success('Activity updated successfully');
+      } else {
+        await addActivity(payload);
+        toast.success('Activity created successfully');
+      }
+
+      setActivityDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to save activity', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save activity.');
     }
   };
 
-  const getPriorityColor = (priority: ProjectActivity['priority']) => {
-    switch (priority) {
-      case 'critical':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  const handleMilestoneSubmit = async (data: MilestoneFormData) => {
+    try {
+      const site = siteOptions.find((option) => option.id === data.siteId);
+
+      const payload = {
+        siteId: data.siteId,
+        name: data.name,
+        date: data.date.toISOString().split('T')[0],
+        description: data.description ?? '',
+        status: data.status ?? 'pending',
+        siteName: site?.name ?? data.siteName ?? '',
+      } satisfies Parameters<typeof addMilestone>[0];
+
+      if (editingMilestone) {
+        await updateMilestone(editingMilestone.id, payload);
+        toast.success('Milestone updated successfully');
+      } else {
+        await addMilestone(payload);
+        toast.success('Milestone created successfully');
+      }
+
+      setMilestoneDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to save milestone', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save milestone.');
     }
   };
 
-  const getCriticalPath = (activityList: ProjectActivity[]) => {
-    // Simple critical path calculation - in real app would use proper algorithm
-    const sortedActivities = [...activityList].sort(
-      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-    );
-    return sortedActivities.filter(
-      (activity) => activity.priority === 'critical' || activity.milestones,
-    );
+  const handleActivityDelete = async (activity: ProjectActivity) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Delete activity "${activity.name}"?`);
+      if (!confirmed) return;
+    }
+
+    try {
+      await deleteActivity(activity.id);
+      toast.success('Activity deleted');
+    } catch (error) {
+      console.error('Failed to delete activity', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete activity.');
+    }
   };
 
-  const getGanttData = (activityList: ProjectActivity[]) => {
-    if (activityList.length === 0) return [];
-    const startDate = new Date(
-      Math.min(...activityList.map((a) => new Date(a.startDate).getTime())),
-    );
-    const endDate = new Date(Math.max(...activityList.map((a) => new Date(a.endDate).getTime())));
-    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const handleMilestoneDelete = async (milestone: ProjectMilestone) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Delete milestone "${milestone.name}"?`);
+      if (!confirmed) return;
+    }
 
-    return activityList.map((activity) => {
-      const activityStart = new Date(activity.startDate);
-      const activityEnd = new Date(activity.endDate);
-      const startOffset = Math.ceil(
-        (activityStart.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      const width = Math.ceil(
-        (activityEnd.getTime() - activityStart.getTime()) / (1000 * 60 * 60 * 24),
-      );
-
-      return {
-        ...activity,
-        startOffset: (startOffset / totalDays) * 100,
-        width: (width / totalDays) * 100,
-      };
-    });
+    try {
+      await deleteMilestone(milestone.id);
+      toast.success('Milestone deleted');
+    } catch (error) {
+      console.error('Failed to delete milestone', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete milestone.');
+    }
   };
 
-  // Filter activities by site if applicable
-  const filteredActivities = filterBySite
-    ? activities.filter((a) => a.siteName === filterBySite)
-    : activities;
-
-  const ganttData = getGanttData(filteredActivities);
-  const criticalPath = getCriticalPath(filteredActivities);
-  const completedActivities = filteredActivities.filter((a) => a.status === 'completed').length;
-  const totalActivities = filteredActivities.length;
-  const projectProgress = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
+  const criticalActivities = useMemo(
+    () =>
+      filteredActivities.filter(
+        (activity) => activity.priority === 'critical' || activity.milestones === true,
+      ),
+    [filteredActivities],
+  );
 
   return (
-    <div className="w-full min-w-0 space-y-6">
-      <div className="flex justify-end gap-2">
+    <div className="space-y-6 p-4 md:p-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Scheduling</h1>
+          <p className="text-muted-foreground">
+            Plan activities, track milestones, and monitor progress across sites.
+          </p>
+        </div>
         <div className="flex gap-2">
-          <FormDialog
-            title="Add Project Milestone"
-            description="Create a key milestone for the project"
-            isOpen={milestoneDialog.isDialogOpen}
-            onOpenChange={(open) => {
-              if (open) {
-                milestoneDialog.openDialog();
-              } else {
-                milestoneDialog.closeDialog();
-              }
-            }}
-            maxWidth="max-w-2xl"
-            trigger={
-              <Button variant="outline">
-                <Target className="h-4 w-4 mr-2" />
-                Add Milestone
-              </Button>
-            }
-          >
-            <form onSubmit={handleMilestoneSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Milestone Name</Label>
-                <Input
-                  value={milestoneForm.name}
-                  onChange={(e) => setMilestoneForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Foundation Complete"
-                  required
+          <Button onClick={() => setMilestoneDialogOpen(true)} variant="outline">
+            <Calendar className="mr-2 h-4 w-4" /> Add Milestone
+          </Button>
+          <Button onClick={() => setActivityDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Add Activity
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Activities
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{activityStats.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Completed
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-green-600">{activityStats.completed}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              In Progress
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-blue-600">{activityStats.inProgress}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Delayed
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <p className="text-2xl font-bold text-red-600">{activityStats.delayed}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Average Progress
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <p className="text-3xl font-semibold">{activityStats.averageProgress}%</p>
+            <div className="flex-1">
+              <div className="h-2 rounded-full bg-muted">
+                <div
+                  className="h-2 rounded-full bg-primary"
+                  style={{ width: `${activityStats.averageProgress}%` }}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Target Date</Label>
-                <DatePicker
-                  date={milestoneForm.date ? new Date(milestoneForm.date) : undefined}
-                  onSelect={(date) =>
-                    setMilestoneForm((prev) => ({
-                      ...prev,
-                      date: date ? date.toISOString().split('T')[0] : '',
-                    }))
-                  }
-                  placeholder="Select target date"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={milestoneForm.description}
-                  onChange={(e) =>
-                    setMilestoneForm((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  placeholder="Milestone description..."
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => milestoneDialog.closeDialog()}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Average completion across filtered activities
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Activities Timeline</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredActivities.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              No activities found{filterBySite ? ` for ${filterBySite}` : ''}.
+            </p>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(groupedActivities).map(([siteId, siteActivities]) => {
+                const siteName =
+                  siteOptions.find((site) => site.id === siteId)?.name ||
+                  siteActivities[0]?.siteName ||
+                  'Unknown site';
+
+                return (
+                  <div key={siteId} className="space-y-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      {siteName}
+                    </h3>
+                    <div className="space-y-3">
+                      {siteActivities.map((activity) => (
+                        <div
+                          key={activity.id}
+                          className="rounded-lg border bg-card p-4 shadow-sm transition hover:shadow-md"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-semibold">{activity.name}</h4>
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-xs uppercase text-muted-foreground">
+                                  {activity.category}
+                                </span>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-xs uppercase ${
+                                    activity.priority === 'critical'
+                                      ? 'bg-red-100 text-red-700'
+                                      : activity.priority === 'high'
+                                        ? 'bg-orange-100 text-orange-700'
+                                        : activity.priority === 'medium'
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-muted text-muted-foreground'
+                                  }`}
+                                >
+                                  {activity.priority}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {activity.description || 'No description provided.'}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                <span>
+                                  <Calendar className="mr-1 inline h-3 w-3" />
+                                  {formatDate(activity.startDate)} → {formatDate(activity.endDate)} (
+                                  {activity.duration} days)
+                                </span>
+                                <span>
+                                  <Users className="mr-1 inline h-3 w-3" />
+                                  {activity.assignedTeam || 'Unassigned'}
+                                </span>
+                                <span>
+                                  <Flag className="mr-1 inline h-3 w-3" />
+                                  {activity.status.replace('-', ' ')}
+                                </span>
+                              </div>
+                              <div className="mt-3 h-2 rounded-full bg-muted">
+                                <div
+                                  className={`h-2 rounded-full ${
+                                    activity.status === 'completed'
+                                      ? 'bg-green-500'
+                                      : activity.status === 'delayed'
+                                        ? 'bg-red-500'
+                                        : 'bg-primary'
+                                  }`}
+                                  style={{ width: `${activity.progress}%` }}
+                                />
+                              </div>
+                              {activity.resources?.length ? (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  Resources: {activity.resources.join(', ')}
+                                </p>
+                              ) : null}
+                              {activity.dependencies?.length ? (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Dependencies: {activity.dependencies.join(', ')}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingActivity(activity);
+                                  setActivityDialogOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="text-destructive"
+                                onClick={() => handleActivityDelete(activity)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Milestones</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredMilestones.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No milestones recorded{filterBySite ? ` for ${filterBySite}` : ''}.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredMilestones.map((milestone) => (
+                  <TableRow key={milestone.id}>
+                    <TableCell className="font-medium">{milestone.name}</TableCell>
+                    <TableCell>{formatDate(milestone.date)}</TableCell>
+                    <TableCell className="capitalize">{milestone.status}</TableCell>
+                    <TableCell>{milestone.description || '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            setEditingMilestone(milestone);
+                            setMilestoneDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => handleMilestoneDelete(milestone)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Critical Path</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {criticalActivities.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No critical activities identified. Mark important tasks as critical to track them here.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {criticalActivities.map((activity) => (
+                <li
+                  key={activity.id}
+                  className="flex items-start justify-between rounded-lg border bg-card p-4 shadow-sm"
                 >
+                  <div>
+                    <p className="text-sm font-semibold">{activity.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatDate(activity.startDate)} → {formatDate(activity.endDate)} ·{' '}
+                      {activity.duration} days
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Site: {activity.siteName || 'Unknown'}
+                    </p>
+                  </div>
+                  <Badge variant={activity.milestones ? 'default' : 'secondary'}>
+                    {activity.milestones ? 'Milestone' : 'Critical Task'}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Upcoming Milestone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {nextMilestone ? (
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-lg font-semibold">{nextMilestone.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Due on {formatDate(nextMilestone.date)}
+                </p>
+              </div>
+              <Badge variant={nextMilestone.status === 'pending' ? 'secondary' : 'default'}>
+                {nextMilestone.status}
+              </Badge>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No pending milestones.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Activity Dialog */}
+      <Dialog open={isActivityDialogOpen} onOpenChange={setActivityDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingActivity ? 'Edit Activity' : 'Add Activity'}</DialogTitle>
+            <DialogDescription>
+              {editingActivity
+                ? 'Update the details of the activity.'
+                : 'Create a new project activity.'}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...activityForm}>
+            <form onSubmit={activityForm.handleSubmit(handleActivitySubmit)} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={activityForm.control}
+                  name="siteId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Site *</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          const site = siteOptions.find((option) => option.id === value);
+                          activityForm.setValue('siteName', site?.name ?? '');
+                        }}
+                        disabled={isLoadingSites || siteOptions.length === 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isLoadingSites
+                                  ? 'Loading sites…'
+                                  : siteOptions.length === 0
+                                    ? 'No sites available'
+                                    : 'Select site'
+                              }
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {siteOptions.map((site) => (
+                            <SelectItem key={site.id} value={site.id}>
+                              {site.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={activityForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Activity Name *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Foundation Concrete" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={activityForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea rows={3} placeholder="Describe the activity" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={activityForm.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Start Date *</FormLabel>
+                      <FormControl>
+                        <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={activityForm.control}
+                  name="endDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>End Date *</FormLabel>
+                      <FormControl>
+                        <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={activityForm.control}
+                  name="assignedTeam"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Assigned Team</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Concrete Team" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={activityForm.control}
+                  name="progress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Progress (%)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          {...field}
+                          onChange={(event) => field.onChange(Number(event.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <FormField
+                  control={activityForm.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="not-started">Not started</SelectItem>
+                          <SelectItem value="in-progress">In progress</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="delayed">Delayed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={activityForm.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Priority *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="critical">Critical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={activityForm.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Foundation">Foundation</SelectItem>
+                          <SelectItem value="Structure">Structure</SelectItem>
+                          <SelectItem value="MEP">MEP</SelectItem>
+                          <SelectItem value="Finishing">Finishing</SelectItem>
+                          <SelectItem value="External">External</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={activityForm.control}
+                  name="dependencies"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Dependencies</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ACT-101, ACT-102" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={activityForm.control}
+                  name="resources"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Resources</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Crane, Labor Team" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={activityForm.control}
+                name="milestones"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2">
+                    <FormControl>
+                      <input
+                        type="checkbox"
+                        checked={field.value ?? false}
+                        onChange={(event) => field.onChange(event.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </FormControl>
+                    <FormLabel className="mt-0">Marks a milestone</FormLabel>
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setActivityDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Add Milestone</Button>
-              </div>
+                <Button type="submit">{editingActivity ? 'Save Changes' : 'Create Activity'}</Button>
+              </DialogFooter>
             </form>
-          </FormDialog>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
-          <FormDialog
-            title="Add Project Activity"
-            description="Create a new activity in the project schedule"
-            isOpen={activityDialog.isDialogOpen}
-            onOpenChange={(open) => {
-              if (open) {
-                activityDialog.openDialog();
-              } else {
-                activityDialog.closeDialog();
-              }
-            }}
-            maxWidth="max-w-2xl"
-            trigger={
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Activity
-              </Button>
-            }
-          >
-            <form onSubmit={handleActivitySubmit} className="space-y-4">
-              {/* Site Selection */}
-              {!filterBySite && (
-                <div className="space-y-2">
-                  <Label htmlFor="siteId">Site *</Label>
-                  <Select
-                    value={activityForm.siteId}
-                    onValueChange={(value) => {
-                      setActivityForm((prev) => ({ ...prev, siteId: value }));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a site" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sites
-                        .filter((site) => site.status === 'Active')
-                        .map((site) => (
+      {/* Milestone Dialog */}
+      <Dialog open={isMilestoneDialogOpen} onOpenChange={setMilestoneDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingMilestone ? 'Edit Milestone' : 'Add Milestone'}</DialogTitle>
+            <DialogDescription>
+              {editingMilestone
+                ? 'Update the details of the milestone.'
+                : 'Create a new project milestone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...milestoneForm}>
+            <form onSubmit={milestoneForm.handleSubmit(handleMilestoneSubmit)} className="space-y-4">
+              <FormField
+                control={milestoneForm.control}
+                name="siteId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Site *</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        const site = siteOptions.find((option) => option.id === value);
+                        milestoneForm.setValue('siteName', site?.name ?? '');
+                      }}
+                      disabled={isLoadingSites || siteOptions.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              isLoadingSites
+                                ? 'Loading sites…'
+                                : siteOptions.length === 0
+                                  ? 'No sites available'
+                                  : 'Select site'
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {siteOptions.map((site) => (
                           <SelectItem key={site.id} value={site.id}>
-                            <div className="flex items-center gap-2">
-                              <Building2 className="h-4 w-4" />
-                              <div>
-                                <div className="font-medium">{site.name}</div>
-                                <div className="text-sm text-gray-500">{site.location}</div>
-                              </div>
-                            </div>
+                            {site.name}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Activity Name</Label>
-                  <Input
-                    value={activityForm.name}
-                    onChange={(e) => setActivityForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Foundation Excavation"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select
-                    value={activityForm.category}
-                    onValueChange={(value) =>
-                      setActivityForm((prev) => ({
-                        ...prev,
-                        category: value as ProjectActivity['category'],
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Foundation">Foundation</SelectItem>
-                      <SelectItem value="Structure">Structure</SelectItem>
-                      <SelectItem value="MEP">MEP</SelectItem>
-                      <SelectItem value="Finishing">Finishing</SelectItem>
-                      <SelectItem value="External">External</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <FormField
+                control={milestoneForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Milestone Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Foundation Complete" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={activityForm.description}
-                  onChange={(e) =>
-                    setActivityForm((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  placeholder="Detailed activity description..."
-                />
-              </div>
+              <FormField
+                control={milestoneForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea rows={3} placeholder="Describe the milestone" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Date</Label>
-                  <DatePicker
-                    date={activityForm.startDate ? new Date(activityForm.startDate) : undefined}
-                    onSelect={(date) =>
-                      setActivityForm((prev) => ({
-                        ...prev,
-                        startDate: date ? date.toISOString().split('T')[0] : '',
-                      }))
-                    }
-                    placeholder="Select start date"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Duration (Days)</Label>
-                  <Input
-                    type="number"
-                    value={activityForm.duration}
-                    onChange={(e) =>
-                      setActivityForm((prev) => ({ ...prev, duration: e.target.value }))
-                    }
-                    placeholder="10"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Priority</Label>
-                  <Select
-                    value={activityForm.priority}
-                    onValueChange={(value) =>
-                      setActivityForm((prev) => ({
-                        ...prev,
-                        priority: value as ProjectActivity['priority'],
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="critical">Critical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <FormField
+                control={milestoneForm.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date *</FormLabel>
+                    <FormControl>
+                      <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Assigned Team</Label>
-                  <Input
-                    value={activityForm.assignedTeam}
-                    onChange={(e) =>
-                      setActivityForm((prev) => ({ ...prev, assignedTeam: e.target.value }))
-                    }
-                    placeholder="Foundation Team"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Resources (comma-separated)</Label>
-                  <Input
-                    value={activityForm.resources}
-                    onChange={(e) =>
-                      setActivityForm((prev) => ({ ...prev, resources: e.target.value }))
-                    }
-                    placeholder="Excavator, Dumper, Labor Team"
-                  />
-                </div>
-              </div>
+              <FormField
+                control={milestoneForm.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status *</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="achieved">Achieved</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="milestone"
-                  checked={activityForm.milestones}
-                  onChange={(e) =>
-                    setActivityForm((prev) => ({ ...prev, milestones: e.target.checked }))
-                  }
-                  className="rounded"
-                />
-                <Label htmlFor="milestone">Mark as milestone activity</Label>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => activityDialog.closeDialog()}
-                >
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setMilestoneDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Add Activity</Button>
-              </div>
+                <Button type="submit">{editingMilestone ? 'Save Changes' : 'Create Milestone'}</Button>
+              </DialogFooter>
             </form>
-          </FormDialog>
-        </div>
-      </div>
-
-      {/* Project Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Total Activities</p>
-                <p className="text-2xl font-semibold">{totalActivities}</p>
-                <p className="text-xs text-muted-foreground">{completedActivities} completed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Progress</p>
-                <p className="text-2xl font-semibold">{projectProgress.toFixed(0)}%</p>
-                <Progress value={projectProgress} className="h-2 mt-1" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-orange-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Critical Path</p>
-                <p className="text-2xl font-semibold">{criticalPath.length}</p>
-                <p className="text-xs text-orange-600">activities</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-purple-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Milestones</p>
-                <p className="text-2xl font-semibold">{milestones.length}</p>
-                <p className="text-xs text-purple-600">planned</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* View Selector */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant={selectedView === 'gantt' ? 'default' : 'outline'}
-          onClick={() => setSelectedView('gantt')}
-        >
-          Gantt Chart
-        </Button>
-        <Button
-          variant={selectedView === 'timeline' ? 'default' : 'outline'}
-          onClick={() => setSelectedView('timeline')}
-        >
-          Timeline View
-        </Button>
-        <Button
-          variant={selectedView === 'critical' ? 'default' : 'outline'}
-          onClick={() => setSelectedView('critical')}
-        >
-          Critical Path
-        </Button>
-      </div>
-
-      {selectedView === 'gantt' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Gantt Chart View</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {ganttData.map((activity) => (
-                <div key={activity.id} className="flex items-center gap-4 p-2 border rounded">
-                  <div className="w-48 text-sm">
-                    <div className="font-medium">{activity.name}</div>
-                    <div className="text-xs text-muted-foreground">{activity.assignedTeam}</div>
-                  </div>
-                  <div className="flex-1 relative h-8 bg-gray-100 rounded">
-                    <div
-                      className={`absolute h-full rounded ${
-                        activity.status === 'completed'
-                          ? 'bg-green-500'
-                          : activity.status === 'in-progress'
-                            ? 'bg-blue-500'
-                            : activity.status === 'delayed'
-                              ? 'bg-red-500'
-                              : 'bg-gray-300'
-                      }`}
-                      style={{
-                        left: `${activity.startOffset}%`,
-                        width: `${activity.width}%`,
-                      }}
-                    >
-                      <div className="px-2 py-1 text-xs text-white">{activity.progress}%</div>
-                    </div>
-                    {activity.milestones && (
-                      <div
-                        className="absolute top-0 bottom-0 w-2 bg-yellow-500 rounded-full"
-                        style={{ left: `${activity.startOffset + activity.width}%` }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex gap-1">
-                    <Badge className={getStatusColor(activity.status)}>{activity.status}</Badge>
-                    <Badge className={getPriorityColor(activity.priority)}>
-                      {activity.priority}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedView === 'timeline' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Activities Timeline</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DataTable
-              columns={[
-                { key: 'activity', label: 'Activity', sortable: true },
-                { key: 'category', label: 'Category', sortable: true },
-                { key: 'schedule', label: 'Schedule', sortable: true },
-                { key: 'team', label: 'Team', sortable: true },
-                { key: 'progress', label: 'Progress', sortable: true },
-                { key: 'status', label: 'Status', sortable: true },
-              ]}
-              data={filteredActivities.map((activity) => ({
-                activity: (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      {activity.milestones && <Target className="h-4 w-4 text-yellow-600" />}
-                      <span className="font-medium">{activity.name}</span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">{activity.description}</div>
-                  </div>
-                ),
-                category: <Badge variant="outline">{activity.category}</Badge>,
-                schedule: (
-                  <div className="text-sm">
-                    <div>
-                      {formatDate(activity.startDate)} - {formatDate(activity.endDate)}
-                    </div>
-                    <div className="text-muted-foreground">{activity.duration} days</div>
-                  </div>
-                ),
-                team: (
-                  <div className="flex items-center gap-1">
-                    <Users className="h-3 w-3 text-muted-foreground" />
-                    {activity.assignedTeam}
-                  </div>
-                ),
-                progress: (
-                  <div className="space-y-1">
-                    <Progress value={activity.progress} className="h-2" />
-                    <div className="text-xs text-muted-foreground">{activity.progress}%</div>
-                  </div>
-                ),
-                status: (
-                  <Badge className={getStatusColor(activity.status)}>{activity.status}</Badge>
-                ),
-              }))}
-              onSort={tableState.setSortField}
-              onPageChange={tableState.setCurrentPage}
-              pageSize={tableState.itemsPerPage}
-              currentPage={tableState.currentPage}
-              totalPages={tableState.totalPages(filteredActivities.length)}
-              sortField={tableState.sortField}
-              sortDirection={tableState.sortDirection}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedView === 'critical' && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5 text-orange-600" />
-                Critical Path Activities
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  These activities are critical to the project timeline. Any delays will impact the
-                  overall project completion date.
-                </AlertDescription>
-              </Alert>
-              <div className="mt-4 space-y-3">
-                {criticalPath.map((activity, index) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-center gap-4 p-3 border border-orange-200 rounded-lg bg-orange-50"
-                  >
-                    <div className="flex items-center justify-center w-8 h-8 bg-orange-600 text-white rounded-full text-sm font-medium">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{activity.name}</span>
-                        {activity.milestones && <Target className="h-4 w-4 text-yellow-600" />}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {formatDate(activity.startDate)} - {formatDate(activity.endDate)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">{activity.progress}% complete</div>
-                      <Badge className={getStatusColor(activity.status)}>{activity.status}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Project Milestones</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {milestones.map((milestone) => (
-                  <div key={milestone.id} className="flex items-center gap-4 p-3 border rounded-lg">
-                    <div className="flex items-center justify-center w-8 h-8 bg-purple-600 text-white rounded-full">
-                      <Target className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{milestone.name}</div>
-                      <div className="text-sm text-muted-foreground">{milestone.description}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">{formatDate(milestone.date)}</div>
-                      <Badge variant={milestone.status === 'achieved' ? 'default' : 'secondary'}>
-                        {milestone.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

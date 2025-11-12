@@ -1,0 +1,135 @@
+import { NextResponse } from 'next/server';
+
+import { createClient } from '@/lib/supabase/server';
+import type { ProjectActivity, ProjectMilestone } from '@/types';
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type ActivityRow = {
+  id: string;
+  site_id: string;
+  site_name: string | null;
+  name: string;
+  description: string | null;
+  start_date: string;
+  end_date: string;
+  duration: number | string | null;
+  progress: number | string | null;
+  status: string;
+  dependencies: string[] | null;
+  assigned_team: string | null;
+  priority: string;
+  category: string;
+  resources: string[] | null;
+  milestones: boolean | null;
+  organization_id: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+};
+
+type MilestoneRow = {
+  id: string;
+  site_id: string;
+  name: string;
+  date: string;
+  description: string | null;
+  status: string;
+  organization_id: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+};
+
+const MUTATION_ROLES = [
+  'owner',
+  'admin',
+  'manager',
+  'project-manager',
+  'site-supervisor',
+  'materials-manager',
+  'finance-manager',
+  'executive',
+  'user',
+] as const;
+
+type MutationRole = (typeof MUTATION_ROLES)[number];
+
+export function mapRowToActivity(row: ActivityRow): ProjectActivity {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    siteName: row.site_name ?? '',
+    name: row.name,
+    description: row.description ?? '',
+    startDate: row.start_date,
+    endDate: row.end_date,
+    duration: Number(row.duration ?? 0),
+    progress: Number(row.progress ?? 0),
+    status: row.status as ProjectActivity['status'],
+    dependencies: row.dependencies ?? [],
+    assignedTeam: row.assigned_team ?? '',
+    priority: row.priority as ProjectActivity['priority'],
+    category: row.category as ProjectActivity['category'],
+    resources: row.resources ?? [],
+    milestones: Boolean(row.milestones),
+    organizationId: row.organization_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapRowToMilestone(row: MilestoneRow): ProjectMilestone {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    name: row.name,
+    date: row.date,
+    description: row.description ?? '',
+    status: row.status as ProjectMilestone['status'],
+    organizationId: row.organization_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function resolveContext(supabase: SupabaseServerClient) {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { error: 'Not authenticated.' as const };
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('organization_id, organization_role, is_active')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError || !profile?.organization_id) {
+    return { error: 'Unable to resolve organization.' as const };
+  }
+
+  if (profile.is_active === false) {
+    return { error: 'Inactive user.' as const };
+  }
+
+  return {
+    organizationId: profile.organization_id as string,
+    role: profile.organization_role as MutationRole,
+    userId: user.id,
+  };
+}
+
+export function ensureMutationAccess(role: MutationRole) {
+  if (!MUTATION_ROLES.includes(role)) {
+    return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
+  }
+  return null;
+}
+

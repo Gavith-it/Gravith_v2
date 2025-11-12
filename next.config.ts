@@ -85,6 +85,9 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  experimental: {
+    typedRoutes: false,
+  },
 };
 
 export default withBundleAnalyzer(nextConfig);

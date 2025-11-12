@@ -971,7 +971,8 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           onSubmit={handleExpenseSubmit}
           onCancel={expenseDialog.closeDialog}
           isLoading={isLoading}
-          defaultValues={{ site: site.name }}
+          lockedSite={site.name}
+          defaultValues={{ siteId: site.id, siteName: site.name }}
         />
       </FormDialog>
     </div>

@@ -12,7 +12,8 @@ import {
   Filter,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
@@ -45,7 +46,7 @@ interface PurchasePageProps {
 
 export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const searchParams = useSearchParams();
-  const { materials, addMaterial, updateMaterial, deleteMaterial } = useMaterials();
+  const { materials, addMaterial, updateMaterial, deleteMaterial, isLoading } = useMaterials();
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -68,10 +69,23 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Calculate summary statistics (filtered by site if applicable)
-  const filteredMaterialsForStats = filterBySite
-    ? materials.filter((m) => m.site === filterBySite)
-    : materials;
+  const categoryOptions = useMemo(() => {
+    const categories = new Set<string>();
+    materials.forEach((material) => {
+      if (material.category) {
+        categories.add(material.category);
+      }
+    });
+    return Array.from(categories).sort();
+  }, [materials]);
+
+  const filteredMaterialsForStats = useMemo(() => {
+    const scopedMaterials = filterBySite
+      ? materials.filter((m) => m.site === filterBySite)
+      : materials;
+    return scopedMaterials;
+  }, [materials, filterBySite]);
+
   const totalPurchases = filteredMaterialsForStats.length;
   const totalValue = filteredMaterialsForStats.reduce(
     (sum, material) => sum + (material.totalAmount || 0),
@@ -83,45 +97,58 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     0,
   );
 
-  const sortedAndFilteredMaterials = materials
-    .filter((material) => {
-      const matchesSite = !filterBySite || material.site === filterBySite;
-      const matchesSearch =
-        material.materialName?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
-        material.vendor?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
-        material.site?.toLowerCase().includes(tableState.searchTerm.toLowerCase());
-      const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter;
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'recent' &&
-          new Date(material.purchaseDate || '').getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000) ||
-        (statusFilter === 'pending' && !material.totalAmount);
-      return matchesSite && matchesSearch && matchesCategory && matchesStatus;
-    })
-    .sort((a, b) => {
-      const aValue = a[tableState.sortField as keyof SharedMaterial];
-      const bValue = b[tableState.sortField as keyof SharedMaterial];
+  const sortedAndFilteredMaterials = useMemo(() => {
+    return materials
+      .filter((material) => {
+        const matchesSite = !filterBySite || material.site === filterBySite;
+        const matchesSearch =
+          material.materialName?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
+          material.vendor?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
+          material.site?.toLowerCase().includes(tableState.searchTerm.toLowerCase());
+        const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter;
+        const matchesStatus =
+          statusFilter === 'all' ||
+          (statusFilter === 'recent' &&
+            material.purchaseDate &&
+            new Date(material.purchaseDate).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000) ||
+          (statusFilter === 'pending' && (!material.totalAmount || material.totalAmount === 0));
 
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return tableState.sortDirection === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
+        return matchesSite && matchesSearch && matchesCategory && matchesStatus;
+      })
+      .sort((a, b) => {
+        const aValue = a[tableState.sortField as keyof SharedMaterial];
+        const bValue = b[tableState.sortField as keyof SharedMaterial];
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return tableState.sortDirection === 'asc'
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        }
+
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        }
+
+        return 0;
+      });
+  }, [materials, filterBySite, tableState, categoryFilter, statusFilter]);
+
+  const handleFormSubmit = async (materialData: Omit<SharedMaterial, 'id'>) => {
+    try {
+      if (dialog.editingItem) {
+        await updateMaterial(dialog.editingItem.id, materialData);
+        toast.success('Purchase updated successfully.');
+      } else {
+        await addMaterial(materialData);
+        toast.success('Purchase recorded successfully.');
       }
-
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-
-      return 0;
-    });
-
-  const handleFormSubmit = (materialData: Omit<SharedMaterial, 'id'>) => {
-    if (dialog.editingItem) {
-      updateMaterial(dialog.editingItem.id, materialData);
-    } else {
-      addMaterial(materialData);
+      dialog.closeDialog();
+    } catch (error) {
+      console.error('Failed to save purchase', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to save purchase. Please try again.',
+      );
     }
-    dialog.closeDialog();
   };
 
   const handleFormCancel = () => {
@@ -132,8 +159,16 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     dialog.openDialog(material);
   };
 
-  const handleDelete = (materialId: string) => {
-    deleteMaterial(materialId);
+  const handleDelete = async (materialId: string) => {
+    try {
+      await deleteMaterial(materialId);
+      toast.success('Purchase deleted successfully.');
+    } catch (error) {
+      console.error('Failed to delete purchase', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to delete purchase. Please try again.',
+      );
+    }
   };
 
   return (
@@ -149,7 +184,9 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Total Purchases</p>
-                      <p className="text-2xl font-bold text-primary">{totalPurchases}</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {isLoading ? '—' : totalPurchases}
+                      </p>
                     </div>
                     <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
                       <Package className="h-6 w-6 text-primary" />
@@ -163,7 +200,7 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Total Value</p>
                       <p className="text-2xl font-bold text-green-600">
-                        ₹{totalValue.toLocaleString()}
+                        {isLoading ? '—' : `₹${totalValue.toLocaleString()}`}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
@@ -178,7 +215,7 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Avg. Order Value</p>
                       <p className="text-2xl font-bold text-orange-600">
-                        ₹{Math.round(averageOrderValue).toLocaleString()}
+                        {isLoading ? '—' : `₹${Math.round(averageOrderValue).toLocaleString()}`}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
@@ -193,7 +230,7 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Total Quantity</p>
                       <p className="text-2xl font-bold text-purple-600">
-                        {totalQuantity.toFixed(1)}
+                        {isLoading ? '—' : totalQuantity.toFixed(1)}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
@@ -227,17 +264,11 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Categories</SelectItem>
-                      <SelectItem value="Cement">Cement</SelectItem>
-                      <SelectItem value="Steel">Steel</SelectItem>
-                      <SelectItem value="Concrete">Concrete</SelectItem>
-                      <SelectItem value="Bricks">Bricks</SelectItem>
-                      <SelectItem value="Sand">Sand</SelectItem>
-                      <SelectItem value="Aggregate">Aggregate</SelectItem>
-                      <SelectItem value="Timber">Timber</SelectItem>
-                      <SelectItem value="Electrical">Electrical</SelectItem>
-                      <SelectItem value="Plumbing">Plumbing</SelectItem>
-                      <SelectItem value="Paint">Paint</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      {categoryOptions.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -314,7 +345,16 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
         </Card>
 
         {/* Purchase Management Table */}
-        {sortedAndFilteredMaterials.length === 0 ? (
+        {isLoading ? (
+          <Card className="w-full">
+            <CardContent className="p-6 md:p-12">
+              <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground">
+                <Package className="h-12 w-12 animate-pulse" />
+                <p className="text-sm">Loading purchases…</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : sortedAndFilteredMaterials.length === 0 ? (
           <Card className="w-full">
             <CardContent className="p-6 md:p-12">
               <div className="flex flex-col items-center justify-center">

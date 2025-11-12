@@ -13,14 +13,15 @@ import {
   CheckCircle2,
   Pause,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { useTableState } from '../lib/hooks/useTableState';
 import { formatDate } from '../lib/utils';
 
 import MaterialMasterForm from './forms/MaterialMasterForm';
 import type { MaterialMasterItem } from './shared/materialMasterData';
-import { masterMaterials } from './shared/materialMasterData';
+import type { MaterialMasterInput } from '@/types/materials';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -56,8 +57,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 export function MaterialsPage() {
   // Material Master state
-  const [materialMasterData, setMaterialMasterData] =
-    useState<MaterialMasterItem[]>(masterMaterials);
+  const [materialMasterData, setMaterialMasterData] = useState<MaterialMasterItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [masterCategoryFilter, setMasterCategoryFilter] = useState<string>('all');
   const [masterStatusFilter, setMasterStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -73,68 +75,126 @@ export function MaterialsPage() {
 
   // Calculate summary statistics
 
-  const sortedAndFilteredMaterials = materialMasterData
-    .filter((material) => {
-      const matchesSearch =
-        searchQuery === '' ||
-        material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        material.category.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory =
-        masterCategoryFilter === 'all' || material.category === masterCategoryFilter;
-      const matchesStatus =
-        masterStatusFilter === 'all' ||
-        (masterStatusFilter === 'active' && material.isActive) ||
-        (masterStatusFilter === 'inactive' && !material.isActive);
-      return matchesSearch && matchesCategory && matchesStatus;
-    })
-    .sort((a, b) => {
-      const aValue = a[tableState.sortField as keyof MaterialMasterItem];
-      const bValue = b[tableState.sortField as keyof MaterialMasterItem];
+  const fetchMaterials = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/materials');
+      const payload = (await response.json().catch(() => ({}))) as {
+        materials?: MaterialMasterItem[];
+        error?: string;
+      };
 
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return tableState.sortDirection === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load materials.');
       }
 
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
+      const materials = payload.materials ?? [];
+      const normalized: MaterialMasterItem[] = materials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        category: material.category,
+        unit: material.unit,
+        standardRate: material.standardRate,
+        isActive: material.isActive,
+        hsn: material.hsn,
+        taxRate: material.taxRate,
+        createdDate: material.createdDate ?? material.createdAt?.split('T')[0] ?? '',
+        lastUpdated: material.lastUpdated ?? material.updatedAt?.split('T')[0] ?? '',
+      }));
+      setMaterialMasterData(normalized);
+    } catch (error) {
+      console.error('Error fetching materials', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load materials.');
+      setMaterialMasterData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-      return 0;
-    });
+  useEffect(() => {
+    void fetchMaterials();
+  }, [fetchMaterials]);
+
+  const sortedAndFilteredMaterials = useMemo(() => {
+    return materialMasterData
+      .filter((material) => {
+        const matchesSearch =
+          searchQuery === '' ||
+          material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          material.category.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory =
+          masterCategoryFilter === 'all' || material.category === masterCategoryFilter;
+        const matchesStatus =
+          masterStatusFilter === 'all' ||
+          (masterStatusFilter === 'active' && material.isActive) ||
+          (masterStatusFilter === 'inactive' && !material.isActive);
+        return matchesSearch && matchesCategory && matchesStatus;
+      })
+      .sort((a, b) => {
+        const aValue = a[tableState.sortField as keyof MaterialMasterItem];
+        const bValue = b[tableState.sortField as keyof MaterialMasterItem];
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return tableState.sortDirection === 'asc'
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        }
+
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return tableState.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        }
+
+        return 0;
+      });
+  }, [materialMasterData, masterCategoryFilter, masterStatusFilter, searchQuery, tableState]);
 
   // Material Master functions
-  const handleMaterialSubmit = (
-    formData: Omit<MaterialMasterItem, 'id' | 'createdDate' | 'lastUpdated'>,
-  ) => {
-    if (editingMaterial) {
-      // Update existing material
-      const updatedMaterial: MaterialMasterItem = {
-        ...editingMaterial,
-        ...formData,
-        lastUpdated: new Date().toISOString().split('T')[0],
-      };
+  const handleMaterialSubmit = useCallback(
+    async (formData: MaterialMasterInput) => {
+      setIsSaving(true);
+      try {
+        const isEditing = Boolean(editingMaterial);
+        const response = await fetch(
+          isEditing ? `/api/materials/${editingMaterial?.id}` : '/api/materials',
+          {
+            method: isEditing ? 'PATCH' : 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: formData.name,
+              category: formData.category,
+              unit: formData.unit,
+              standardRate: formData.standardRate,
+              isActive: formData.isActive,
+              hsn: formData.hsn,
+              taxRate: formData.taxRate,
+            }),
+          },
+        );
 
-      setMaterialMasterData((prev) =>
-        prev.map((material) => (material.id === editingMaterial.id ? updatedMaterial : material)),
-      );
-    } else {
-      // Create new material
-      const newMaterial: MaterialMasterItem = {
-        ...formData,
-        id: (materialMasterData.length + 1).toString(),
-        createdDate: new Date().toISOString().split('T')[0],
-        lastUpdated: new Date().toISOString().split('T')[0],
-      };
+        const payload = (await response.json().catch(() => ({}))) as {
+          material?: MaterialMasterItem;
+          error?: string;
+        };
 
-      setMaterialMasterData((prev) => [...prev, newMaterial]);
-    }
+        if (!response.ok || !payload.material) {
+          throw new Error(payload.error || 'Failed to save material.');
+        }
 
-    // Reset state and close dialog
-    setEditingMaterial(null);
-    setIsMaterialDialogOpen(false);
-  };
+        await fetchMaterials();
+        toast.success(isEditing ? 'Material updated successfully.' : 'Material added successfully.');
+        setEditingMaterial(null);
+        setIsMaterialDialogOpen(false);
+      } catch (error) {
+        console.error('Failed to save material', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to save material.');
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [editingMaterial, fetchMaterials],
+  );
 
   const handleEditMaterial = (material: MaterialMasterItem) => {
     setEditingMaterial(material);
@@ -146,18 +206,49 @@ export function MaterialsPage() {
     setIsMaterialDialogOpen(true);
   };
 
-  const toggleMasterMaterialStatus = (materialId: string) => {
-    const updatedMaterials = materialMasterData.map((material) =>
-      material.id === materialId
-        ? {
-            ...material,
+  const toggleMasterMaterialStatus = useCallback(
+    async (materialId: string) => {
+      try {
+        const material = materialMasterData.find((m) => m.id === materialId);
+        if (!material) return;
+
+        const response = await fetch(`/api/materials/${materialId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             isActive: !material.isActive,
-            lastUpdated: new Date().toISOString().split('T')[0],
-          }
-        : material,
-    );
-    setMaterialMasterData(updatedMaterials);
-  };
+          }),
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          material?: MaterialMasterItem;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.material) {
+          throw new Error(payload.error || 'Failed to update material status.');
+        }
+
+        setMaterialMasterData((prev) =>
+          prev.map((item) =>
+            item.id === materialId
+              ? {
+                  ...item,
+                  isActive: payload.material!.isActive,
+                  lastUpdated: payload.material!.lastUpdated ?? item.lastUpdated,
+                }
+              : item,
+          ),
+        );
+      } catch (error) {
+        console.error('Failed to update material status', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to update status.');
+      }
+    },
+    [materialMasterData],
+  );
 
   const getMasterCategoryIcon = (category: string) => {
     switch (category) {
@@ -169,6 +260,23 @@ export function MaterialsPage() {
         return Package;
     }
   };
+
+  const totalMaterials = materialMasterData.length;
+  const activeMaterials = useMemo(
+    () => materialMasterData.filter((m) => m.isActive).length,
+    [materialMasterData],
+  );
+  const totalCategories = useMemo(
+    () => new Set(materialMasterData.map((m) => m.category)).size,
+    [materialMasterData],
+  );
+  const averageRate = useMemo(() => {
+    if (!materialMasterData.length) {
+      return 0;
+    }
+    const total = materialMasterData.reduce((sum, m) => sum + m.standardRate, 0);
+    return Math.round(total / materialMasterData.length);
+  }, [materialMasterData]);
 
   return (
     <div className="w-full bg-background">
@@ -182,7 +290,7 @@ export function MaterialsPage() {
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Total Materials</p>
-                      <p className="text-2xl font-bold text-primary">{materialMasterData.length}</p>
+                      <p className="text-2xl font-bold text-primary">{totalMaterials}</p>
                     </div>
                     <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
                       <Package className="h-6 w-6 text-primary" />
@@ -196,7 +304,7 @@ export function MaterialsPage() {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Active Materials</p>
                       <p className="text-2xl font-bold text-green-600">
-                        {materialMasterData.filter((m) => m.isActive).length}
+                        {activeMaterials}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
@@ -211,7 +319,7 @@ export function MaterialsPage() {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Categories</p>
                       <p className="text-2xl font-bold text-orange-600">
-                        {new Set(materialMasterData.map((m) => m.category)).size}
+                        {totalCategories}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
@@ -226,11 +334,7 @@ export function MaterialsPage() {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Avg. Rate</p>
                       <p className="text-2xl font-bold text-purple-600">
-                        ₹
-                        {Math.round(
-                          materialMasterData.reduce((sum, m) => sum + m.standardRate, 0) /
-                            materialMasterData.length,
-                        )}
+                        ₹{averageRate}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
@@ -364,15 +468,26 @@ export function MaterialsPage() {
               </div>
 
               <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium w-fit">
-                {sortedAndFilteredMaterials.length} material
-                {sortedAndFilteredMaterials.length !== 1 ? 's' : ''} found
+                {isLoading
+                  ? 'Loading materials…'
+                  : `${sortedAndFilteredMaterials.length} material${
+                      sortedAndFilteredMaterials.length !== 1 ? 's' : ''
+                    } found`}
               </Badge>
             </div>
           </CardContent>
         </Card>
 
         {/* Materials Table */}
-        {sortedAndFilteredMaterials.length === 0 ? (
+        {isLoading ? (
+          <Card className="w-full">
+            <CardContent className="p-6 md:p-12">
+              <div className="space-y-3 text-center text-muted-foreground">
+                <p className="text-sm">Loading materials…</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : sortedAndFilteredMaterials.length === 0 ? (
           <Card className="w-full">
             <CardContent className="p-6 md:p-12">
               <div className="flex flex-col items-center justify-center">
@@ -386,6 +501,7 @@ export function MaterialsPage() {
                 <Button
                   onClick={handleAddNewMaterial}
                   className="gap-2 transition-all hover:shadow-md"
+                  disabled={isSaving}
                 >
                   <Plus className="h-4 w-4" />
                   Add Material

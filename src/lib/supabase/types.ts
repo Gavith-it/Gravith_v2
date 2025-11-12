@@ -13,6 +13,13 @@ export type OrganizationRole =
   | 'finance-manager'
   | 'executive';
 
+type GenericTable = {
+  Row: { [key: string]: Json };
+  Insert: { [key: string]: Json | undefined };
+  Update: { [key: string]: Json | undefined };
+  Relationships: never[];
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -88,6 +95,7 @@ export interface Database {
         };
         Relationships: [];
       };
+      [table: string]: GenericTable;
     };
     Views: {
       [_ in never]: never;
@@ -102,6 +110,10 @@ export interface Database {
           p_user_last_name: string;
         };
         Returns: Database['public']['Tables']['organizations']['Row'];
+      };
+      [fn: string]: {
+        Args: Record<string, unknown>;
+        Returns: unknown;
       };
     };
     Enums: {

@@ -4,19 +4,12 @@ import { useRouter } from 'next/navigation';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
+import type { SiteInput } from '@/types/sites';
 
 export default function SiteNewPage() {
   const router = useRouter();
 
-  const handleSubmit = (data: {
-    name: string;
-    location: string;
-    startDate: string;
-    expectedEndDate: string;
-    budget: number;
-    description: string;
-    status: 'Active' | 'Stopped' | 'Completed' | 'Canceled';
-  }) => {
+  const handleSubmit = async (data: SiteInput) => {
     // Handle form submission logic here
     console.log('New site data:', data);
     // You can add API call to save the site

@@ -11,7 +11,8 @@ import {
   Edit,
   Trash2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { FormDialog } from '@/components/common/FormDialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -33,78 +34,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDialogState } from '@/lib/hooks/useDialogState';
+import {
+  useVehicleRefueling,
+  useVehicles,
+  useVehicleUsage,
+} from '@/lib/contexts';
+import type {
+  Vehicle as VehicleEntity,
+  VehicleRefueling as VehicleRefuelingEntity,
+  VehicleUsage as VehicleUsageEntity,
+} from '@/types/entities';
 import { formatDateShort } from '@/lib/utils';
 
-interface Vehicle {
-  id: string;
-  vehicleNumber: string;
-  type: string;
-  make: string;
-  model: string;
-  year: number;
-  siteId: string;
-  siteName: string;
-  status: 'Active' | 'Maintenance' | 'Idle' | 'Returned';
-  operator: string;
-  isRental: boolean;
-  vendor?: string;
-  rentalCostPerDay?: number;
-  rentalStartDate?: string;
-  rentalEndDate?: string;
-  totalRentalDays?: number;
-  totalRentalCost?: number;
-  fuelCapacity: number;
-  currentFuelLevel: number;
-  mileage: number;
-  lastMaintenanceDate: string;
-  nextMaintenanceDate: string;
-  insuranceExpiry: string;
-  registrationExpiry: string;
-  createdAt: string;
-  lastUpdated: string;
-}
-
-interface VehicleRefueling {
-  id: string;
-  vehicleId: string;
-  vehicleNumber: string;
-  date: string;
-  fuelType: 'Petrol' | 'Diesel' | 'CNG' | 'Electric';
-  quantity: number;
-  unit: 'liters' | 'kWh';
-  cost: number;
-  odometerReading: number;
-  location: string;
-  vendor: string;
-  invoiceNumber: string;
-  receiptUrl?: string;
-  notes?: string;
-  recordedBy: string;
-}
-
-interface VehicleUsage {
-  id: string;
-  vehicleId: string;
-  vehicleNumber: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  startOdometer: number;
-  endOdometer: number;
-  totalDistance: number;
-  workDescription: string;
-  workCategory: 'Construction' | 'Transport' | 'Delivery' | 'Maintenance' | 'Other';
-  siteId: string;
-  siteName: string;
-  operator: string;
-  fuelConsumed: number;
-  isRental: boolean;
-  rentalCost?: number;
-  vendor?: string;
-  status: 'In Progress' | 'Completed' | 'Cancelled';
-  notes?: string;
-  recordedBy: string;
-}
+type Vehicle = VehicleEntity;
+type VehicleRefueling = VehicleRefuelingEntity;
+type VehicleUsage = VehicleUsageEntity;
 
 interface VehicleManagementProps {
   selectedVehicle?: string;
@@ -159,7 +103,7 @@ const emptyUsageFormState: UsageFormState = {
   startOdometer: '',
   endOdometer: '',
   workDescription: '',
-  workCategory: 'Construction',
+  workCategory: 'construction',
   siteId: '',
   fuelConsumed: '',
   notes: '',
@@ -169,185 +113,38 @@ export function VehiclesPage({
   selectedVehicle: propSelectedVehicle,
   onVehicleSelect,
 }: VehicleManagementProps) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([
-    {
-      id: '1',
-      vehicleNumber: 'EX-001',
-      type: 'Excavator',
-      make: 'CAT',
-      model: '320D',
-      year: 2022,
-      siteId: '1',
-      siteName: 'Residential Complex A',
-      status: 'Active',
-      operator: 'John Smith',
-      isRental: true,
-      vendor: 'Heavy Equipment Rentals',
-      rentalCostPerDay: 8000,
-      rentalStartDate: '2024-01-15',
-      rentalEndDate: '2024-12-31',
-      totalRentalDays: 320,
-      totalRentalCost: 2560000,
-      fuelCapacity: 200,
-      currentFuelLevel: 150,
-      mileage: 2500,
-      lastMaintenanceDate: '2024-01-10',
-      nextMaintenanceDate: '2024-04-10',
-      insuranceExpiry: '2024-12-31',
-      registrationExpiry: '2024-12-31',
-      createdAt: '2024-01-15',
-      lastUpdated: '2024-03-15',
-    },
-    {
-      id: '2',
-      vehicleNumber: 'CR-002',
-      type: 'Crane',
-      make: 'Liebherr',
-      model: 'LTM 1200',
-      year: 2021,
-      siteId: '1',
-      siteName: 'Residential Complex A',
-      status: 'Active',
-      operator: 'Mike Johnson',
-      isRental: true,
-      vendor: 'Crane Solutions Ltd',
-      rentalCostPerDay: 12000,
-      rentalStartDate: '2024-01-20',
-      rentalEndDate: '2024-12-31',
-      totalRentalDays: 290,
-      totalRentalCost: 3480000,
-      fuelCapacity: 300,
-      currentFuelLevel: 200,
-      mileage: 1800,
-      lastMaintenanceDate: '2024-01-15',
-      nextMaintenanceDate: '2024-04-15',
-      insuranceExpiry: '2024-12-31',
-      registrationExpiry: '2024-12-31',
-      createdAt: '2024-01-20',
-      lastUpdated: '2024-03-15',
-    },
-    {
-      id: '3',
-      vehicleNumber: 'TK-003',
-      type: 'Truck',
-      make: 'Tata',
-      model: 'Prima 4038',
-      year: 2023,
-      siteId: '2',
-      siteName: 'Commercial Plaza B',
-      status: 'Maintenance',
-      operator: 'Rajesh Kumar',
-      isRental: false,
-      fuelCapacity: 100,
-      currentFuelLevel: 80,
-      mileage: 4500,
-      lastMaintenanceDate: '2024-02-15',
-      nextMaintenanceDate: '2024-05-15',
-      insuranceExpiry: '2025-06-30',
-      registrationExpiry: '2025-06-30',
-      createdAt: '2024-01-01',
-      lastUpdated: '2024-03-15',
-    },
-  ]);
+  const { vehicles, isLoading: isVehiclesLoading } = useVehicles();
 
-  const [refuelingRecords, setRefuelingRecords] = useState<VehicleRefueling[]>([
-    {
-      id: '1',
-      vehicleId: '1',
-      vehicleNumber: 'EX-001',
-      date: '2024-03-10',
-      fuelType: 'Diesel',
-      quantity: 50,
-      unit: 'liters',
-      cost: 4250,
-      odometerReading: 2480,
-      location: 'Site Fuel Station',
-      vendor: 'BP Fuel Station',
-      invoiceNumber: 'BP-001234',
-      notes: 'Regular refueling',
-      recordedBy: 'John Smith',
-    },
-    {
-      id: '2',
-      vehicleId: '2',
-      vehicleNumber: 'CR-002',
-      date: '2024-03-12',
-      fuelType: 'Diesel',
-      quantity: 75,
-      unit: 'liters',
-      cost: 6375,
-      odometerReading: 1780,
-      location: 'Site Fuel Station',
-      vendor: 'HP Fuel Station',
-      invoiceNumber: 'HP-005678',
-      notes: 'Heavy lifting operations',
-      recordedBy: 'Mike Johnson',
-    },
-  ]);
+  const {
+    records: refuelingRecords,
+    isLoading: isRefuelingLoading,
+    addRecord: createRefuelingRecord,
+    updateRecord: editRefuelingRecord,
+    deleteRecord: removeRefuelingRecord,
+  } = useVehicleRefueling();
 
-  const [usageRecords, setUsageRecords] = useState<VehicleUsage[]>([
-    {
-      id: '1',
-      vehicleId: '1',
-      vehicleNumber: 'EX-001',
-      date: '2024-03-15',
-      startTime: '08:00',
-      endTime: '17:00',
-      startOdometer: 2480,
-      endOdometer: 2490,
-      totalDistance: 10,
-      workDescription: 'Foundation excavation work',
-      workCategory: 'Construction',
-      siteId: '1',
-      siteName: 'Residential Complex A',
-      operator: 'John Smith',
-      fuelConsumed: 40,
-      isRental: true,
-      rentalCost: 8000,
-      vendor: 'Heavy Equipment Rentals',
-      status: 'Completed',
-      notes: 'Completed foundation work for Block A',
-      recordedBy: 'Site Supervisor',
-    },
-    {
-      id: '2',
-      vehicleId: '2',
-      vehicleNumber: 'CR-002',
-      date: '2024-03-15',
-      startTime: '09:00',
-      endTime: '16:00',
-      startOdometer: 1780,
-      endOdometer: 1785,
-      totalDistance: 5,
-      workDescription: 'Steel beam lifting operations',
-      workCategory: 'Construction',
-      siteId: '1',
-      siteName: 'Residential Complex A',
-      operator: 'Mike Johnson',
-      fuelConsumed: 25,
-      isRental: true,
-      rentalCost: 12000,
-      vendor: 'Crane Solutions Ltd',
-      status: 'Completed',
-      notes: 'Lifted 12 steel beams for structural work',
-      recordedBy: 'Site Supervisor',
-    },
-  ]);
+  const {
+    records: usageRecords,
+    isLoading: isUsageLoading,
+    addRecord: createUsageRecord,
+    updateRecord: editUsageRecord,
+    deleteRecord: removeUsageRecord,
+  } = useVehicleUsage();
 
-  const [selectedVehicle, setSelectedVehicle] = useState<string>(propSelectedVehicle || '1');
+  const [selectedVehicle, setSelectedVehicle] = useState<string>(propSelectedVehicle || '');
   const [activeTab, setActiveTab] = useState('refueling');
 
   const refuelingDialog = useDialogState<VehicleRefueling>();
   const usageDialog = useDialogState<VehicleUsage>();
 
-  const resetRefuelingForm = React.useCallback(() => {
+  const resetRefuelingForm = useCallback(() => {
     setRefuelingForm({
       ...emptyRefuelingFormState,
       vehicleId: selectedVehicle || '',
     });
   }, [selectedVehicle]);
 
-  const resetUsageForm = React.useCallback(() => {
+  const resetUsageForm = useCallback(() => {
     const vehicle = vehicles.find((v) => v.id === selectedVehicle);
     setUsageForm({
       ...emptyUsageFormState,
@@ -357,13 +154,31 @@ export function VehiclesPage({
   }, [selectedVehicle, vehicles]);
 
   // Update selectedVehicle when prop changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (propSelectedVehicle) {
       setSelectedVehicle(propSelectedVehicle);
     }
   }, [propSelectedVehicle]);
 
-  React.useEffect(() => {
+  useEffect(() => {
+    if (vehicles.length === 0) {
+      if (selectedVehicle) {
+        setSelectedVehicle('');
+        onVehicleSelect?.('');
+      }
+      return;
+    }
+
+    if (!selectedVehicle || !vehicles.some((vehicle) => vehicle.id === selectedVehicle)) {
+      const nextId = propSelectedVehicle && vehicles.some((v) => v.id === propSelectedVehicle)
+        ? propSelectedVehicle
+        : vehicles[0].id;
+      setSelectedVehicle(nextId);
+      onVehicleSelect?.(nextId);
+    }
+  }, [vehicles, selectedVehicle, onVehicleSelect, propSelectedVehicle]);
+
+  useEffect(() => {
     if (!refuelingDialog.isDialogOpen) {
       resetRefuelingForm();
       return;
@@ -388,7 +203,7 @@ export function VehiclesPage({
     }
   }, [refuelingDialog.isDialogOpen, refuelingDialog.editingItem, resetRefuelingForm]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!usageDialog.isDialogOpen) {
       resetUsageForm();
       return;
@@ -425,159 +240,202 @@ export function VehiclesPage({
 
   // Calculate analytics
   const totalVehicles = vehicles.length;
-  const activeVehicles = vehicles.filter((v) => v.status === 'Active').length;
+  const activeVehicles = vehicles.filter((v) => ['available', 'in_use'].includes(v.status)).length;
   const totalFuelCost = refuelingRecords.reduce((sum, record) => sum + record.cost, 0);
+  const totalDistanceTravelled = usageRecords.reduce(
+    (sum, record) => sum + record.totalDistance,
+    0,
+  );
+  const totalFuelConsumed = usageRecords.reduce(
+    (sum, record) => sum + record.fuelConsumed,
+    0,
+  );
   const averageFuelEfficiency =
-    usageRecords.length > 0
-      ? usageRecords.reduce((sum, record) => sum + record.totalDistance / record.fuelConsumed, 0) /
-        usageRecords.length
-      : 0;
+    totalFuelConsumed > 0 ? totalDistanceTravelled / totalFuelConsumed : 0;
 
   const currentVehicle = vehicles.find((vehicle) => vehicle.id === selectedVehicle);
 
-  const handleRefuelingSubmit = (e: React.FormEvent) => {
+  const vehicleSiteOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    vehicles.forEach((vehicle) => {
+      if (vehicle.siteId) {
+        unique.set(vehicle.siteId, vehicle.siteName ?? vehicle.siteId);
+      }
+    });
+    return Array.from(unique.entries()).map(([id, name]) => ({ id, name }));
+  }, [vehicles]);
+
+  const handleRefuelingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const vehicle = vehicles.find((v) => v.id === refuelingForm.vehicleId);
 
-    const recordId = refuelingDialog.editingItem?.id || (refuelingRecords.length + 1).toString();
+    if (!vehicle) {
+      toast.error('Please select a vehicle.');
+      return;
+    }
 
-    const updatedRefueling: VehicleRefueling = {
-      id: recordId,
-      vehicleId: refuelingForm.vehicleId,
-      vehicleNumber: vehicle?.vehicleNumber || '',
+    if (!refuelingForm.date) {
+      toast.error('Please select a refueling date.');
+      return;
+    }
+
+  const quantity = Number(refuelingForm.quantity);
+  const cost = Number(refuelingForm.cost);
+  const odometerReading = Number(refuelingForm.odometerReading);
+
+  if ([quantity, cost, odometerReading].some((value) => Number.isNaN(value))) {
+    toast.error('Please enter valid numeric values.');
+    return;
+  }
+
+    const unit: VehicleRefueling['unit'] =
+      refuelingForm.fuelType === 'Electric' ? 'kWh' : 'liters';
+
+    const payload = {
+      vehicleId: vehicle.id,
+      vehicleNumber: vehicle.vehicleNumber,
       date: refuelingForm.date,
       fuelType: refuelingForm.fuelType,
-      quantity: Number(refuelingForm.quantity),
-      unit: refuelingForm.fuelType === 'Electric' ? 'kWh' : 'liters',
-      cost: Number(refuelingForm.cost),
-      odometerReading: Number(refuelingForm.odometerReading),
+      quantity,
+      unit,
+      cost,
+      odometerReading,
       location: refuelingForm.location,
       vendor: refuelingForm.vendor,
       invoiceNumber: refuelingForm.invoiceNumber,
-      notes: refuelingForm.notes,
-      recordedBy: 'Current User',
+      receiptUrl: null,
+      notes: refuelingForm.notes || null,
     };
 
-    if (refuelingDialog.editingItem) {
-      setRefuelingRecords((prev) =>
-        prev.map((record) => (record.id === recordId ? updatedRefueling : record)),
-      );
-    } else {
-      setRefuelingRecords((prev) => [...prev, updatedRefueling]);
-
-      // Update vehicle fuel level and mileage for newly added entries
-      setVehicles((prev) =>
-        prev.map((v) =>
-          v.id === refuelingForm.vehicleId
-            ? {
-                ...v,
-                currentFuelLevel: Math.min(
-                  v.fuelCapacity,
-                  v.currentFuelLevel + Number(refuelingForm.quantity),
-                ),
-                mileage: Number(refuelingForm.odometerReading),
-                lastUpdated: new Date().toISOString().split('T')[0],
-              }
-            : v,
-        ),
+    try {
+      if (refuelingDialog.editingItem) {
+        await editRefuelingRecord(refuelingDialog.editingItem.id, payload);
+        toast.success('Refueling record updated.');
+      } else {
+        await createRefuelingRecord(payload);
+        toast.success('Refueling record added.');
+      }
+      resetRefuelingForm();
+      refuelingDialog.closeDialog();
+    } catch (error) {
+      console.error('Failed to save refueling record', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to save refueling record right now.',
       );
     }
-
-    resetRefuelingForm();
-    refuelingDialog.closeDialog();
   };
 
-  const handleUsageSubmit = (e: React.FormEvent) => {
+  const handleUsageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const vehicle = vehicles.find((v) => v.id === usageForm.vehicleId);
-    const totalDistance = Number(usageForm.endOdometer) - Number(usageForm.startOdometer);
 
-    const recordId = usageDialog.editingItem?.id || (usageRecords.length + 1).toString();
+    if (!vehicle) {
+      toast.error('Please select a vehicle.');
+      return;
+    }
 
-    const updatedUsage: VehicleUsage = {
-      id: recordId,
-      vehicleId: usageForm.vehicleId,
-      vehicleNumber: vehicle?.vehicleNumber || '',
+    if (!usageForm.date) {
+      toast.error('Please select a usage date.');
+      return;
+    }
+
+    const startOdometer = Number(usageForm.startOdometer);
+    const endOdometer = Number(usageForm.endOdometer);
+    const fuelConsumed = Number(usageForm.fuelConsumed);
+
+    if ([startOdometer, endOdometer, fuelConsumed].some((value) => Number.isNaN(value))) {
+      toast.error('Please enter valid numeric values.');
+      return;
+    }
+
+    const totalDistance = endOdometer - startOdometer;
+
+    if (totalDistance < 0) {
+      toast.error('End odometer must be greater than or equal to start odometer.');
+      return;
+    }
+
+    const siteName =
+      vehicleSiteOptions.find((option) => option.id === usageForm.siteId)?.name ??
+      vehicle.siteName ??
+      '';
+
+    const payload = {
+      vehicleId: vehicle.id,
+      vehicleNumber: vehicle.vehicleNumber,
       date: usageForm.date,
       startTime: usageForm.startTime,
       endTime: usageForm.endTime,
-      startOdometer: Number(usageForm.startOdometer),
-      endOdometer: Number(usageForm.endOdometer),
+      startOdometer,
+      endOdometer,
       totalDistance,
       workDescription: usageForm.workDescription,
       workCategory: usageForm.workCategory,
       siteId: usageForm.siteId,
-      siteName: vehicles.find((v) => v.siteId === usageForm.siteId)?.siteName || '',
-      operator: vehicle?.operator || '',
-      fuelConsumed: Number(usageForm.fuelConsumed),
-      isRental: vehicle?.isRental || false,
-      rentalCost: vehicle?.isRental ? vehicle?.rentalCostPerDay : undefined,
-      vendor: vehicle?.vendor,
-      status: 'Completed',
-      notes: usageForm.notes,
-      recordedBy: 'Current User',
+      siteName,
+      operator: vehicle.operator ?? '',
+      fuelConsumed,
+      isRental: vehicle.isRental,
+      rentalCost: vehicle.isRental ? vehicle.rentalCostPerDay ?? null : null,
+      vendor: vehicle.vendor ?? null,
+      status: 'Completed' as VehicleUsage['status'],
+      notes: usageForm.notes || null,
     };
 
-    if (usageDialog.editingItem) {
-      setUsageRecords((prev) =>
-        prev.map((record) => (record.id === recordId ? updatedUsage : record)),
-      );
-    } else {
-      setUsageRecords((prev) => [...prev, updatedUsage]);
+    try {
+      if (usageDialog.editingItem) {
+        await editUsageRecord(usageDialog.editingItem.id, payload);
+        toast.success('Usage record updated.');
+      } else {
+        await createUsageRecord(payload);
+        toast.success('Usage record added.');
+      }
 
-      // Update vehicle mileage and fuel level when creating a new usage entry
-      setVehicles((prev) =>
-        prev.map((v) =>
-          v.id === usageForm.vehicleId
-            ? {
-                ...v,
-                mileage: Number(usageForm.endOdometer),
-                currentFuelLevel: Math.max(0, v.currentFuelLevel - Number(usageForm.fuelConsumed)),
-                lastUpdated: new Date().toISOString().split('T')[0],
-              }
-            : v,
-        ),
+      resetUsageForm();
+      usageDialog.closeDialog();
+    } catch (error) {
+      console.error('Failed to save usage record', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to save usage record right now.',
       );
     }
-
-    resetUsageForm();
-    usageDialog.closeDialog();
   };
 
   const handleEditRefueling = (record: VehicleRefueling) => {
     refuelingDialog.openDialog(record);
   };
 
-  const handleDeleteRefueling = (recordId: string) => {
+  const handleDeleteRefueling = async (recordId: string) => {
     if (typeof window !== 'undefined' && !window.confirm('Delete this refueling record?')) {
       return;
     }
-    setRefuelingRecords((prev) => prev.filter((record) => record.id !== recordId));
+    try {
+      await removeRefuelingRecord(recordId);
+      toast.success('Refueling record deleted.');
+    } catch (error) {
+      console.error('Failed to delete refueling record', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to delete refueling record right now.',
+      );
+    }
   };
 
   const handleEditUsage = (record: VehicleUsage) => {
     usageDialog.openDialog(record);
   };
 
-  const handleDeleteUsage = (recordId: string) => {
+  const handleDeleteUsage = async (recordId: string) => {
     if (typeof window !== 'undefined' && !window.confirm('Delete this usage record?')) {
       return;
     }
-    setUsageRecords((prev) => prev.filter((record) => record.id !== recordId));
-  };
-
-  const getStatusColor = (status: Vehicle['status']) => {
-    switch (status) {
-      case 'Active':
-        return 'bg-green-100 text-green-800';
-      case 'Maintenance':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Idle':
-        return 'bg-gray-100 text-gray-800';
-      case 'Returned':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+    try {
+      await removeUsageRecord(recordId);
+      toast.success('Usage record deleted.');
+    } catch (error) {
+      console.error('Failed to delete usage record', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Unable to delete usage record right now.',
+      );
     }
   };
 
@@ -594,6 +452,17 @@ export function VehiclesPage({
     fuel: record.fuelConsumed,
     vehicle: record.vehicleNumber,
   }));
+
+  if (isVehiclesLoading && vehicles.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <div className="space-y-3 text-center">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+          <p className="text-sm text-muted-foreground">Loading vehicles...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -729,6 +598,7 @@ export function VehiclesPage({
                               resetRefuelingForm();
                               refuelingDialog.openDialog();
                             }}
+                            disabled={isVehiclesLoading || vehicles.length === 0}
                             className="gap-2"
                           >
                             <Plus className="h-4 w-4" />
@@ -792,7 +662,7 @@ export function VehiclesPage({
                                                 type="button"
                                                 variant="outline"
                                                 size="icon"
-                                                onClick={() => handleDeleteRefueling(record.id)}
+                                            onClick={() => void handleDeleteRefueling(record.id)}
                                                 aria-label={`Delete refueling record ${record.invoiceNumber}`}
                                                 className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
                                               >
@@ -918,6 +788,7 @@ export function VehiclesPage({
                             resetUsageForm();
                             usageDialog.openDialog();
                           }}
+                          disabled={isVehiclesLoading || vehicles.length === 0}
                           className="gap-2"
                         >
                           <Plus className="h-4 w-4" />
@@ -983,7 +854,7 @@ export function VehiclesPage({
                                               type="button"
                                               variant="outline"
                                               size="icon"
-                                              onClick={() => handleDeleteUsage(record.id)}
+                                          onClick={() => void handleDeleteUsage(record.id)}
                                               aria-label={`Delete usage record ${record.id}`}
                                               className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
                                             >
@@ -1049,6 +920,7 @@ export function VehiclesPage({
                   <Label htmlFor="vehicle">Vehicle *</Label>
                   <Select
                     value={refuelingForm.vehicleId}
+                    disabled={vehicles.length === 0}
                     onValueChange={(value) =>
                       setRefuelingForm((prev) => ({ ...prev, vehicleId: value }))
                     }
@@ -1212,6 +1084,7 @@ export function VehiclesPage({
                   <Label htmlFor="vehicle">Vehicle *</Label>
                   <Select
                     value={usageForm.vehicleId}
+                    disabled={vehicles.length === 0}
                     onValueChange={(value) =>
                       setUsageForm((prev) => ({ ...prev, vehicleId: value }))
                     }
@@ -1332,18 +1205,11 @@ export function VehiclesPage({
                       <SelectValue placeholder="Select site" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Array.from(new Set(vehicles.map((vehicle) => vehicle.siteId))).map(
-                        (siteId) => {
-                          const siteName = vehicles.find(
-                            (vehicle) => vehicle.siteId === siteId,
-                          )?.siteName;
-                          return (
-                            <SelectItem key={siteId} value={siteId}>
-                              {siteName}
-                            </SelectItem>
-                          );
-                        },
-                      )}
+                      {vehicleSiteOptions.map((site) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

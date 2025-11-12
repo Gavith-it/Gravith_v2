@@ -1,180 +1,115 @@
 'use client';
 
-import React, { useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-
-interface PaymentRecordFormData {
-  paymentId: string;
-  amount: string;
-  date: string;
-  method: 'Cash' | 'Bank Transfer' | 'Cheque' | 'UPI' | 'Other';
-  transactionId: string;
-  receivedBy: string;
-  notes: string;
-}
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Payment } from '@/types';
 
 interface PaymentRecordFormProps {
-  payments: Array<{
-    id: string;
-    clientName: string;
-    projectName: string;
-    contractValue: number;
-    dueDate: string;
-    status: string;
-  }>;
-  onSubmit: (data: PaymentRecordFormData) => void;
+  payments: Payment[];
+  onSubmit: (data: PaymentRecordFormData) => Promise<void> | void;
   onCancel: () => void;
 }
 
-export default function PaymentRecordForm({
-  payments,
-  onSubmit,
-  onCancel,
-}: PaymentRecordFormProps) {
-  const [formData, setFormData] = useState<PaymentRecordFormData>({
-    paymentId: '',
-    amount: '',
-    date: '',
-    method: 'Bank Transfer',
-    transactionId: '',
-    receivedBy: '',
-    notes: '',
+const recordSchema = z.object({
+  paymentId: z.string().min(1, 'Select a payment to update.'),
+  paidDate: z.date(),
+  status: z.enum(['pending', 'completed', 'overdue']),
+});
+
+export type PaymentRecordFormData = z.infer<typeof recordSchema>;
+
+export default function PaymentRecordForm({ payments, onSubmit, onCancel }: PaymentRecordFormProps) {
+  const form = useForm<PaymentRecordFormData>({
+    resolver: zodResolver(recordSchema),
+    defaultValues: {
+      paymentId: '',
+      status: 'completed',
+    },
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { id, value } = e.target;
-    setFormData((prev) => ({ ...prev, [id]: value }));
-  };
-
-  const handleSelectChange = (id: keyof PaymentRecordFormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [id]: value }));
-  };
-
-  const handleDateChange = (date: Date | undefined) => {
-    setFormData((prev) => ({ ...prev, date: date ? date.toISOString().split('T')[0] : '' }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(formData);
+  const handleSubmit = async (data: PaymentRecordFormData) => {
+    await onSubmit(data);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="paymentId">Payment Contract *</Label>
-        <Select
-          value={formData.paymentId}
-          onValueChange={(value) => handleSelectChange('paymentId', value)}
-        >
-          <SelectTrigger id="paymentId">
-            <SelectValue placeholder="Select payment contract" />
-          </SelectTrigger>
-          <SelectContent>
-            {payments.map((payment) => (
-              <SelectItem key={payment.id} value={payment.id}>
-                {payment.clientName} - {payment.projectName} (₹
-                {payment.contractValue.toLocaleString()})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="amount">Amount Received (₹) *</Label>
-          <Input
-            id="amount"
-            type="number"
-            value={formData.amount}
-            onChange={handleChange}
-            placeholder="25000000"
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="date">Date Received *</Label>
-          <DatePicker
-            date={formData.date ? new Date(formData.date) : undefined}
-            onSelect={handleDateChange}
-            placeholder="Select payment date"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="method">Payment Method *</Label>
-          <Select
-            value={formData.method}
-            onValueChange={(value) =>
-              handleSelectChange('method', value as PaymentRecordFormData['method'])
-            }
-          >
-            <SelectTrigger id="method">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Cash">Cash</SelectItem>
-              <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-              <SelectItem value="Cheque">Cheque</SelectItem>
-              <SelectItem value="UPI">UPI</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="transactionId">Transaction ID</Label>
-          <Input
-            id="transactionId"
-            value={formData.transactionId}
-            onChange={handleChange}
-            placeholder="TXN123456789"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="receivedBy">Received By *</Label>
-        <Input
-          id="receivedBy"
-          value={formData.receivedBy}
-          onChange={handleChange}
-          placeholder="Finance Manager"
-          required
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="paymentId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Payment *</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {payments.map((payment) => (
+                    <SelectItem key={payment.id} value={payment.id}>
+                      {payment.clientName} · ₹{payment.amount.toLocaleString()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="notes">Notes</Label>
-        <Textarea
-          id="notes"
-          value={formData.notes}
-          onChange={handleChange}
-          placeholder="Additional notes about the payment..."
-          rows={3}
+        <FormField
+          control={form.control}
+          name="paidDate"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Paid Date *</FormLabel>
+              <FormControl>
+                <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit">Record Payment</Button>
-      </div>
-    </form>
+        <FormField
+          control={form.control}
+          name="status"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Status *</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit">Update Payment</Button>
+        </div>
+      </form>
+    </Form>
   );
 }

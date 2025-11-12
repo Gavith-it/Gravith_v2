@@ -3,7 +3,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as React from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { toast } from 'sonner';
 import * as z from 'zod';
 
 import { Button } from '@/components/ui/button';
@@ -19,25 +18,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-
-interface Site {
-  id: string;
-  name: string;
-  location: string;
-  startDate: string;
-  expectedEndDate: string;
-  status: 'Active' | 'Stopped' | 'Completed' | 'Canceled';
-  budget: number;
-  spent: number;
-  description: string;
-  progress: number;
-  imageUrl?: string;
-}
+import type { Site, SiteInput } from '@/types/sites';
 
 interface SiteFormProps {
   mode: 'new' | 'edit';
   site?: Site;
-  onSubmit: (siteData: Omit<Site, 'id' | 'spent' | 'progress'>) => void;
+  onSubmit: (siteData: SiteInput) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -110,9 +96,8 @@ export default function SiteForm({ mode, site, onSubmit, onCancel }: SiteFormPro
     }
   }, [site, isEditMode, form]);
 
-  function handleFormSubmit(data: SiteFormData) {
-    // Transform the data to match the expected Site interface
-    const siteData: Omit<Site, 'id' | 'spent' | 'progress'> = {
+  async function handleFormSubmit(data: SiteFormData) {
+    const siteData: SiteInput = {
       name: data.name,
       location: data.location,
       startDate: data.startDate.toISOString().split('T')[0],
@@ -122,18 +107,7 @@ export default function SiteForm({ mode, site, onSubmit, onCancel }: SiteFormPro
       description: data.description || '',
     };
 
-    onSubmit(siteData);
-
-    // Show appropriate success message
-    if (isEditMode) {
-      toast.success('Site updated successfully!', {
-        description: `${data.name} has been updated.`,
-      });
-    } else {
-      toast.success('Site created successfully!', {
-        description: `${data.name} has been added to your sites.`,
-      });
-    }
+    await onSubmit(siteData);
   }
 
   const getSubmitButtonText = () =>

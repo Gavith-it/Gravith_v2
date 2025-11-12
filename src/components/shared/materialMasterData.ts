@@ -20,6 +20,8 @@ export interface MaterialMasterItem {
   lastUpdated: string;
   hsn: string;
   taxRate: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const masterMaterials: MaterialMasterItem[] = [

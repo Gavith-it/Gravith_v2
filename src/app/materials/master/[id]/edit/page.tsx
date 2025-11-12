@@ -5,6 +5,7 @@ import { use, useEffect, useState } from 'react';
 
 import MaterialMasterForm from '@/components/forms/MaterialMasterForm';
 import { PageHeader } from '@/components/layout/PageHeader';
+import type { MaterialMasterInput } from '@/types/materials';
 
 interface MaterialMasterEditPageProps {
   params: Promise<{
@@ -15,32 +16,13 @@ interface MaterialMasterEditPageProps {
 export default function MaterialMasterEditPage({ params }: MaterialMasterEditPageProps) {
   const router = useRouter();
   const resolvedParams = use(params);
-  const [materialData, setMaterialData] = useState<{
-    name: string;
-    category:
-      | 'Cement'
-      | 'Steel'
-      | 'Concrete'
-      | 'Bricks'
-      | 'Sand'
-      | 'Aggregate'
-      | 'Timber'
-      | 'Electrical'
-      | 'Plumbing'
-      | 'Paint'
-      | 'Other';
-    unit: string;
-    standardRate: number;
-    isActive: boolean;
-    hsn: string;
-    taxRate: number;
-  } | null>(null);
+  const [materialData, setMaterialData] = useState<MaterialMasterInput | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Fetch material data based on resolvedParams.id
     // This is a mock implementation - replace with actual API call
-    const mockMaterialData = {
+    const mockMaterialData: MaterialMasterInput & { description?: string } = {
       name: 'Portland Cement',
       category: 'Cement' as const,
       unit: 'bags',
@@ -54,26 +36,7 @@ export default function MaterialMasterEditPage({ params }: MaterialMasterEditPag
     setLoading(false);
   }, [resolvedParams.id]);
 
-  const handleSubmit = (data: {
-    name: string;
-    category:
-      | 'Cement'
-      | 'Steel'
-      | 'Concrete'
-      | 'Bricks'
-      | 'Sand'
-      | 'Aggregate'
-      | 'Timber'
-      | 'Electrical'
-      | 'Plumbing'
-      | 'Paint'
-      | 'Other';
-    unit: string;
-    standardRate: number;
-    isActive: boolean;
-    hsn: string;
-    taxRate: number;
-  }) => {
+  const handleSubmit = async (data: MaterialMasterInput) => {
     // Handle form submission logic here
     console.log('Updated material master data:', data);
     // You can add API call to update the material master

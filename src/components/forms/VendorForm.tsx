@@ -18,6 +18,22 @@ import {
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+const categoryOptions = [
+  'Materials',
+  'Equipment',
+  'Labour',
+  'Transport',
+  'Professional',
+  'Other',
+] as const;
 
 // Validation schema with Indian-specific patterns
 const vendorFormSchema = z.object({
@@ -25,6 +41,7 @@ const vendorFormSchema = z.object({
     .string()
     .min(2, 'Vendor name must be at least 2 characters.')
     .max(100, 'Vendor name must be at most 100 characters.'),
+  category: z.enum(categoryOptions),
   contactPerson: z
     .string()
     .min(2, 'Contact person name must be at least 2 characters.')
@@ -91,7 +108,7 @@ const vendorFormSchema = z.object({
 export type VendorFormData = z.infer<typeof vendorFormSchema>;
 
 interface VendorNewFormProps {
-  onSubmit: (data: VendorFormData) => void;
+  onSubmit: (data: VendorFormData) => Promise<void> | void;
   onCancel: () => void;
   initialData?: Partial<VendorFormData>;
 }
@@ -101,6 +118,7 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
     resolver: zodResolver(vendorFormSchema),
     defaultValues: {
       name: initialData?.name || '',
+      category: initialData?.category || 'Materials',
       contactPerson: initialData?.contactPerson || '',
       phone: initialData?.phone || '',
       email: initialData?.email || '',
@@ -121,6 +139,7 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
   useEffect(() => {
     form.reset({
       name: initialData?.name || '',
+      category: initialData?.category || 'Materials',
       contactPerson: initialData?.contactPerson || '',
       phone: initialData?.phone || '',
       email: initialData?.email || '',
@@ -137,8 +156,8 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
     });
   }, [initialData, form]);
 
-  const handleFormSubmit = (data: VendorFormData) => {
-    onSubmit(data);
+  const handleFormSubmit = async (data: VendorFormData) => {
+    await onSubmit(data);
   };
 
   return (
@@ -155,6 +174,31 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
             <FieldSet>
               <FieldLegend>Basic Information</FieldLegend>
               <FieldGroup className="space-y-4">
+                <Controller
+                  name="category"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor="vendor-category">
+                        Category <span className="text-destructive">*</span>
+                      </FieldLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger id="vendor-category" aria-invalid={fieldState.invalid}>
+                          <SelectValue placeholder="Select Category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoryOptions.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                    </Field>
+                  )}
+                />
+
                 <Controller
                   name="name"
                   control={form.control}

@@ -16,10 +16,15 @@ import {
   PieChart,
   type LucideIcon,
 } from 'lucide-react';
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { formatCurrency, formatDate, formatPercentage } from '../lib/utils';
+import type {
+  DashboardActiveSite,
+  DashboardData,
+  DashboardRecentActivity,
+} from '@/types/dashboard';
 
 import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
@@ -61,171 +66,142 @@ interface ActivityFormData {
   milestones: boolean;
 }
 
-// Mock data for dashboard
-const dashboardData = {
+const emptyDashboardData: DashboardData = {
   quickStats: {
-    activeSites: 3,
-    totalVehicles: 12,
-    materialValue: 18500000,
-    monthlyExpenses: 3200000,
-    activeVendors: 8,
-    completionRate: 78,
+    activeSites: 0,
+    totalVehicles: 0,
+    materialValue: 0,
+    monthlyExpenses: 0,
+    activeVendors: 0,
+    completionRate: 0,
   },
-  recentActivities: [
-    {
-      id: '1',
-      type: 'purchase',
-      description: 'Cement delivery received at Residential Complex A',
-      time: '2 hours ago',
-      amount: 85000,
-      icon: Package,
-      color: 'text-blue-600',
-    },
-    {
-      id: '2',
-      type: 'expense',
-      description: 'Labour payment processed for Highway Bridge Project',
-      time: '4 hours ago',
-      amount: 125000,
-      icon: DollarSign,
-      color: 'text-green-600',
-    },
-    {
-      id: '3',
-      type: 'vehicle',
-      description: 'Vehicle KA-01-AB-1234 maintenance completed',
-      time: '6 hours ago',
-      amount: 15000,
-      icon: Truck,
-      color: 'text-orange-600',
-    },
-    {
-      id: '4',
-      type: 'site',
-      description: 'New milestone achieved at Commercial Plaza B',
-      time: '1 day ago',
-      amount: null,
-      icon: Target,
-      color: 'text-purple-600',
-    },
-  ],
-  alerts: [
-    {
-      id: '1',
-      type: 'warning',
-      title: 'Low Stock Alert',
-      description: 'Cement running low at Residential Complex A - Only 45 bags remaining',
-      priority: 'high',
-      action: 'Order Now',
-    },
-    {
-      id: '2',
-      type: 'info',
-      title: 'Vehicle Maintenance Due',
-      description: '2 vehicles due for scheduled maintenance this week',
-      priority: 'medium',
-      action: 'Schedule',
-    },
-    {
-      id: '3',
-      type: 'success',
-      title: 'Budget Performance',
-      description: 'Highway Bridge Project is 12% under budget this month',
-      priority: 'low',
-      action: 'View Details',
-    },
-  ],
-  activeSites: [
-    {
-      id: '1',
-      name: 'Residential Complex A',
-      location: 'Bangalore North',
-      progress: 65,
-      status: 'On Track',
-      nextMilestone: 'Foundation Completion',
-      dueDate: '2024-02-15',
-      budget: {
-        allocated: 5000000,
-        spent: 3250000,
-      },
-    },
-    {
-      id: '2',
-      name: 'Commercial Plaza B',
-      location: 'Electronic City',
-      progress: 45,
-      status: 'Delayed',
-      nextMilestone: 'Structural Work',
-      dueDate: '2024-02-20',
-      budget: {
-        allocated: 8000000,
-        spent: 4200000,
-      },
-    },
-    {
-      id: '3',
-      name: 'Highway Bridge Project',
-      location: 'NH-44 Stretch',
-      progress: 80,
-      status: 'Ahead',
-      nextMilestone: 'Final Inspection',
-      dueDate: '2024-02-10',
-      budget: {
-        allocated: 12000000,
-        spent: 8800000,
-      },
-    },
-  ],
-  quickActions: [
-    {
-      id: '1',
-      title: 'Record Expense',
-      description: 'Add new expense entry',
-      icon: DollarSign,
-      color: 'bg-green-500',
-      action: 'expenses',
-    },
-    {
-      id: '2',
-      title: 'Material Master',
-      description: 'Manage material database',
-      icon: Database,
-      color: 'bg-indigo-500',
-      action: 'material-master',
-    },
-    {
-      id: '3',
-      title: 'Add Material Purchase',
-      description: 'Record material procurement',
-      icon: ShoppingCart,
-      color: 'bg-blue-500',
-      action: 'materials',
-    },
-    {
-      id: '4',
-      title: 'Vehicle Check-in',
-      description: 'Update vehicle status',
-      icon: Truck,
-      color: 'bg-orange-500',
-      action: 'vehicles',
-    },
-    {
-      id: '5',
-      title: 'Site Update',
-      description: 'Log site progress',
-      icon: Building2,
-      color: 'bg-purple-500',
-      action: 'sites',
-    },
-  ],
+  recentActivities: [],
+  alerts: [],
+  activeSites: [],
 };
+
+const quickActions = [
+  {
+    id: '1',
+    title: 'Record Expense',
+    description: 'Add new expense entry',
+    icon: DollarSign,
+    color: 'bg-green-500',
+    action: 'expenses',
+  },
+  {
+    id: '2',
+    title: 'Material Master',
+    description: 'Manage material database',
+    icon: Database,
+    color: 'bg-indigo-500',
+    action: 'material-master',
+  },
+  {
+    id: '3',
+    title: 'Add Material Purchase',
+    description: 'Record material procurement',
+    icon: ShoppingCart,
+    color: 'bg-blue-500',
+    action: 'materials',
+  },
+  {
+    id: '4',
+    title: 'Vehicle Check-in',
+    description: 'Update vehicle status',
+    icon: Truck,
+    color: 'bg-orange-500',
+    action: 'vehicles',
+  },
+  {
+    id: '5',
+    title: 'Site Update',
+    description: 'Log site progress',
+    icon: Building2,
+    color: 'bg-purple-500',
+    action: 'sites',
+  },
+];
+
+type PresentedActivity = DashboardRecentActivity & {
+  icon: LucideIcon;
+  color: string;
+};
+
+function mapActivitiesWithPresentation(
+  activities: DashboardRecentActivity[],
+): PresentedActivity[] {
+  const iconMap: Record<DashboardRecentActivity['type'], { icon: LucideIcon; color: string }> = {
+    purchase: { icon: ShoppingCart, color: 'text-blue-600' },
+    expense: { icon: DollarSign, color: 'text-green-600' },
+    vehicle: { icon: Truck, color: 'text-orange-600' },
+    site: { icon: Building2, color: 'text-purple-600' },
+  };
+
+  return activities.map((activity) => {
+    const { icon, color } = iconMap[activity.type] ?? iconMap.expense;
+    return {
+      ...activity,
+      icon,
+      color,
+    };
+  });
+}
 
 interface DashboardProps {
   onNavigate?: (section: string) => void;
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const { quickStats, recentActivities, alerts, activeSites, quickActions } = dashboardData;
+  const [dashboardData, setDashboardData] = useState<DashboardData>(emptyDashboardData);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadDashboard = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await fetch('/api/dashboard/overview', { signal: controller.signal });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || 'Failed to load dashboard data');
+        }
+
+        const payload = (await response.json()) as DashboardData;
+        setDashboardData(payload);
+      } catch (fetchError) {
+        if (controller.signal.aborted) return;
+        console.error('Dashboard load failed', fetchError);
+        setError('Unable to load dashboard data right now.');
+        setDashboardData(emptyDashboardData);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadDashboard();
+
+    return () => controller.abort();
+  }, []);
+
+  const { quickStats, recentActivities, alerts, activeSites } = dashboardData;
+  const presentedActivities = useMemo(
+    () => mapActivitiesWithPresentation(recentActivities),
+    [recentActivities],
+  );
+
+  const renderEmptyState = (message: string) => (
+    <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/40">
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
 
   // Dialog states for quick actions
   const expenseDialog = useDialogState();
@@ -324,7 +300,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           iconBgColor="bg-red-50"
           iconColor="text-red-600"
           title="Monthly Expenses"
-          value={`₹${formatPercentage(quickStats.monthlyExpenses / 100000, 1)}L`}
+          value={`₹${formatCurrency(quickStats.monthlyExpenses)}`}
           subtitle="This month"
           tooltipLabel="Information about monthly expenses"
           tooltipContent={
@@ -385,14 +361,23 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             }
           >
             <div className="space-y-4">
-              {activeSites.map((site) => (
+              {activeSites.length === 0
+                ? renderEmptyState('No sites yet. Add a site to see progress here.')
+                : activeSites.map((site) => {
+                    const safeProgress = Number.isFinite(site.progress) ? site.progress : 0;
+                    const allocated = site.budget.allocated || 0;
+                    const spent = site.budget.spent || 0;
+                    const budgetUsed = allocated > 0 ? (spent / allocated) * 100 : 0;
+                    const remainingBudget = Math.max(allocated - spent, 0);
+
+                    return (
                 <div key={site.id} className="p-4 border rounded-lg space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">{site.name}</h4>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <MapPin className="h-3 w-3" />
-                        {site.location}
+                                {site.location || '—'}
                       </div>
                     </div>
                     <StatusBadge status={site.status} />
@@ -401,12 +386,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Progress</span>
-                      <span>{site.progress}%</span>
+                            <span>{safeProgress}%</span>
                     </div>
                     <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-blue-600 h-2 rounded-full"
-                        style={{ width: `${site.progress}%` }}
+                              style={{ width: `${Math.min(safeProgress, 100)}%` }}
                       />
                     </div>
                   </div>
@@ -414,11 +399,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Next Milestone</p>
-                      <p className="font-medium">{site.nextMilestone}</p>
+                            <p className="font-medium">{site.nextMilestone || 'Not set'}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Due Date</p>
-                      <p className="font-medium">{formatDate(site.dueDate)}</p>
+                            <p className="font-medium">
+                              {site.dueDate ? formatDate(site.dueDate) : 'Not scheduled'}
+                            </p>
                     </div>
                   </div>
 
@@ -426,8 +413,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                     <div>
                       <span className="text-muted-foreground">Budget: </span>
                       <span className="font-medium">
-                        ₹{formatPercentage(site.budget.spent / 100000, 1)}L / ₹
-                        {formatPercentage(site.budget.allocated / 100000, 1)}L
+                              ₹{formatPercentage(spent / 100000, 1)}L / ₹
+                              {formatPercentage(allocated / 100000, 1)}L
                       </span>
                     </div>
                     <div className="text-right">
@@ -435,13 +422,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span
-                              className={`font-medium cursor-help ${site.budget.spent / site.budget.allocated > 0.9 ? 'text-red-600' : 'text-green-600'}`}
+                                    className={`font-medium cursor-help ${budgetUsed > 90 ? 'text-red-600' : 'text-green-600'}`}
                             >
-                              {formatPercentage(
-                                (site.budget.spent / site.budget.allocated) * 100,
-                                0,
-                              )}
-                              % used
+                                    {formatPercentage(budgetUsed, 0)}% used
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -451,8 +434,16 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                       </TooltipProvider>
                     </div>
                   </div>
+
+                        <div className="text-sm text-muted-foreground">
+                          Remaining budget:&nbsp;
+                          <span className="font-medium text-foreground">
+                            ₹{formatCurrency(remainingBudget)}
+                          </span>
+                        </div>
                 </div>
-              ))}
+                    );
+                  })}
             </div>
           </SectionCard>
 
@@ -537,21 +528,34 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             }
           >
             <div className="space-y-3">
-              {alerts.map((alert) => (
-                <Alert key={alert.id} variant={getAlertVariant(alert.type)}>
-                  <AlertDescription>
-                    <div className="space-y-2">
-                      <div>
-                        <p className="font-medium">{alert.title}</p>
-                        <p className="text-sm">{alert.description}</p>
-                      </div>
-                      <Button size="sm" variant="outline" className="w-full">
-                        {alert.action}
-                      </Button>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              ))}
+              {alerts.length === 0
+                ? renderEmptyState('No alerts at the moment.')
+                : alerts.map((alert) => (
+                    <Alert key={alert.id} variant={getAlertVariant(alert.type)}>
+                      <AlertDescription>
+                        <div className="space-y-2">
+                          <div>
+                            <p className="font-medium">{alert.title}</p>
+                            <p className="text-sm text-muted-foreground">{alert.description}</p>
+                          </div>
+                          {alert.priority && (
+                            <Badge
+                              variant={
+                                alert.priority === 'high'
+                                  ? 'destructive'
+                                  : alert.priority === 'medium'
+                                    ? 'secondary'
+                                    : 'outline'
+                              }
+                              className="w-fit"
+                            >
+                              {alert.priority.toUpperCase()}
+                            </Badge>
+                          )}
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  ))}
             </div>
           </SectionCard>
 
@@ -571,22 +575,26 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             }
           >
             <div className="space-y-4">
-              {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                  <div className={`p-2 rounded-lg ${activity.color} bg-opacity-10`}>
-                    <activity.icon className={`h-4 w-4 ${activity.color}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{activity.description}</p>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className="text-xs text-muted-foreground">{activity.time}</p>
-                      {activity.amount && (
-                        <p className="text-sm font-medium">₹{formatCurrency(activity.amount)}</p>
-                      )}
+              {presentedActivities.length === 0
+                ? renderEmptyState('No recent activity yet.')
+                : presentedActivities.map((activity) => (
+                    <div key={activity.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                      <div className="p-2 rounded-lg bg-muted">
+                        <activity.icon className={`h-4 w-4 ${activity.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{activity.description}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xs text-muted-foreground">
+                            {activity.timestamp ? formatDate(activity.timestamp) : '—'}
+                          </p>
+                          {activity.amount !== null && (
+                            <p className="text-sm font-medium">₹{formatCurrency(activity.amount)}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  ))}
             </div>
           </SectionCard>
         </div>
@@ -603,22 +611,28 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold mb-4">Budget Utilization</h3>
               <div className="space-y-3">
-                {activeSites.map((site) => (
-                  <div key={site.id} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>{site.name}</span>
-                      <span>
-                        {formatPercentage((site.budget.spent / site.budget.allocated) * 100, 1)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full"
-                        style={{ width: `${(site.budget.spent / site.budget.allocated) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                {activeSites.length === 0
+                  ? renderEmptyState('No budget data available.')
+                  : activeSites.map((site) => {
+                      const allocated = site.budget.allocated || 0;
+                      const spent = site.budget.spent || 0;
+                      const usedPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
+
+                      return (
+                        <div key={site.id} className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span>{site.name}</span>
+                            <span>{formatPercentage(usedPercent, 1)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
+                              style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
               </div>
             </CardContent>
           </Card>
@@ -627,20 +641,22 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold mb-4">Progress Tracking</h3>
               <div className="space-y-3">
-                {activeSites.map((site) => (
-                  <div key={site.id} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>{site.name}</span>
-                      <span>{site.progress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-green-600 h-2 rounded-full"
-                        style={{ width: `${site.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                {activeSites.length === 0
+                  ? renderEmptyState('No progress data available.')
+                  : activeSites.map((site) => (
+                      <div key={site.id} className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>{site.name}</span>
+                          <span>{formatPercentage(site.progress ?? 0, 1)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-green-600 h-2 rounded-full"
+                            style={{ width: `${Math.min(site.progress ?? 0, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
               </div>
             </CardContent>
           </Card>
@@ -701,6 +717,19 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   return (
     <div className="h-full w-full bg-background flex flex-col">
       <h1 className="sr-only">Dashboard - Construction Management Overview</h1>
+      {error && (
+        <Alert variant="destructive" className="mx-6 mt-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {isLoading && (
+        <Card className="mx-6 mt-4">
+          <CardContent className="py-6">
+            <p className="text-sm text-muted-foreground">Loading dashboard data…</p>
+          </CardContent>
+        </Card>
+      )}
       <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
         {/* Navigation Tabs - Topmost */}
         <Card className="border-0 shadow-none rounded-none border-b bg-gradient-to-r from-background to-muted/20">

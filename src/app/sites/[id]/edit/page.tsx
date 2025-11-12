@@ -5,6 +5,7 @@ import { use, useEffect, useState } from 'react';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
+import type { Site, SiteInput } from '@/types/sites';
 
 interface SiteEditPageProps {
   params: Promise<{
@@ -15,24 +16,13 @@ interface SiteEditPageProps {
 export default function SiteEditPage({ params }: SiteEditPageProps) {
   const router = useRouter();
   const resolvedParams = use(params);
-  const [siteData, setSiteData] = useState<{
-    id: string;
-    name: string;
-    location: string;
-    startDate: string;
-    expectedEndDate: string;
-    budget: number;
-    spent: number;
-    description: string;
-    progress: number;
-    status: 'Active' | 'Stopped' | 'Completed' | 'Canceled';
-  } | null>(null);
+  const [siteData, setSiteData] = useState<Site | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Fetch site data based on resolvedParams.id
     // This is a mock implementation - replace with actual API call
-    const mockSiteData = {
+    const mockSiteData: Site = {
       id: resolvedParams.id,
       name: 'Residential Complex A',
       location: 'Sector 15, Navi Mumbai',
@@ -49,15 +39,7 @@ export default function SiteEditPage({ params }: SiteEditPageProps) {
     setLoading(false);
   }, [resolvedParams.id]);
 
-  const handleSubmit = (data: {
-    name: string;
-    location: string;
-    startDate: string;
-    expectedEndDate: string;
-    budget: number;
-    description: string;
-    status: 'Active' | 'Stopped' | 'Completed' | 'Canceled';
-  }) => {
+  const handleSubmit = async (data: SiteInput) => {
     // Handle form submission logic here
     console.log('Updated site data:', data);
     // You can add API call to update the site

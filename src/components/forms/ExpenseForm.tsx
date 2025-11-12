@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useVendors } from '@/lib/contexts';
 
 // Zod schema for expense validation
 const expenseSchema = z.object({
@@ -33,9 +34,10 @@ const expenseSchema = z.object({
   amount: z.number().min(0.01, 'Amount must be greater than 0'),
   date: z.date(),
   vendor: z.string().min(1, 'Vendor is required'),
-  site: z.string().min(1, 'Site is required'),
+  siteId: z.string().min(1, 'Site is required'),
+  siteName: z.string().min(1, 'Site name is required'),
   receipt: z.string().optional(),
-  approvedBy: z.string().min(1, 'Approved by is required'),
+  approvedBy: z.string().optional(),
 });
 
 export type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -68,12 +70,66 @@ export function ExpenseForm({
       amount: 0,
       date: new Date(),
       vendor: '',
-      site: lockedSite || '',
+      siteId: '',
+      siteName: lockedSite || '',
       receipt: '',
       approvedBy: '',
       ...defaultValues,
     },
   });
+
+  const { vendors, isLoading: isVendorsLoading } = useVendors();
+  const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
+
+  useEffect(() => {
+    const loadSites = async () => {
+      try {
+        setIsLoadingSites(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Array<{ id: string; name: string }>;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load sites.');
+        }
+
+        const options = (payload.sites ?? []).map((site) => ({ id: site.id, name: site.name }));
+        setSiteOptions(options);
+
+        const currentSiteName = form.getValues('siteName');
+        const currentSiteId = form.getValues('siteId');
+        if (!currentSiteId && currentSiteName) {
+          const match = options.find((site) => site.name === currentSiteName);
+          if (match) {
+            form.setValue('siteId', match.id, { shouldValidate: true });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading sites for expense form', error);
+        setSiteOptions([]);
+      } finally {
+        setIsLoadingSites(false);
+      }
+    };
+
+    void loadSites();
+  }, [form, lockedSite]);
+
+  useEffect(() => {
+    if (defaultValues?.siteId) {
+      form.setValue('siteId', defaultValues.siteId, { shouldValidate: true });
+    }
+    if (defaultValues?.siteName) {
+      form.setValue('siteName', defaultValues.siteName, { shouldValidate: true });
+    }
+  }, [defaultValues?.siteId, defaultValues?.siteName, form]);
+
+  const vendorOptions = useMemo(() => {
+    return vendors.filter((vendor) => vendor.status === 'active');
+  }, [vendors]);
 
   const handleSubmit = (data: ExpenseFormData) => {
     onSubmit(data);
@@ -187,23 +243,40 @@ export function ExpenseForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Vendor *</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  disabled={isVendorsLoading || vendorOptions.length === 0}
+                >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select vendor" />
+                      <SelectValue
+                        placeholder={
+                          isVendorsLoading
+                            ? 'Loading vendors…'
+                            : vendorOptions.length === 0
+                              ? 'No vendors available'
+                              : 'Select vendor'
+                        }
+                      />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="ABC Construction Materials">
-                      ABC Construction Materials
-                    </SelectItem>
-                    <SelectItem value="XYZ Steel Suppliers">XYZ Steel Suppliers</SelectItem>
-                    <SelectItem value="Heavy Equipment Rentals">Heavy Equipment Rentals</SelectItem>
-                    <SelectItem value="Local Transport Services">
-                      Local Transport Services
-                    </SelectItem>
-                    <SelectItem value="State Electricity Board">State Electricity Board</SelectItem>
-                    <SelectItem value="XYZ Labor Contractors">XYZ Labor Contractors</SelectItem>
+                    {isVendorsLoading ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        Loading vendors…
+                      </div>
+                    ) : vendorOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No active vendors found. Add vendors first.
+                      </div>
+                    ) : (
+                      vendorOptions.map((vendor) => (
+                        <SelectItem key={vendor.id} value={vendor.name}>
+                          {vendor.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -212,29 +285,53 @@ export function ExpenseForm({
           />
           <FormField
             control={form.control}
-            name="site"
+            name="siteId"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Site *</FormLabel>
                 <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                  disabled={!!lockedSite}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    const selected = siteOptions.find((site) => site.id === value);
+                    form.setValue('siteName', selected?.name ?? '', { shouldValidate: true });
+                  }}
+                  value={field.value}
+                  disabled={!!lockedSite || isLoadingSites || siteOptions.length === 0}
                 >
                   <FormControl>
                     <SelectTrigger className={lockedSite ? 'bg-muted' : ''}>
-                      <SelectValue placeholder="Select site" />
+                      <SelectValue
+                        placeholder={
+                          isLoadingSites
+                            ? 'Loading sites…'
+                            : siteOptions.length === 0
+                              ? 'No sites available'
+                              : 'Select site'
+                        }
+                      />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Residential Complex A">Residential Complex A</SelectItem>
-                    <SelectItem value="Commercial Building B">Commercial Building B</SelectItem>
+                    {isLoadingSites ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">Loading sites…</div>
+                    ) : siteOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No active sites found. Add sites first.
+                      </div>
+                    ) : (
+                      siteOptions.map((site) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
+          <input type="hidden" {...form.register('siteName')} />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
