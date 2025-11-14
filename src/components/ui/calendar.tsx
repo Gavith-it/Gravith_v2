@@ -2,11 +2,14 @@
 
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import * as React from 'react';
-import type { DayButton} from 'react-day-picker';
+import type { DayButton } from 'react-day-picker';
 import { DayPicker, getDefaultClassNames } from 'react-day-picker';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const DEFAULT_MIN_YEAR = 1900;
+const DEFAULT_MAX_YEAR = new Date().getFullYear() + 50;
 
 function Calendar({
   className,
@@ -20,7 +23,38 @@ function Calendar({
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>['variant'];
 }) {
+  const {
+    fromYear,
+    toYear,
+    fromMonth,
+    toMonth,
+    ...dayPickerProps
+  } = props;
+
   const defaultClassNames = getDefaultClassNames();
+
+  const shouldNormalizeYearRange = captionLayout === 'dropdown';
+  const normalizedFromYear = shouldNormalizeYearRange
+    ? fromYear ?? fromMonth?.getFullYear() ?? DEFAULT_MIN_YEAR
+    : fromYear;
+
+  const fallbackMaxYear = Math.max(
+    DEFAULT_MAX_YEAR,
+    normalizedFromYear ?? DEFAULT_MIN_YEAR,
+  );
+
+  let normalizedToYear = shouldNormalizeYearRange
+    ? toYear ?? toMonth?.getFullYear() ?? fallbackMaxYear
+    : toYear;
+
+  if (
+    shouldNormalizeYearRange &&
+    normalizedFromYear !== undefined &&
+    normalizedToYear !== undefined &&
+    normalizedToYear < normalizedFromYear
+  ) {
+    normalizedToYear = normalizedFromYear;
+  }
 
   return (
     <DayPicker
@@ -32,6 +66,10 @@ function Calendar({
         className,
       )}
       captionLayout={captionLayout}
+      fromYear={normalizedFromYear}
+      toYear={normalizedToYear}
+      fromMonth={fromMonth}
+      toMonth={toMonth}
       formatters={{
         formatMonthDropdown: (date) => date.toLocaleString('default', { month: 'short' }),
         ...formatters,
@@ -132,7 +170,7 @@ function Calendar({
         },
         ...components,
       }}
-      {...props}
+      {...dayPickerProps}
     />
   );
 }

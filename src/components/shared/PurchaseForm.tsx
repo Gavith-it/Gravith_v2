@@ -39,7 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { SharedMaterial } from '@/lib/contexts';
-import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
+import { useMaterialReceipts, useMaterials, useVendors } from '@/lib/contexts';
 import type { MaterialMaster } from '@/types/entities';
 
 interface PurchaseFormProps {
@@ -48,34 +48,6 @@ interface PurchaseFormProps {
   onSubmit?: (materialData: Omit<SharedMaterial, 'id'>) => void;
   onCancel?: () => void;
 }
-
-// Available sites
-const sites = [
-  'Rajiv Nagar Residential Complex',
-  'Green Valley Commercial Center',
-  'Sunshine Apartments Phase II',
-  'Metro Heights Tower A',
-  'Oakwood Villas',
-];
-
-// Available vendors
-const availableVendors = [
-  {
-    name: 'UltraTech Cement Ltd',
-    contactPerson: 'Rajesh Kumar',
-    category: 'Cement & Binding Materials',
-  },
-  {
-    name: 'JSW Steel',
-    contactPerson: 'Anita Sharma',
-    category: 'Steel & Metal Works',
-  },
-  {
-    name: 'ACC Concrete',
-    contactPerson: 'Mohan Das',
-    category: 'Concrete & Ready Mix',
-  },
-];
 
 // Available units
 const units = [
@@ -109,6 +81,7 @@ const purchaseFormSchema = z.object({
 });
 
 type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
+type SiteOption = { id: string; name: string };
 
 export function PurchaseForm({
   selectedSite,
@@ -116,13 +89,16 @@ export function PurchaseForm({
   onSubmit,
   onCancel,
 }: PurchaseFormProps) {
-  const { addMaterial, updateMaterial } = useMaterials();
+  const { addMaterial, updateMaterial, materials } = useMaterials();
   const { receipts, linkReceiptToPurchase } = useMaterialReceipts();
+  const { vendors, isLoading: isVendorsLoading } = useVendors();
   const isEditMode = !!editingMaterial;
   const formId = isEditMode ? 'purchase-edit-form' : 'purchase-new-form';
   const [isClient, setIsClient] = React.useState(false);
   const [materialOptions, setMaterialOptions] = useState<MaterialMaster[]>([]);
   const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(true);
+  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
@@ -148,6 +124,38 @@ export function PurchaseForm({
 
   React.useEffect(() => {
     setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    const loadSites = async () => {
+      try {
+        setIsLoadingSites(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Array<{ id: string; name: string }>;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load sites.');
+        }
+
+        setSiteOptions(
+          (payload.sites ?? []).map((site) => ({
+            id: site.id,
+            name: site.name,
+          })),
+        );
+      } catch (error) {
+        console.error('Failed to load sites', error);
+        toast.error('Failed to load sites list.');
+        setSiteOptions([]);
+      } finally {
+        setIsLoadingSites(false);
+      }
+    };
+
+    void loadSites();
   }, []);
 
   useEffect(() => {
@@ -210,6 +218,59 @@ export function PurchaseForm({
     return receipts.filter((receipt) => !receipt.linkedPurchaseId);
   }, [receipts]);
 
+  const siteFieldValue = form.watch('site');
+  const vendorOptions = useMemo(() => vendors, [vendors]);
+  const siteOptionEntries = useMemo(() => {
+    const unique = new Map<string, SiteOption>();
+    siteOptions.forEach((site) => unique.set(site.name, site));
+    if (siteFieldValue && !unique.has(siteFieldValue)) {
+      unique.set(siteFieldValue, { id: `selected-${siteFieldValue}`, name: siteFieldValue });
+    }
+    return Array.from(unique.values());
+  }, [siteOptions, siteFieldValue]);
+
+  const computeMasterTotalsFromSnapshot = React.useCallback(
+    (materialId: string, snapshot: SharedMaterial[]) => {
+      const related = snapshot.filter((item) => item.materialId === materialId);
+      return related.reduce(
+        (acc, item) => {
+          const ordered = item.quantity ?? 0;
+          const consumed =
+            item.consumedQuantity ??
+            Math.max(0, ordered - (item.remainingQuantity ?? ordered));
+          const remaining =
+            item.remainingQuantity ?? Math.max(0, ordered - consumed);
+          return {
+            consumed: acc.consumed + consumed,
+            remaining: acc.remaining + remaining,
+          };
+        },
+        { consumed: 0, remaining: 0 },
+      );
+    },
+    [],
+  );
+
+  const syncMaterialMaster = React.useCallback(
+    async (materialId: string, snapshot: SharedMaterial[]) => {
+      if (!materialId) return;
+      const totals = computeMasterTotalsFromSnapshot(materialId, snapshot);
+      try {
+        await fetch(`/api/materials/${materialId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quantity: Math.max(0, totals.remaining),
+            consumedQuantity: Math.max(0, totals.consumed),
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to sync material master totals', error);
+      }
+    },
+    [computeMasterTotalsFromSnapshot],
+  );
+
   // Format date helper - memoized to prevent recreating on every render
   const formatDate = React.useCallback((dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-IN', {
@@ -224,6 +285,9 @@ export function PurchaseForm({
       const totalAmount = data.quantity * data.unitRate;
       const selectedMaterial = materialOptions.find((material) => material.id === data.materialId);
 
+      const previousConsumed = editingMaterial?.consumedQuantity ?? 0;
+      const quantityValue = data.quantity;
+
       const materialData: Omit<SharedMaterial, 'id'> = {
         materialId: data.materialId,
         materialName: selectedMaterial?.name ?? data.materialName,
@@ -237,8 +301,9 @@ export function PurchaseForm({
         invoiceNumber: data.invoiceNumber,
         purchaseDate: data.purchaseDate.toISOString().split('T')[0],
         addedBy: 'Current User',
-        consumedQuantity: editingMaterial?.consumedQuantity ?? 0,
-        remainingQuantity: editingMaterial?.remainingQuantity ?? data.quantity,
+        consumedQuantity: previousConsumed,
+        remainingQuantity:
+          editingMaterial?.remainingQuantity ?? quantityValue - previousConsumed,
         linkedReceiptId: data.linkedReceiptIds?.[0],
         category: selectedMaterial?.category,
         filledWeight: data.filledWeight ? Number(data.filledWeight) : undefined,
@@ -249,18 +314,31 @@ export function PurchaseForm({
 
       try {
         let purchaseId = editingMaterial?.id ?? '';
+        let latestPurchase: SharedMaterial | null | undefined = undefined;
         if (editingMaterial) {
           const updated = await updateMaterial(editingMaterial.id, materialData);
           purchaseId = updated?.id ?? purchaseId;
+          latestPurchase = updated ?? editingMaterial;
           toast.success('Purchase updated successfully!', {
             description: `${materialData.materialName} has been updated.`,
           });
         } else {
           const created = await addMaterial(materialData);
           purchaseId = created?.id ?? '';
+          latestPurchase = created ?? null;
           toast.success('Purchase recorded successfully!', {
             description: `${materialData.materialName} has been added to inventory.`,
           });
+        }
+
+        if (latestPurchase?.materialId) {
+          const baseSnapshot = editingMaterial
+            ? materials.filter((item) => item.id !== editingMaterial.id)
+            : materials.slice();
+          const snapshot = latestPurchase
+            ? [...baseSnapshot, latestPurchase]
+            : baseSnapshot;
+          await syncMaterialMaster(latestPurchase.materialId, snapshot);
         }
 
         if (data.linkedReceiptIds && data.linkedReceiptIds.length > 0 && purchaseId) {
@@ -287,14 +365,7 @@ export function PurchaseForm({
         );
       }
     },
-    [
-      addMaterial,
-      editingMaterial,
-      linkReceiptToPurchase,
-      materialOptions,
-      updateMaterial,
-      onSubmit,
-    ],
+    [addMaterial, editingMaterial, linkReceiptToPurchase, materialOptions, materials, syncMaterialMaster, updateMaterial, onSubmit],
   );
 
   const quantity = form.watch('quantity');
@@ -303,6 +374,7 @@ export function PurchaseForm({
   const isSubmitDisabled =
     form.formState.isSubmitting ||
     isLoadingMaterials ||
+    isLoadingSites ||
     (materialOptions.length === 0 && !editingMaterial);
 
   const getSubmitButtonText = () =>
@@ -346,17 +418,35 @@ export function PurchaseForm({
               </FieldLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger id={`${formId}-vendor`} aria-invalid={fieldState.invalid}>
-                  <SelectValue placeholder="Select vendor" />
+                  <SelectValue
+                    placeholder={
+                      isVendorsLoading
+                        ? 'Loading vendors…'
+                        : vendorOptions.length === 0
+                          ? 'No vendors available'
+                          : 'Select vendor'
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableVendors.map((vendor) => (
-                    <SelectItem key={vendor.name} value={vendor.name}>
-                      {vendor.name}
-                    </SelectItem>
-                  ))}
+                  {isVendorsLoading ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">Loading vendors…</div>
+                  ) : vendorOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No vendors found. Add vendors first.
+                    </div>
+                  ) : (
+                    vendorOptions.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.name}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
-              <FieldDescription>Supplier of the material.</FieldDescription>
+              <FieldDescription>
+                Supplier of the material. Maintain vendors from the Vendors page.
+              </FieldDescription>
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -375,21 +465,37 @@ export function PurchaseForm({
                 <Select
                   value={field.value}
                   onValueChange={field.onChange}
-                  disabled={!!selectedSite}
+                disabled={!!selectedSite || isLoadingSites || siteOptionEntries.length === 0}
                 >
                   <SelectTrigger
                     id={`${formId}-site`}
                     aria-invalid={fieldState.invalid}
                     className={selectedSite ? 'bg-muted' : ''}
                   >
-                    <SelectValue placeholder="Select site" />
+                  <SelectValue
+                    placeholder={
+                      isLoadingSites
+                        ? 'Loading sites…'
+                        : siteOptionEntries.length === 0
+                          ? 'No sites available'
+                          : 'Select site'
+                    }
+                  />
                   </SelectTrigger>
                   <SelectContent>
-                    {sites.map((site) => (
-                      <SelectItem key={site} value={site}>
-                        {site}
+                  {isLoadingSites ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">Loading sites…</div>
+                  ) : siteOptionEntries.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No sites found. Add sites first.
+                    </div>
+                  ) : (
+                    siteOptionEntries.map((site) => (
+                      <SelectItem key={site.id} value={site.name}>
+                        {site.name}
                       </SelectItem>
-                    ))}
+                    ))
+                  )}
                   </SelectContent>
                 </Select>
                 <FieldDescription>Delivery destination for this material.</FieldDescription>

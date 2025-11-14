@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { buildPurchaseUsageMap } from '@/app/api/_utils/work-progress-usage';
 import type { SharedMaterial } from '@/lib/contexts/materials-context';
 import { createClient } from '@/lib/supabase/server';
 import type { MaterialMaster } from '@/types/entities';
@@ -32,7 +33,7 @@ type PurchaseRow = {
   material_masters?: unknown;
 };
 
-function mapRowToSharedMaterial(row: PurchaseRow): SharedMaterial {
+function mapRowToSharedMaterial(row: PurchaseRow, usageOverrides?: Map<string, number>): SharedMaterial {
   const rawCategory = row.material_masters;
   let category: MaterialMaster['category'] | undefined;
   if (rawCategory && typeof rawCategory === 'object' && 'category' in rawCategory) {
@@ -42,12 +43,29 @@ function mapRowToSharedMaterial(row: PurchaseRow): SharedMaterial {
       | undefined;
   }
 
+  const baseQuantity = Number(row.quantity ?? 0);
+  const overrideConsumed = usageOverrides?.get(row.id);
+  const consumedFromUsage =
+    overrideConsumed ??
+    Number(
+      row.consumed_quantity !== null && row.consumed_quantity !== undefined
+        ? row.consumed_quantity
+        : 0,
+    );
+  const remainingFromUsage =
+    overrideConsumed !== undefined
+      ? Math.max(0, baseQuantity - overrideConsumed)
+      :
+    (row.remaining_quantity !== null && row.remaining_quantity !== undefined
+      ? Number(row.remaining_quantity)
+      : Math.max(0, baseQuantity - consumedFromUsage));
+
   return {
     id: row.id,
     materialId: row.material_id ?? undefined,
     materialName: row.material_name,
     site: row.site_name ?? '',
-    quantity: Number(row.quantity ?? 0),
+    quantity: baseQuantity,
     unit: row.unit,
     unitRate: Number(row.unit_rate ?? 0),
     costPerUnit: Number(row.unit_rate ?? 0),
@@ -56,12 +74,21 @@ function mapRowToSharedMaterial(row: PurchaseRow): SharedMaterial {
     invoiceNumber: row.vendor_invoice_number ?? '',
     purchaseDate: row.purchase_date ?? '',
     addedBy: '',
-    filledWeight: row.filled_weight ? Number(row.filled_weight) : undefined,
-    emptyWeight: row.empty_weight ? Number(row.empty_weight) : undefined,
-    netWeight: row.net_weight ? Number(row.net_weight) : undefined,
+    filledWeight:
+      row.filled_weight !== null && row.filled_weight !== undefined
+        ? Number(row.filled_weight)
+        : undefined,
+    emptyWeight:
+      row.empty_weight !== null && row.empty_weight !== undefined
+        ? Number(row.empty_weight)
+        : undefined,
+    netWeight:
+      row.net_weight !== null && row.net_weight !== undefined
+        ? Number(row.net_weight)
+        : undefined,
     weightUnit: row.weight_unit ?? undefined,
-    consumedQuantity: row.consumed_quantity ? Number(row.consumed_quantity) : undefined,
-    remainingQuantity: row.remaining_quantity ? Number(row.remaining_quantity) : undefined,
+    consumedQuantity: consumedFromUsage,
+    remainingQuantity: remainingFromUsage,
     category,
     linkedReceiptId: undefined,
   };
@@ -141,8 +168,47 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load purchases.' }, { status: 500 });
     }
 
+    const purchaseRowsForUsage =
+      (data as Array<{
+        id: string;
+        material_id: string | null;
+        quantity: number | string | null;
+      }> | null) ?? [];
+    let usageMap = new Map<string, number>();
+
+    if (purchaseRowsForUsage.length > 0) {
+      const { data: usageRowsRaw, error: usageError } = await supabase
+        .from('work_progress_materials')
+        .select('purchase_id, material_id, quantity')
+        .eq('organization_id', organizationId);
+
+      if (usageError) {
+        console.error('Error fetching material consumption data', usageError);
+      } else {
+        const usageRows =
+          (usageRowsRaw as Array<{
+            purchase_id: string | null;
+            material_id: string | null;
+            quantity: number | string | null;
+          }> | null) ?? [];
+        usageMap = buildPurchaseUsageMap(purchaseRowsForUsage, usageRows);
+      }
+    }
+
     const purchases = (data ?? []).map((row) => mapRowToSharedMaterial(row as PurchaseRow));
-    return NextResponse.json({ purchases });
+    const purchasesWithUsage = purchases.map((purchase) => {
+      const consumed = usageMap.get(purchase.id);
+      if (consumed === undefined) {
+        return purchase;
+      }
+      return {
+        ...purchase,
+        consumedQuantity: consumed,
+        remainingQuantity: Math.max(0, (purchase.quantity ?? 0) - consumed),
+      };
+    });
+
+    return NextResponse.json({ purchases: purchasesWithUsage });
   } catch (error) {
     console.error('Unexpected error fetching purchases', error);
     return NextResponse.json({ error: 'Unexpected error loading purchases.' }, { status: 500 });

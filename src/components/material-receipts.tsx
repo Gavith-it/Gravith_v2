@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Search,
   Filter,
+  RotateCcw,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -37,7 +38,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FilterSheet } from '@/components/filters/FilterSheet';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -75,6 +79,71 @@ export function MaterialReceiptsPage() {
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+
+  type ReceiptAdvancedFilterState = {
+    sites: string[];
+    vendors: string[];
+    vehicles: string[];
+    dateFrom?: string;
+    dateTo?: string;
+    netWeightMin: string;
+    netWeightMax: string;
+  };
+
+  const createDefaultReceiptAdvancedFilters = (): ReceiptAdvancedFilterState => ({
+    sites: [],
+    vendors: [],
+    vehicles: [],
+    dateFrom: undefined,
+    dateTo: undefined,
+    netWeightMin: '',
+    netWeightMax: '',
+  });
+
+  const cloneReceiptAdvancedFilters = (
+    filters: ReceiptAdvancedFilterState,
+  ): ReceiptAdvancedFilterState => ({
+    ...filters,
+    sites: [...filters.sites],
+    vendors: [...filters.vendors],
+    vehicles: [...filters.vehicles],
+  });
+
+  const isReceiptAdvancedFilterDefault = (filters: ReceiptAdvancedFilterState): boolean => {
+    return (
+      filters.sites.length === 0 &&
+      filters.vendors.length === 0 &&
+      filters.vehicles.length === 0 &&
+      !filters.dateFrom &&
+      !filters.dateTo &&
+      filters.netWeightMin === '' &&
+      filters.netWeightMax === ''
+    );
+  };
+
+  const countReceiptAdvancedFilters = (filters: ReceiptAdvancedFilterState): number => {
+    let count = 0;
+    count += filters.sites.length;
+    count += filters.vendors.length;
+    count += filters.vehicles.length;
+    if (filters.dateFrom || filters.dateTo) count += 1;
+    if (filters.netWeightMin !== '' || filters.netWeightMax !== '') count += 1;
+    return count;
+  };
+
+  const parseDateValue = (value?: string): Date | null => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<ReceiptAdvancedFilterState>(
+    createDefaultReceiptAdvancedFilters(),
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<ReceiptAdvancedFilterState>(
+    createDefaultReceiptAdvancedFilters(),
+  );
 
   // Link dialog state
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -101,6 +170,42 @@ export function MaterialReceiptsPage() {
     };
   }, [receipts]);
 
+  const siteOptions = useMemo(() => {
+    const sites = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.siteName) {
+        sites.add(receipt.siteName);
+      }
+    });
+    return Array.from(sites).sort((a, b) => a.localeCompare(b));
+  }, [receipts]);
+
+  const vendorOptions = useMemo(() => {
+    const vendors = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.vendorName) {
+        vendors.add(receipt.vendorName);
+      }
+    });
+    return Array.from(vendors).sort((a, b) => a.localeCompare(b));
+  }, [receipts]);
+
+  const vehicleOptions = useMemo(() => {
+    const vehicles = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.vehicleNumber) {
+        vehicles.add(receipt.vehicleNumber);
+      }
+    });
+    return Array.from(vehicles).sort((a, b) => a.localeCompare(b));
+  }, [receipts]);
+
+  const activeAdvancedFilterCount = useMemo(
+    () => countReceiptAdvancedFilters(appliedAdvancedFilters),
+    [appliedAdvancedFilters],
+  );
+  const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
+
   const sortedAndFilteredReceipts = receipts
     .filter((receipt) => {
       const matchesSearch =
@@ -112,8 +217,45 @@ export function MaterialReceiptsPage() {
         statusFilter === 'all' ||
         (statusFilter === 'linked' && receipt.linkedPurchaseId) ||
         (statusFilter === 'open' && !receipt.linkedPurchaseId);
-      // Category filter would require material category lookup
-      return matchesSearch && matchesStatus;
+      const matchesSites =
+        appliedAdvancedFilters.sites.length === 0 ||
+        (receipt.siteName && appliedAdvancedFilters.sites.includes(receipt.siteName));
+      const matchesVendors =
+        appliedAdvancedFilters.vendors.length === 0 ||
+        (receipt.vendorName && appliedAdvancedFilters.vendors.includes(receipt.vendorName));
+      const matchesVehicles =
+        appliedAdvancedFilters.vehicles.length === 0 ||
+        appliedAdvancedFilters.vehicles.includes(receipt.vehicleNumber);
+      const date = parseDateValue(receipt.date);
+      const dateFrom = parseDateValue(appliedAdvancedFilters.dateFrom);
+      const dateTo = parseDateValue(appliedAdvancedFilters.dateTo);
+      const matchesDateFrom = !dateFrom || (date !== null && date >= dateFrom);
+      const matchesDateTo = !dateTo || (date !== null && date <= dateTo);
+      const netWeight = receipt.netWeight ?? 0;
+      const minWeight =
+        appliedAdvancedFilters.netWeightMin !== ''
+          ? Number(appliedAdvancedFilters.netWeightMin)
+          : undefined;
+      const maxWeight =
+        appliedAdvancedFilters.netWeightMax !== ''
+          ? Number(appliedAdvancedFilters.netWeightMax)
+          : undefined;
+      const matchesMinWeight =
+        minWeight === undefined || Number.isNaN(minWeight) || netWeight >= minWeight;
+      const matchesMaxWeight =
+        maxWeight === undefined || Number.isNaN(maxWeight) || netWeight <= maxWeight;
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesSites &&
+        matchesVendors &&
+        matchesVehicles &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        matchesMinWeight &&
+        matchesMaxWeight
+      );
     })
     .sort((a, b) => {
       const aValue = a[tableState.sortField as keyof MaterialReceipt];
@@ -350,16 +492,39 @@ export function MaterialReceiptsPage() {
                           variant="outline"
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
+                          onClick={() => {
+                            setDraftAdvancedFilters(cloneReceiptAdvancedFilters(appliedAdvancedFilters));
+                            setIsFilterSheetOpen(true);
+                          }}
                         >
                           <Filter className="h-4 w-4" />
                           <span className="hidden sm:inline">Filter</span>
+                          {hasActiveAdvancedFilters ? (
+                            <Badge variant="secondary" className="ml-2">
+                              {activeAdvancedFilterCount}
+                            </Badge>
+                          ) : null}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Filter receipts by status</p>
+                        <p>Open advanced filter options</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 transition-all hover:shadow-md"
+                    disabled={!hasActiveAdvancedFilters}
+                    onClick={() => {
+                      const resetFilters = createDefaultReceiptAdvancedFilters();
+                      setAppliedAdvancedFilters(resetFilters);
+                      setDraftAdvancedFilters(resetFilters);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Clear filters</span>
+                  </Button>
                   <FormDialog
                     title={dialog.editingItem ? 'Edit Material Receipt' : 'Add Material Receipt'}
                     description={
@@ -399,6 +564,37 @@ export function MaterialReceiptsPage() {
                 {sortedAndFilteredReceipts.length} receipt
                 {sortedAndFilteredReceipts.length !== 1 ? 's' : ''} found
               </Badge>
+              {hasActiveAdvancedFilters ? (
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const chips: string[] = [];
+                    if (appliedAdvancedFilters.sites.length > 0) {
+                      chips.push(`Sites: ${appliedAdvancedFilters.sites.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.vendors.length > 0) {
+                      chips.push(`Vendors: ${appliedAdvancedFilters.vendors.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.vehicles.length > 0) {
+                      chips.push(`Vehicles: ${appliedAdvancedFilters.vehicles.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.dateFrom || appliedAdvancedFilters.dateTo) {
+                      chips.push(
+                        `Date: ${appliedAdvancedFilters.dateFrom ?? 'Any'} → ${appliedAdvancedFilters.dateTo ?? 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.netWeightMin || appliedAdvancedFilters.netWeightMax) {
+                      chips.push(
+                        `Net wt: ${appliedAdvancedFilters.netWeightMin || 'Any'}kg - ${appliedAdvancedFilters.netWeightMax || 'Any'}kg`,
+                      );
+                    }
+                    return chips;
+                  })().map((chip) => (
+                    <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {chip}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -604,6 +800,216 @@ export function MaterialReceiptsPage() {
           </Card>
         )}
       </div>
+
+      <FilterSheet
+        open={isFilterSheetOpen}
+        onOpenChange={setIsFilterSheetOpen}
+        title="Receipt filters"
+        description="Refine the material receipts list with advanced criteria."
+        sections={[
+          {
+            id: 'sites',
+            title: 'Sites',
+            description: 'Limit receipts to specific project sites.',
+            content:
+              siteOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No site options available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {siteOptions.map((site) => {
+                    const isChecked = draftAdvancedFilters.sites.includes(site);
+                    return (
+                      <Label key={site} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextSites =
+                                checked === true
+                                  ? [...prev.sites, site]
+                                  : prev.sites.filter((value) => value !== site);
+                              return {
+                                ...prev,
+                                sites: nextSites,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{site}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'vendors',
+            title: 'Vendors',
+            description: 'Show receipts received from specific vendors.',
+            content:
+              vendorOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No vendor options available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {vendorOptions.map((vendor) => {
+                    const isChecked = draftAdvancedFilters.vendors.includes(vendor);
+                    return (
+                      <Label key={vendor} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextVendors =
+                                checked === true
+                                  ? [...prev.vendors, vendor]
+                                  : prev.vendors.filter((value) => value !== vendor);
+                              return {
+                                ...prev,
+                                vendors: nextVendors,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{vendor}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'vehicles',
+            title: 'Vehicles',
+            description: 'Filter by vehicle numbers delivering materials.',
+            content:
+              vehicleOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No vehicle options available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {vehicleOptions.map((vehicle) => {
+                    const isChecked = draftAdvancedFilters.vehicles.includes(vehicle);
+                    return (
+                      <Label key={vehicle} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextVehicles =
+                                checked === true
+                                  ? [...prev.vehicles, vehicle]
+                                  : prev.vehicles.filter((value) => value !== vehicle);
+                              return {
+                                ...prev,
+                                vehicles: nextVehicles,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{vehicle}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'date',
+            title: 'Receipt date',
+            description: 'Filter receipts by the date they were recorded.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="receipt-date-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="receipt-date-from"
+                    type="date"
+                    value={draftAdvancedFilters.dateFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        dateFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="receipt-date-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="receipt-date-to"
+                    type="date"
+                    value={draftAdvancedFilters.dateTo ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        dateTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'net-weight',
+            title: 'Net weight (kg)',
+            description: 'Filter receipts by their recorded net weight.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="receipt-weight-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="receipt-weight-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftAdvancedFilters.netWeightMin}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        netWeightMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="receipt-weight-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="receipt-weight-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftAdvancedFilters.netWeightMax}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        netWeightMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+        ]}
+        onApply={() => {
+          setAppliedAdvancedFilters(cloneReceiptAdvancedFilters(draftAdvancedFilters));
+          setIsFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const resetFilters = createDefaultReceiptAdvancedFilters();
+          setDraftAdvancedFilters(resetFilters);
+          setAppliedAdvancedFilters(resetFilters);
+        }}
+        isDirty={!isReceiptAdvancedFilterDefault(draftAdvancedFilters)}
+      />
 
       {/* Link to Purchase Dialog */}
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>

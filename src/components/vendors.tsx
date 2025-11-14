@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Trash2,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 
@@ -49,6 +50,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { FilterSheet } from '@/components/filters/FilterSheet';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -67,6 +71,67 @@ import {
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
+type VendorAdvancedFilterState = {
+  paymentTerms: string[];
+  ratingMin: string;
+  ratingMax: string;
+  totalPaidMin: string;
+  totalPaidMax: string;
+  pendingMin: string;
+  pendingMax: string;
+  lastPaymentFrom?: string;
+  lastPaymentTo?: string;
+};
+
+const createDefaultVendorAdvancedFilters = (): VendorAdvancedFilterState => ({
+  paymentTerms: [],
+  ratingMin: '',
+  ratingMax: '',
+  totalPaidMin: '',
+  totalPaidMax: '',
+  pendingMin: '',
+  pendingMax: '',
+  lastPaymentFrom: undefined,
+  lastPaymentTo: undefined,
+});
+
+const cloneVendorAdvancedFilters = (
+  filters: VendorAdvancedFilterState,
+): VendorAdvancedFilterState => ({
+  ...filters,
+  paymentTerms: [...filters.paymentTerms],
+});
+
+const isVendorAdvancedFilterDefault = (filters: VendorAdvancedFilterState): boolean => {
+  return (
+    filters.paymentTerms.length === 0 &&
+    filters.ratingMin === '' &&
+    filters.ratingMax === '' &&
+    filters.totalPaidMin === '' &&
+    filters.totalPaidMax === '' &&
+    filters.pendingMin === '' &&
+    filters.pendingMax === '' &&
+    !filters.lastPaymentFrom &&
+    !filters.lastPaymentTo
+  );
+};
+
+const countVendorAdvancedFilters = (filters: VendorAdvancedFilterState): number => {
+  let count = 0;
+  count += filters.paymentTerms.length;
+  if (filters.ratingMin !== '' || filters.ratingMax !== '') count += 1;
+  if (filters.totalPaidMin !== '' || filters.totalPaidMax !== '') count += 1;
+  if (filters.pendingMin !== '' || filters.pendingMax !== '') count += 1;
+  if (filters.lastPaymentFrom || filters.lastPaymentTo) count += 1;
+  return count;
+};
+
+const parseDateValue = (value?: string): Date | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 export function VendorsPage() {
   const {
     vendors,
@@ -81,6 +146,13 @@ export function VendorsPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<VendorAdvancedFilterState>(() =>
+    createDefaultVendorAdvancedFilters(),
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<VendorAdvancedFilterState>(() =>
+    createDefaultVendorAdvancedFilters(),
+  );
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -89,8 +161,52 @@ export function VendorsPage() {
     initialItemsPerPage: 10,
   });
 
+  const paymentTermOptions = useMemo(() => {
+    const options = new Set<string>();
+    vendors.forEach((vendor) => {
+      const term = vendor.paymentTerms?.trim();
+      if (term) {
+        options.add(term);
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [vendors]);
+
+  const activeAdvancedFilterCount = useMemo(
+    () => countVendorAdvancedFilters(appliedAdvancedFilters),
+    [appliedAdvancedFilters],
+  );
+  const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
+
   // Filter and sort vendors
   const sortedAndFilteredVendors = useMemo(() => {
+    const ratingMin =
+      appliedAdvancedFilters.ratingMin !== ''
+        ? Number(appliedAdvancedFilters.ratingMin)
+        : undefined;
+    const ratingMax =
+      appliedAdvancedFilters.ratingMax !== ''
+        ? Number(appliedAdvancedFilters.ratingMax)
+        : undefined;
+    const totalPaidMin =
+      appliedAdvancedFilters.totalPaidMin !== ''
+        ? Number(appliedAdvancedFilters.totalPaidMin)
+        : undefined;
+    const totalPaidMax =
+      appliedAdvancedFilters.totalPaidMax !== ''
+        ? Number(appliedAdvancedFilters.totalPaidMax)
+        : undefined;
+    const pendingMin =
+      appliedAdvancedFilters.pendingMin !== ''
+        ? Number(appliedAdvancedFilters.pendingMin)
+        : undefined;
+    const pendingMax =
+      appliedAdvancedFilters.pendingMax !== ''
+        ? Number(appliedAdvancedFilters.pendingMax)
+        : undefined;
+    const lastPaymentFrom = parseDateValue(appliedAdvancedFilters.lastPaymentFrom);
+    const lastPaymentTo = parseDateValue(appliedAdvancedFilters.lastPaymentTo);
+
     return vendors
       .filter((vendor) => {
         const matchesSearch =
@@ -103,7 +219,45 @@ export function VendorsPage() {
         const matchesCategory =
           selectedCategory === 'all-categories' || vendor.category === selectedCategory;
         const matchesStatus = statusFilter === 'all' || vendor.status === statusFilter;
-        return matchesSearch && matchesCategory && matchesStatus;
+        const matchesPaymentTerms =
+          appliedAdvancedFilters.paymentTerms.length === 0 ||
+          (vendor.paymentTerms &&
+            appliedAdvancedFilters.paymentTerms.includes(vendor.paymentTerms.trim()));
+        const vendorRating = vendor.rating ?? 0;
+        const matchesRatingMin =
+          ratingMin === undefined || Number.isNaN(ratingMin) || vendorRating >= ratingMin;
+        const matchesRatingMax =
+          ratingMax === undefined || Number.isNaN(ratingMax) || vendorRating <= ratingMax;
+        const vendorTotalPaid = Number(vendor.totalPaid ?? 0);
+        const vendorPending = Number(vendor.pendingAmount ?? 0);
+        const matchesTotalPaidMin =
+          totalPaidMin === undefined || Number.isNaN(totalPaidMin) || vendorTotalPaid >= totalPaidMin;
+        const matchesTotalPaidMax =
+          totalPaidMax === undefined || Number.isNaN(totalPaidMax) || vendorTotalPaid <= totalPaidMax;
+        const matchesPendingMin =
+          pendingMin === undefined || Number.isNaN(pendingMin) || vendorPending >= pendingMin;
+        const matchesPendingMax =
+          pendingMax === undefined || Number.isNaN(pendingMax) || vendorPending <= pendingMax;
+        const vendorLastPayment = parseDateValue(vendor.lastPayment);
+        const matchesLastPaymentFrom =
+          !lastPaymentFrom || (vendorLastPayment !== null && vendorLastPayment >= lastPaymentFrom);
+        const matchesLastPaymentTo =
+          !lastPaymentTo || (vendorLastPayment !== null && vendorLastPayment <= lastPaymentTo);
+
+        return (
+          matchesSearch &&
+          matchesCategory &&
+          matchesStatus &&
+          matchesPaymentTerms &&
+          matchesRatingMin &&
+          matchesRatingMax &&
+          matchesTotalPaidMin &&
+          matchesTotalPaidMax &&
+          matchesPendingMin &&
+          matchesPendingMax &&
+          matchesLastPaymentFrom &&
+          matchesLastPaymentTo
+        );
       })
       .sort((a, b) => {
         const aValue = a[tableState.sortField as keyof Vendor];
@@ -121,7 +275,15 @@ export function VendorsPage() {
 
         return 0;
       });
-  }, [vendors, searchQuery, selectedCategory, statusFilter, tableState.sortField, tableState.sortDirection]);
+  }, [
+    vendors,
+    searchQuery,
+    selectedCategory,
+    statusFilter,
+    tableState.sortField,
+    tableState.sortDirection,
+    appliedAdvancedFilters,
+  ]);
 
   // Analytics calculations
   const { totalVendors, totalPaid, totalPending, averageRating } = useMemo(() => {
@@ -392,16 +554,39 @@ export function VendorsPage() {
                           variant="outline"
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
+                          onClick={() => {
+                            setDraftAdvancedFilters(cloneVendorAdvancedFilters(appliedAdvancedFilters));
+                            setIsFilterSheetOpen(true);
+                          }}
                         >
                           <Filter className="h-4 w-4" />
                           <span className="hidden sm:inline">Filter</span>
+                          {hasActiveAdvancedFilters ? (
+                            <Badge variant="secondary" className="ml-2">
+                              {activeAdvancedFilterCount}
+                            </Badge>
+                          ) : null}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Filter vendors by category and status</p>
+                        <p>Open advanced filter options</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 transition-all hover:shadow-md"
+                    disabled={!hasActiveAdvancedFilters}
+                    onClick={() => {
+                      const resetFilters = createDefaultVendorAdvancedFilters();
+                      setAppliedAdvancedFilters(resetFilters);
+                      setDraftAdvancedFilters(resetFilters);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Clear filters</span>
+                  </Button>
                   <Dialog
                     open={isVendorDialogOpen}
                     onOpenChange={(open) => {
@@ -469,6 +654,43 @@ export function VendorsPage() {
                   ? 'Loading vendors…'
                   : `${filteredCount} vendor${filteredCount !== 1 ? 's' : ''} found`}
               </Badge>
+              {hasActiveAdvancedFilters ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {(() => {
+                    const chips: string[] = [];
+                    if (appliedAdvancedFilters.paymentTerms.length > 0) {
+                      chips.push(
+                        `Terms: ${appliedAdvancedFilters.paymentTerms.join(', ')}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.ratingMin || appliedAdvancedFilters.ratingMax) {
+                      chips.push(
+                        `Rating: ${appliedAdvancedFilters.ratingMin || 'Any'} - ${appliedAdvancedFilters.ratingMax || 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.totalPaidMin || appliedAdvancedFilters.totalPaidMax) {
+                      chips.push(
+                        `Paid: ₹${appliedAdvancedFilters.totalPaidMin || 'Any'} - ₹${appliedAdvancedFilters.totalPaidMax || 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.pendingMin || appliedAdvancedFilters.pendingMax) {
+                      chips.push(
+                        `Pending: ₹${appliedAdvancedFilters.pendingMin || 'Any'} - ₹${appliedAdvancedFilters.pendingMax || 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.lastPaymentFrom || appliedAdvancedFilters.lastPaymentTo) {
+                      chips.push(
+                        `Last paid: ${appliedAdvancedFilters.lastPaymentFrom ?? 'Any'} → ${appliedAdvancedFilters.lastPaymentTo ?? 'Any'}`,
+                      );
+                    }
+                    return chips;
+                  })().map((chip) => (
+                    <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {chip}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -674,6 +896,237 @@ export function VendorsPage() {
           </Card>
         )}
       </div>
+      <FilterSheet
+        open={isFilterSheetOpen}
+        onOpenChange={setIsFilterSheetOpen}
+        title="Vendor filters"
+        description="Refine the vendor list with advanced criteria."
+        sections={[
+          {
+            id: 'payment-terms',
+            title: 'Payment terms',
+            description: 'Limit vendors to the selected payment terms.',
+            content:
+              paymentTermOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No payment terms available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {paymentTermOptions.map((term) => {
+                    const isChecked = draftAdvancedFilters.paymentTerms.includes(term);
+                    return (
+                      <Label key={term} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextTerms =
+                                checked === true
+                                  ? [...prev.paymentTerms, term]
+                                  : prev.paymentTerms.filter((value) => value !== term);
+                              return {
+                                ...prev,
+                                paymentTerms: nextTerms,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{term}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'rating',
+            title: 'Rating',
+            description: 'Filter vendors by minimum and maximum rating.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-rating-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="vendor-rating-min"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    placeholder="0"
+                    value={draftAdvancedFilters.ratingMin}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        ratingMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-rating-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="vendor-rating-max"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    placeholder="5"
+                    value={draftAdvancedFilters.ratingMax}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        ratingMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'total-paid',
+            title: 'Total paid (₹)',
+            description: 'Filter by total paid amount.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-total-paid-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="vendor-total-paid-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftAdvancedFilters.totalPaidMin}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        totalPaidMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-total-paid-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="vendor-total-paid-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftAdvancedFilters.totalPaidMax}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        totalPaidMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'pending-amount',
+            title: 'Pending amount (₹)',
+            description: 'Filter vendors by outstanding balance.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-pending-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="vendor-pending-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftAdvancedFilters.pendingMin}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        pendingMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-pending-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="vendor-pending-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftAdvancedFilters.pendingMax}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        pendingMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'last-payment',
+            title: 'Last payment date',
+            description: 'Filter vendors by their last payment activity.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-last-payment-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="vendor-last-payment-from"
+                    type="date"
+                    value={draftAdvancedFilters.lastPaymentFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        lastPaymentFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-last-payment-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="vendor-last-payment-to"
+                    type="date"
+                    value={draftAdvancedFilters.lastPaymentTo ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        lastPaymentTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+        ]}
+        onApply={() => {
+          setAppliedAdvancedFilters(cloneVendorAdvancedFilters(draftAdvancedFilters));
+          setIsFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const resetFilters = createDefaultVendorAdvancedFilters();
+          setDraftAdvancedFilters(resetFilters);
+          setAppliedAdvancedFilters(resetFilters);
+        }}
+        isDirty={!isVendorAdvancedFilterDefault(draftAdvancedFilters)}
+      />
     </div>
   );
 }

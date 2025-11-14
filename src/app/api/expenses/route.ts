@@ -6,6 +6,7 @@ import type { ExpenseRow } from './_utils';
 import { createClient } from '@/lib/supabase/server';
 import type { Expense } from '@/types';
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 const EXPENSE_SELECT = `
   id,
@@ -21,6 +22,8 @@ const EXPENSE_SELECT = `
   status,
   approved_by,
   approved_by_name,
+  material_id,
+  purchase_id,
   organization_id,
   created_at,
   updated_at,
@@ -51,6 +54,7 @@ export async function GET() {
     }
 
     const expenses = (data ?? []).map((row) => mapRowToExpense(row as ExpenseRow));
+    await enrichLinkedData(expenses, supabase, ctx.organizationId);
     return NextResponse.json({ expenses });
   } catch (error) {
     console.error('Unexpected error fetching expenses:', error);
@@ -75,6 +79,8 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Partial<Expense> & {
       siteId?: string | null;
       siteName?: string | null;
+      purchaseId?: string | null;
+      materialId?: string | null;
     };
     const {
       description,
@@ -88,6 +94,8 @@ export async function POST(request: Request) {
       receipt,
       status,
       approvedBy,
+      purchaseId,
+      materialId,
     } = body;
 
     const numericAmount = Number(amount);
@@ -129,6 +137,8 @@ export async function POST(request: Request) {
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       updated_by: ctx.userId,
+      purchase_id: purchaseId && purchaseId.length > 0 ? purchaseId : null,
+      material_id: materialId && materialId.length > 0 ? materialId : null,
     };
 
     const { data, error } = await supabase
@@ -143,9 +153,78 @@ export async function POST(request: Request) {
     }
 
     const expense = mapRowToExpense(data as ExpenseRow);
+    await enrichLinkedData([expense], supabase, ctx.organizationId);
     return NextResponse.json({ expense });
   } catch (error) {
     console.error('Unexpected error creating expense:', error);
     return NextResponse.json({ error: 'Unexpected error creating expense.' }, { status: 500 });
+  }
+}
+
+async function enrichLinkedData(
+  expenses: Expense[],
+  supabase: SupabaseServerClient,
+  organizationId: string,
+) {
+  const materialIds = Array.from(
+    new Set(expenses.map((expense) => expense.materialId).filter((id): id is string => Boolean(id))),
+  );
+  const purchaseIds = Array.from(
+    new Set(expenses.map((expense) => expense.purchaseId).filter((id): id is string => Boolean(id))),
+  );
+
+  if (materialIds.length > 0) {
+    const { data: materials } = await supabase
+      .from('material_masters')
+      .select('id, name')
+      .eq('organization_id', organizationId)
+      .in('id', materialIds);
+
+    const materialEntries: Array<[string, string]> = [];
+    (materials ?? []).forEach((material) => {
+      const id = material?.id;
+      if (typeof id !== 'string') {
+        return;
+      }
+      const name = typeof material?.name === 'string' ? material.name : undefined;
+      materialEntries.push([id, name ?? 'Unnamed material']);
+    });
+    const materialMap = new Map<string, string>(materialEntries);
+
+    expenses.forEach((expense) => {
+      if (expense.materialId) {
+        expense.materialName = materialMap.get(expense.materialId) ?? expense.materialName;
+      }
+    });
+  }
+
+  if (purchaseIds.length > 0) {
+    const { data: purchases } = await supabase
+      .from('material_purchases')
+      .select('id, material_name, vendor_name, invoice_number, site_name')
+      .eq('organization_id', organizationId)
+      .in('id', purchaseIds);
+
+    const purchaseEntries: Array<[string, string]> = [];
+    (purchases ?? []).forEach((purchase) => {
+      const id = purchase?.id;
+      if (typeof id !== 'string') {
+        return;
+      }
+      const label =
+        (typeof purchase?.invoice_number === 'string' && purchase.invoice_number) ||
+        (typeof purchase?.vendor_name === 'string' && purchase.vendor_name) ||
+        (typeof purchase?.site_name === 'string' && purchase.site_name) ||
+        (typeof purchase?.material_name === 'string' && purchase.material_name) ||
+        'Purchase';
+      purchaseEntries.push([id, label]);
+    });
+    const purchaseMap = new Map<string, string>(purchaseEntries);
+
+    expenses.forEach((expense) => {
+      if (expense.purchaseId) {
+        expense.purchaseReference = purchaseMap.get(expense.purchaseId) ?? expense.purchaseReference;
+      }
+    });
   }
 }

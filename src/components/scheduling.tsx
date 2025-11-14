@@ -145,7 +145,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
       description: '',
       startDate: undefined,
       endDate: undefined,
-      progress: 0,
+      progress: undefined,
       status: 'not-started',
       assignedTeam: '',
       priority: 'medium',
@@ -854,7 +854,11 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
                           min="0"
                           max="100"
                           {...field}
-                          onChange={(event) => field.onChange(Number(event.target.value))}
+                          value={field.value ?? ''}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            field.onChange(nextValue === '' ? undefined : Number(nextValue));
+                          }}
                         />
                       </FormControl>
                       <FormMessage />

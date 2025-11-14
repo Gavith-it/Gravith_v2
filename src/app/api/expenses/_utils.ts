@@ -19,6 +19,8 @@ export type ExpenseRow = {
   status: string;
   approved_by: string | null;
   approved_by_name: string | null;
+  material_id: string | null;
+  purchase_id: string | null;
   organization_id: string;
   created_at: string;
   updated_at: string;
@@ -55,6 +57,8 @@ export function mapRowToExpense(row: ExpenseRow): Expense {
     status: row.status as Expense['status'],
     approvedBy: row.approved_by_name ?? row.approved_by ?? undefined,
     approvedByName: row.approved_by_name ?? undefined,
+    materialId: row.material_id ?? undefined,
+    purchaseId: row.purchase_id ?? undefined,
     organizationId: row.organization_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

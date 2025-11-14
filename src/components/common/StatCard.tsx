@@ -30,6 +30,8 @@ export interface StatCardProps {
   tooltipContent: React.ReactNode;
   /** Optional className for card wrapper */
   className?: string;
+  /** Optional click handler to make card actionable */
+  onClick?: () => void;
 }
 
 /**
@@ -59,12 +61,32 @@ export function StatCard({
   tooltipLabel,
   tooltipContent,
   className,
+  onClick,
 }: StatCardProps) {
+  const isInteractive = typeof onClick === 'function';
+
   return (
     <Card
-      className={`border-0 shadow-sm hover:shadow-md transition-shadow duration-200 ${className || ''}`}
+      className={`border-0 shadow-sm hover:shadow-md transition-shadow duration-200 ${
+        className || ''
+      }`}
     >
-      <CardContent className="p-6">
+      <CardContent
+        className={`p-6 ${
+          isInteractive ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2' : ''
+        }`}
+        onClick={onClick}
+        role={isInteractive ? 'button' : undefined}
+        tabIndex={isInteractive ? 0 : undefined}
+        onKeyDown={(event) => {
+          if (!isInteractive) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onClick?.();
+          }
+        }}
+        aria-label={isInteractive ? `${title} details` : undefined}
+      >
         <div className="flex flex-col space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">

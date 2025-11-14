@@ -46,6 +46,8 @@ interface MaterialMasterFormData {
   name: string;
   category: string;
   unit: string;
+  quantity: number;
+  consumedQuantity: number;
   standardRate: number;
   isActive: boolean;
   hsn: string;

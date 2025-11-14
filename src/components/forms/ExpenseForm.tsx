@@ -38,6 +38,8 @@ const expenseSchema = z.object({
   siteName: z.string().min(1, 'Site name is required'),
   receipt: z.string().optional(),
   approvedBy: z.string().optional(),
+  purchaseId: z.string().optional(),
+  materialId: z.string().optional(),
 });
 
 export type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -67,13 +69,15 @@ export function ExpenseForm({
       category: 'Materials' as const,
       subcategory: '',
       description: '',
-      amount: 0,
+      amount: defaultValues?.amount ?? undefined,
       date: new Date(),
       vendor: '',
       siteId: '',
       siteName: lockedSite || '',
       receipt: '',
       approvedBy: '',
+      purchaseId: undefined,
+      materialId: undefined,
       ...defaultValues,
     },
   });
@@ -81,6 +85,12 @@ export function ExpenseForm({
   const { vendors, isLoading: isVendorsLoading } = useVendors();
   const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
+  const [purchaseOptions, setPurchaseOptions] = useState<
+    Array<{ id: string; label: string; materialId?: string }>
+  >([]);
+  const [isLoadingPurchases, setIsLoadingPurchases] = useState<boolean>(false);
+  const [materialOptions, setMaterialOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(false);
 
   useEffect(() => {
     const loadSites = async () => {
@@ -125,7 +135,83 @@ export function ExpenseForm({
     if (defaultValues?.siteName) {
       form.setValue('siteName', defaultValues.siteName, { shouldValidate: true });
     }
+    if (defaultValues?.purchaseId) {
+      form.setValue('purchaseId', defaultValues.purchaseId, { shouldValidate: true });
+    }
+    if (defaultValues?.materialId) {
+      form.setValue('materialId', defaultValues.materialId, { shouldValidate: true });
+    }
   }, [defaultValues?.siteId, defaultValues?.siteName, form]);
+
+  useEffect(() => {
+    const loadPurchases = async () => {
+      try {
+        setIsLoadingPurchases(true);
+        const response = await fetch('/api/purchases', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          purchases?: Array<{
+            id: string;
+            materialName: string;
+            vendor?: string;
+            invoiceNumber?: string;
+            purchaseDate?: string;
+            materialId?: string;
+          }>;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load purchases.');
+        }
+
+        const options =
+          payload.purchases?.map((purchase) => ({
+            id: purchase.id,
+            label: `${purchase.materialName ?? 'Unknown material'}${
+              purchase.vendor ? ` • ${purchase.vendor}` : ''
+            }${purchase.invoiceNumber ? ` • Inv ${purchase.invoiceNumber}` : ''}`,
+            materialId: purchase.materialId,
+          })) ?? [];
+
+        setPurchaseOptions(options);
+      } catch (error) {
+        console.error('Error loading purchases for expense form', error);
+        setPurchaseOptions([]);
+      } finally {
+        setIsLoadingPurchases(false);
+      }
+    };
+
+    const loadMaterials = async () => {
+      try {
+        setIsLoadingMaterials(true);
+        const response = await fetch('/api/materials', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          materials?: Array<{ id: string; name: string }>;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load materials.');
+        }
+
+        setMaterialOptions(
+          payload.materials?.map((material) => ({
+            id: material.id,
+            name: material.name,
+          })) ?? [],
+        );
+      } catch (error) {
+        console.error('Error loading materials for expense form', error);
+        setMaterialOptions([]);
+      } finally {
+        setIsLoadingMaterials(false);
+      }
+    };
+
+    void loadPurchases();
+    void loadMaterials();
+  }, []);
 
   const vendorOptions = useMemo(() => {
     return vendors.filter((vendor) => vendor.status === 'active');
@@ -210,7 +296,11 @@ export function ExpenseForm({
                     step="0.01"
                     placeholder="50000"
                     {...field}
-                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                    value={field.value ?? ''}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      field.onChange(nextValue === '' ? undefined : Number(nextValue));
+                    }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -357,6 +447,99 @@ export function ExpenseForm({
                 <FormControl>
                   <Input placeholder="Project Manager" {...field} />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="purchaseId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Link to Purchase</FormLabel>
+                <Select
+                  value={field.value ?? ''}
+                  onValueChange={(value) => {
+                    if (!value || value === '__none') {
+                      field.onChange(undefined);
+                      return;
+                    }
+                    field.onChange(value);
+                    const selected = purchaseOptions.find((option) => option.id === value);
+                    if (selected?.materialId) {
+                      form.setValue('materialId', selected.materialId, { shouldValidate: true });
+                    }
+                  }}
+                  disabled={isLoadingPurchases}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          isLoadingPurchases
+                            ? 'Loading purchases…'
+                            : purchaseOptions.length === 0
+                              ? 'No purchases available'
+                              : 'Select purchase'
+                        }
+                      />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="__none">No purchase link</SelectItem>
+                    {purchaseOptions.map((purchase) => (
+                      <SelectItem key={purchase.id} value={purchase.id}>
+                        {purchase.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="materialId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Linked Material</FormLabel>
+                <Select
+                  value={field.value ?? ''}
+                  onValueChange={(value) => {
+                    if (!value || value === '__none') {
+                      field.onChange(undefined);
+                      return;
+                    }
+                    field.onChange(value);
+                  }}
+                  disabled={isLoadingMaterials}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          isLoadingMaterials
+                            ? 'Loading materials…'
+                            : materialOptions.length === 0
+                              ? 'No materials available'
+                              : 'Select material'
+                        }
+                      />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="__none">No material link</SelectItem>
+                    {materialOptions.map((material) => (
+                      <SelectItem key={material.id} value={material.id}>
+                        {material.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}

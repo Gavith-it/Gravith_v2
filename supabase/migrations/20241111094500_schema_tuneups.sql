@@ -106,15 +106,53 @@ DROP TYPE vendor_status_old;
 -- INTEGRITY CHECKS
 -- ============================================
 
-ALTER TABLE material_purchases
-  ADD CONSTRAINT material_purchases_quantity_non_negative CHECK (quantity >= 0),
-  ADD CONSTRAINT material_purchases_unit_rate_non_negative CHECK (unit_rate >= 0),
-  ADD CONSTRAINT material_purchases_total_amount_non_negative CHECK (total_amount >= 0),
-  ADD CONSTRAINT material_purchases_filled_weight_non_negative CHECK (filled_weight IS NULL OR filled_weight >= 0),
-  ADD CONSTRAINT material_purchases_empty_weight_non_negative CHECK (empty_weight IS NULL OR empty_weight >= 0),
-  ADD CONSTRAINT material_purchases_net_weight_non_negative CHECK (net_weight IS NULL OR net_weight >= 0);
+DO $material_purchases$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'material_purchases_quantity_non_negative'
+  ) THEN
+    ALTER TABLE material_purchases
+      ADD CONSTRAINT material_purchases_quantity_non_negative CHECK (quantity >= 0);
+  END IF;
 
-ALTER TABLE material_receipts
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'material_purchases_unit_rate_non_negative'
+  ) THEN
+    ALTER TABLE material_purchases
+      ADD CONSTRAINT material_purchases_unit_rate_non_negative CHECK (unit_rate >= 0);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'material_purchases_total_amount_non_negative'
+  ) THEN
+    ALTER TABLE material_purchases
+      ADD CONSTRAINT material_purchases_total_amount_non_negative CHECK (total_amount >= 0);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'material_purchases_filled_weight_non_negative'
+  ) THEN
+    ALTER TABLE material_purchases
+      ADD CONSTRAINT material_purchases_filled_weight_non_negative CHECK (filled_weight IS NULL OR filled_weight >= 0);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'material_purchases_empty_weight_non_negative'
+  ) THEN
+    ALTER TABLE material_purchases
+      ADD CONSTRAINT material_purchases_empty_weight_non_negative CHECK (empty_weight IS NULL OR empty_weight >= 0);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'material_purchases_net_weight_non_negative'
+  ) THEN
+    ALTER TABLE material_purchases
+      ADD CONSTRAINT material_purchases_net_weight_non_negative CHECK (net_weight IS NULL OR net_weight >= 0);
+  END IF;
+END
+$material_purchases$;
+
+ALTER TABLE IF EXISTS material_receipts
   ADD CONSTRAINT material_receipts_filled_weight_non_negative CHECK (filled_weight >= 0),
   ADD CONSTRAINT material_receipts_empty_weight_non_negative CHECK (empty_weight >= 0),
   ADD CONSTRAINT material_receipts_net_weight_non_negative CHECK (net_weight >= 0);
@@ -162,7 +200,7 @@ ALTER TABLE material_purchases
   ALTER COLUMN created_by DROP NOT NULL,
   ALTER COLUMN updated_by DROP NOT NULL;
 
-ALTER TABLE material_receipts
+ALTER TABLE IF EXISTS material_receipts
   ALTER COLUMN created_by DROP NOT NULL,
   ALTER COLUMN updated_by DROP NOT NULL;
 

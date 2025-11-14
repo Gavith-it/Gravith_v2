@@ -39,6 +39,7 @@ interface WorkProgressInput {
   photos?: string[];
   materials?: Array<{
     materialId?: string | null;
+    purchaseId?: string | null;
     materialName: string;
     unit: string;
     quantity: number;

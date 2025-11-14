@@ -10,11 +10,14 @@ import {
   Truck,
   Edit,
   Trash2,
+  Filter,
+  RotateCcw,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { FormDialog } from '@/components/common/FormDialog';
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +26,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -136,6 +140,293 @@ export function VehiclesPage({
 
   const refuelingDialog = useDialogState<VehicleRefueling>();
   const usageDialog = useDialogState<VehicleUsage>();
+  const [isRefuelingFilterSheetOpen, setIsRefuelingFilterSheetOpen] = useState(false);
+  const [isUsageFilterSheetOpen, setIsUsageFilterSheetOpen] = useState(false);
+
+  type RefuelingAdvancedFilterState = {
+    vehicles: string[];
+    fuelTypes: Array<VehicleRefueling['fuelType']>;
+    vendors: string[];
+    locations: string[];
+    dateFrom?: string;
+    dateTo?: string;
+    quantityMin: string;
+    quantityMax: string;
+    costMin: string;
+    costMax: string;
+    hasInvoice: 'all' | 'with' | 'without';
+  };
+
+  const createDefaultRefuelingAdvancedFilters = (): RefuelingAdvancedFilterState => ({
+    vehicles: [],
+    fuelTypes: [],
+    vendors: [],
+    locations: [],
+    dateFrom: undefined,
+    dateTo: undefined,
+    quantityMin: '',
+    quantityMax: '',
+    costMin: '',
+    costMax: '',
+    hasInvoice: 'all',
+  });
+
+  type UsageAdvancedFilterState = {
+    vehicles: string[];
+    sites: string[];
+    categories: Array<VehicleUsage['workCategory']>;
+    statuses: Array<VehicleUsage['status']>;
+    dateFrom?: string;
+    dateTo?: string;
+    distanceMin: string;
+    distanceMax: string;
+    fuelMin: string;
+    fuelMax: string;
+    rentalType: 'all' | 'rental' | 'owned';
+  };
+
+  const createDefaultUsageAdvancedFilters = (): UsageAdvancedFilterState => ({
+    vehicles: [],
+    sites: [],
+    categories: [],
+    statuses: [],
+    dateFrom: undefined,
+    dateTo: undefined,
+    distanceMin: '',
+    distanceMax: '',
+    fuelMin: '',
+    fuelMax: '',
+    rentalType: 'all',
+  });
+
+  const [appliedRefuelingFilters, setAppliedRefuelingFilters] =
+    useState<RefuelingAdvancedFilterState>(createDefaultRefuelingAdvancedFilters());
+  const [draftRefuelingFilters, setDraftRefuelingFilters] =
+    useState<RefuelingAdvancedFilterState>(createDefaultRefuelingAdvancedFilters());
+
+  const [appliedUsageFilters, setAppliedUsageFilters] =
+    useState<UsageAdvancedFilterState>(createDefaultUsageAdvancedFilters());
+  const [draftUsageFilters, setDraftUsageFilters] =
+    useState<UsageAdvancedFilterState>(createDefaultUsageAdvancedFilters());
+
+  const cloneRefuelingAdvancedFilters = (
+    filters: RefuelingAdvancedFilterState,
+  ): RefuelingAdvancedFilterState => ({
+    ...filters,
+    vehicles: [...filters.vehicles],
+    fuelTypes: [...filters.fuelTypes],
+    vendors: [...filters.vendors],
+    locations: [...filters.locations],
+  });
+
+  const cloneUsageAdvancedFilters = (
+    filters: UsageAdvancedFilterState,
+  ): UsageAdvancedFilterState => ({
+    ...filters,
+    vehicles: [...filters.vehicles],
+    sites: [...filters.sites],
+    categories: [...filters.categories],
+    statuses: [...filters.statuses],
+  });
+
+  const countRefuelingFilters = (filters: RefuelingAdvancedFilterState): number => {
+    let count = 0;
+    count += filters.vehicles.length;
+    count += filters.fuelTypes.length;
+    count += filters.vendors.length;
+    count += filters.locations.length;
+    if (filters.dateFrom || filters.dateTo) count += 1;
+    if (filters.quantityMin !== '' || filters.quantityMax !== '') count += 1;
+    if (filters.costMin !== '' || filters.costMax !== '') count += 1;
+    if (filters.hasInvoice !== 'all') count += 1;
+    return count;
+  };
+
+  const countUsageFilters = (filters: UsageAdvancedFilterState): number => {
+    let count = 0;
+    count += filters.vehicles.length;
+    count += filters.sites.length;
+    count += filters.categories.length;
+    count += filters.statuses.length;
+    if (filters.dateFrom || filters.dateTo) count += 1;
+    if (filters.distanceMin !== '' || filters.distanceMax !== '') count += 1;
+    if (filters.fuelMin !== '' || filters.fuelMax !== '') count += 1;
+    if (filters.rentalType !== 'all') count += 1;
+    return count;
+  };
+
+  const parseDateValue = (value?: string): Date | null => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const parseNumber = (value: string): number | undefined => {
+    if (value === '') return undefined;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  const refuelingFilterOptions = useMemo(() => {
+    const vehicleNumbers = new Set<string>();
+    const fuelTypes = new Set<VehicleRefueling['fuelType']>();
+    const vendors = new Set<string>();
+    const locations = new Set<string>();
+
+    refuelingRecords.forEach((record) => {
+      if (record.vehicleNumber) vehicleNumbers.add(record.vehicleNumber);
+      if (record.fuelType) fuelTypes.add(record.fuelType);
+      if (record.vendor) vendors.add(record.vendor);
+      if (record.location) locations.add(record.location);
+    });
+
+    return {
+      vehicles: Array.from(vehicleNumbers).sort((a, b) => a.localeCompare(b)),
+      fuelTypes: Array.from(fuelTypes).sort((a, b) => a.localeCompare(b)),
+      vendors: Array.from(vendors).sort((a, b) => a.localeCompare(b)),
+      locations: Array.from(locations).sort((a, b) => a.localeCompare(b)),
+    };
+  }, [refuelingRecords]);
+
+  const usageFilterOptions = useMemo(() => {
+    const vehicleNumbers = new Set<string>();
+    const sites = new Set<string>();
+    const categories = new Set<VehicleUsage['workCategory']>();
+    const statuses = new Set<VehicleUsage['status']>();
+
+    usageRecords.forEach((record) => {
+      if (record.vehicleNumber) vehicleNumbers.add(record.vehicleNumber);
+      if (record.siteName) sites.add(record.siteName);
+      if (record.workCategory) categories.add(record.workCategory);
+      if (record.status) statuses.add(record.status);
+    });
+
+    return {
+      vehicles: Array.from(vehicleNumbers).sort((a, b) => a.localeCompare(b)),
+      sites: Array.from(sites).sort((a, b) => a.localeCompare(b)),
+      categories: Array.from(categories).sort((a, b) => a.localeCompare(b)),
+      statuses: Array.from(statuses).sort((a, b) => a.localeCompare(b)),
+    };
+  }, [usageRecords]);
+
+  const filteredRefuelingRecords = useMemo(() => {
+    const dateFrom = parseDateValue(appliedRefuelingFilters.dateFrom);
+    const dateTo = parseDateValue(appliedRefuelingFilters.dateTo);
+    const quantityMin = parseNumber(appliedRefuelingFilters.quantityMin);
+    const quantityMax = parseNumber(appliedRefuelingFilters.quantityMax);
+    const costMin = parseNumber(appliedRefuelingFilters.costMin);
+    const costMax = parseNumber(appliedRefuelingFilters.costMax);
+
+    return refuelingRecords.filter((record) => {
+      const matchesVehicle =
+        appliedRefuelingFilters.vehicles.length === 0 ||
+        appliedRefuelingFilters.vehicles.includes(record.vehicleNumber);
+      const matchesFuelType =
+        appliedRefuelingFilters.fuelTypes.length === 0 ||
+        appliedRefuelingFilters.fuelTypes.includes(record.fuelType);
+      const matchesVendor =
+        appliedRefuelingFilters.vendors.length === 0 ||
+        appliedRefuelingFilters.vendors.includes(record.vendor);
+      const matchesLocation =
+        appliedRefuelingFilters.locations.length === 0 ||
+        appliedRefuelingFilters.locations.includes(record.location);
+      const recordDate = parseDateValue(record.date);
+      const matchesDateFrom = !dateFrom || (recordDate !== null && recordDate >= dateFrom);
+      const matchesDateTo = !dateTo || (recordDate !== null && recordDate <= dateTo);
+      const matchesQuantityMin =
+        quantityMin === undefined || Number.isNaN(quantityMin) || record.quantity >= quantityMin;
+      const matchesQuantityMax =
+        quantityMax === undefined || Number.isNaN(quantityMax) || record.quantity <= quantityMax;
+      const matchesCostMin =
+        costMin === undefined || Number.isNaN(costMin) || record.cost >= costMin;
+      const matchesCostMax =
+        costMax === undefined || Number.isNaN(costMax) || record.cost <= costMax;
+      const hasInvoice = Boolean(record.invoiceNumber && record.invoiceNumber.trim() !== '');
+      const matchesInvoice =
+        appliedRefuelingFilters.hasInvoice === 'all' ||
+        (appliedRefuelingFilters.hasInvoice === 'with' && hasInvoice) ||
+        (appliedRefuelingFilters.hasInvoice === 'without' && !hasInvoice);
+
+      return (
+        matchesVehicle &&
+        matchesFuelType &&
+        matchesVendor &&
+        matchesLocation &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        matchesQuantityMin &&
+        matchesQuantityMax &&
+        matchesCostMin &&
+        matchesCostMax &&
+        matchesInvoice
+      );
+    });
+  }, [refuelingRecords, appliedRefuelingFilters]);
+
+  const filteredUsageRecords = useMemo(() => {
+    const dateFrom = parseDateValue(appliedUsageFilters.dateFrom);
+    const dateTo = parseDateValue(appliedUsageFilters.dateTo);
+    const distanceMin = parseNumber(appliedUsageFilters.distanceMin);
+    const distanceMax = parseNumber(appliedUsageFilters.distanceMax);
+    const fuelMin = parseNumber(appliedUsageFilters.fuelMin);
+    const fuelMax = parseNumber(appliedUsageFilters.fuelMax);
+
+    return usageRecords.filter((record) => {
+      const matchesVehicle =
+        appliedUsageFilters.vehicles.length === 0 ||
+        appliedUsageFilters.vehicles.includes(record.vehicleNumber);
+      const matchesSite =
+        appliedUsageFilters.sites.length === 0 ||
+        appliedUsageFilters.sites.includes(record.siteName);
+      const matchesCategory =
+        appliedUsageFilters.categories.length === 0 ||
+        appliedUsageFilters.categories.includes(record.workCategory);
+      const matchesStatus =
+        appliedUsageFilters.statuses.length === 0 ||
+        appliedUsageFilters.statuses.includes(record.status);
+      const usageDate = parseDateValue(record.date);
+      const matchesDateFrom = !dateFrom || (usageDate !== null && usageDate >= dateFrom);
+      const matchesDateTo = !dateTo || (usageDate !== null && usageDate <= dateTo);
+      const matchesDistanceMin =
+        distanceMin === undefined || Number.isNaN(distanceMin) || record.totalDistance >= distanceMin;
+      const matchesDistanceMax =
+        distanceMax === undefined || Number.isNaN(distanceMax) || record.totalDistance <= distanceMax;
+      const matchesFuelMin =
+        fuelMin === undefined || Number.isNaN(fuelMin) || record.fuelConsumed >= fuelMin;
+      const matchesFuelMax =
+        fuelMax === undefined || Number.isNaN(fuelMax) || record.fuelConsumed <= fuelMax;
+      const matchesRental =
+        appliedUsageFilters.rentalType === 'all' ||
+        (appliedUsageFilters.rentalType === 'rental' && record.isRental) ||
+        (appliedUsageFilters.rentalType === 'owned' && !record.isRental);
+
+      return (
+        matchesVehicle &&
+        matchesSite &&
+        matchesCategory &&
+        matchesStatus &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        matchesDistanceMin &&
+        matchesDistanceMax &&
+        matchesFuelMin &&
+        matchesFuelMax &&
+        matchesRental
+      );
+    });
+  }, [usageRecords, appliedUsageFilters]);
+
+  const activeRefuelingFilterCount = useMemo(
+    () => countRefuelingFilters(appliedRefuelingFilters),
+    [appliedRefuelingFilters],
+  );
+  const hasActiveRefuelingFilters = activeRefuelingFilterCount > 0;
+
+  const activeUsageFilterCount = useMemo(
+    () => countUsageFilters(appliedUsageFilters),
+    [appliedUsageFilters],
+  );
+  const hasActiveUsageFilters = activeUsageFilterCount > 0;
 
   const resetRefuelingForm = useCallback(() => {
     setRefuelingForm({
@@ -590,21 +881,111 @@ export function VehiclesPage({
 
                     {/* Refueling Records Table */}
                     <Card>
-                      <CardContent className="p-6">
-                        <div className="flex items-center justify-between mb-4">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <h3 className="text-lg font-semibold">Vehicle Refueling Records</h3>
-                          <Button
-                            onClick={() => {
-                              resetRefuelingForm();
-                              refuelingDialog.openDialog();
-                            }}
-                            disabled={isVehiclesLoading || vehicles.length === 0}
-                            className="gap-2"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add Refueling
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2 transition-all hover:shadow-md"
+                                    onClick={() => {
+                                      setDraftRefuelingFilters(cloneRefuelingAdvancedFilters(appliedRefuelingFilters));
+                                      setIsRefuelingFilterSheetOpen(true);
+                                    }}
+                                  >
+                                    <Filter className="h-4 w-4" />
+                                    <span className="hidden sm:inline">Filter</span>
+                                    {hasActiveRefuelingFilters ? (
+                                      <Badge variant="secondary" className="ml-2">
+                                        {activeRefuelingFilterCount}
+                                      </Badge>
+                                    ) : null}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Open refueling filters</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-2 transition-all hover:shadow-md"
+                              disabled={!hasActiveRefuelingFilters}
+                              onClick={() => {
+                                const reset = createDefaultRefuelingAdvancedFilters();
+                                setAppliedRefuelingFilters(reset);
+                                setDraftRefuelingFilters(reset);
+                              }}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              <span className="hidden sm:inline">Clear filters</span>
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                resetRefuelingForm();
+                                refuelingDialog.openDialog();
+                              }}
+                              disabled={isVehiclesLoading || vehicles.length === 0}
+                              className="gap-2"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Refueling
+                            </Button>
+                          </div>
                         </div>
+                        <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium w-fit">
+                          {filteredRefuelingRecords.length} record
+                          {filteredRefuelingRecords.length !== 1 ? 's' : ''} found
+                        </Badge>
+                        {hasActiveRefuelingFilters ? (
+                          <div className="flex flex-wrap gap-2">
+                            {(() => {
+                              const chips: string[] = [];
+                              if (appliedRefuelingFilters.vehicles.length > 0) {
+                                chips.push(`Vehicles: ${appliedRefuelingFilters.vehicles.join(', ')}`);
+                              }
+                              if (appliedRefuelingFilters.fuelTypes.length > 0) {
+                                chips.push(`Fuel: ${appliedRefuelingFilters.fuelTypes.join(', ')}`);
+                              }
+                              if (appliedRefuelingFilters.vendors.length > 0) {
+                                chips.push(`Vendors: ${appliedRefuelingFilters.vendors.join(', ')}`);
+                              }
+                              if (appliedRefuelingFilters.locations.length > 0) {
+                                chips.push(`Locations: ${appliedRefuelingFilters.locations.join(', ')}`);
+                              }
+                              if (appliedRefuelingFilters.dateFrom || appliedRefuelingFilters.dateTo) {
+                                chips.push(
+                                  `Date: ${appliedRefuelingFilters.dateFrom ?? 'Any'} → ${appliedRefuelingFilters.dateTo ?? 'Any'}`,
+                                );
+                              }
+                              if (appliedRefuelingFilters.quantityMin || appliedRefuelingFilters.quantityMax) {
+                                chips.push(
+                                  `Quantity: ${appliedRefuelingFilters.quantityMin || '0'} - ${appliedRefuelingFilters.quantityMax || '∞'}`,
+                                );
+                              }
+                              if (appliedRefuelingFilters.costMin || appliedRefuelingFilters.costMax) {
+                                chips.push(
+                                  `Cost: ₹${appliedRefuelingFilters.costMin || '0'} - ₹${appliedRefuelingFilters.costMax || '∞'}`,
+                                );
+                              }
+                              if (appliedRefuelingFilters.hasInvoice !== 'all') {
+                                chips.push(
+                                  appliedRefuelingFilters.hasInvoice === 'with'
+                                    ? 'With invoice'
+                                    : 'Without invoice',
+                                );
+                              }
+                              return chips;
+                            })().map((chip) => (
+                              <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                                {chip}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
                         <div className="overflow-x-auto">
                           <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
                             <TooltipProvider>
@@ -625,7 +1006,7 @@ export function VehiclesPage({
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {refuelingRecords.map((record) => (
+                                  {filteredRefuelingRecords.map((record) => (
                                     <tr key={record.id} className="border-b hover:bg-muted/50">
                                       <td className="px-3 py-2">{record.date}</td>
                                       <td className="px-3 py-2">{record.vehicleNumber}</td>
@@ -780,21 +1161,109 @@ export function VehiclesPage({
                     </Card>
                   </div>
                   <Card>
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <h3 className="text-lg font-semibold">Vehicle Usage Records</h3>
-                        <Button
-                          onClick={() => {
-                            resetUsageForm();
-                            usageDialog.openDialog();
-                          }}
-                          disabled={isVehiclesLoading || vehicles.length === 0}
-                          className="gap-2"
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add Usage Record
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-2 transition-all hover:shadow-md"
+                                  onClick={() => {
+                                    setDraftUsageFilters(cloneUsageAdvancedFilters(appliedUsageFilters));
+                                    setIsUsageFilterSheetOpen(true);
+                                  }}
+                                >
+                                  <Filter className="h-4 w-4" />
+                                  <span className="hidden sm:inline">Filter</span>
+                                  {hasActiveUsageFilters ? (
+                                    <Badge variant="secondary" className="ml-2">
+                                      {activeUsageFilterCount}
+                                    </Badge>
+                                  ) : null}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Open usage filters</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-2 transition-all hover:shadow-md"
+                            disabled={!hasActiveUsageFilters}
+                            onClick={() => {
+                              const reset = createDefaultUsageAdvancedFilters();
+                              setAppliedUsageFilters(reset);
+                              setDraftUsageFilters(reset);
+                            }}
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            <span className="hidden sm:inline">Clear filters</span>
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              resetUsageForm();
+                              usageDialog.openDialog();
+                            }}
+                            disabled={isVehiclesLoading || vehicles.length === 0}
+                            className="gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Usage Record
+                          </Button>
+                        </div>
                       </div>
+                      <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium w-fit">
+                        {filteredUsageRecords.length} record
+                        {filteredUsageRecords.length !== 1 ? 's' : ''} found
+                      </Badge>
+                      {hasActiveUsageFilters ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(() => {
+                            const chips: string[] = [];
+                            if (appliedUsageFilters.vehicles.length > 0) {
+                              chips.push(`Vehicles: ${appliedUsageFilters.vehicles.join(', ')}`);
+                            }
+                            if (appliedUsageFilters.sites.length > 0) {
+                              chips.push(`Sites: ${appliedUsageFilters.sites.join(', ')}`);
+                            }
+                            if (appliedUsageFilters.categories.length > 0) {
+                              chips.push(`Categories: ${appliedUsageFilters.categories.join(', ')}`);
+                            }
+                            if (appliedUsageFilters.statuses.length > 0) {
+                              chips.push(`Statuses: ${appliedUsageFilters.statuses.join(', ')}`);
+                            }
+                            if (appliedUsageFilters.dateFrom || appliedUsageFilters.dateTo) {
+                              chips.push(
+                                `Date: ${appliedUsageFilters.dateFrom ?? 'Any'} → ${appliedUsageFilters.dateTo ?? 'Any'}`,
+                              );
+                            }
+                            if (appliedUsageFilters.distanceMin || appliedUsageFilters.distanceMax) {
+                              chips.push(
+                                `Distance: ${appliedUsageFilters.distanceMin || '0'}km - ${appliedUsageFilters.distanceMax || '∞'}km`,
+                              );
+                            }
+                            if (appliedUsageFilters.fuelMin || appliedUsageFilters.fuelMax) {
+                              chips.push(
+                                `Fuel: ${appliedUsageFilters.fuelMin || '0'}L - ${appliedUsageFilters.fuelMax || '∞'}L`,
+                              );
+                            }
+                            if (appliedUsageFilters.rentalType !== 'all') {
+                              chips.push(
+                                appliedUsageFilters.rentalType === 'rental' ? 'Rental only' : 'Owned only',
+                              );
+                            }
+                            return chips;
+                          })().map((chip) => (
+                            <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                              {chip}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="overflow-x-auto">
                         <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
                           <TooltipProvider>
@@ -813,7 +1282,7 @@ export function VehiclesPage({
                                 </tr>
                               </thead>
                               <tbody>
-                                {usageRecords.map((record) => (
+                                {filteredUsageRecords.map((record) => (
                                   <tr key={record.id} className="border-b hover:bg-muted/50">
                                     <td className="px-3 py-2">{record.date}</td>
                                     <td className="px-3 py-2">{record.vehicleNumber}</td>
@@ -899,6 +1368,475 @@ export function VehiclesPage({
           </div>
         )}
       </div>
+
+      <FilterSheet
+        open={isRefuelingFilterSheetOpen}
+        onOpenChange={setIsRefuelingFilterSheetOpen}
+        title="Refueling filters"
+        description="Refine refueling records with additional criteria."
+        sections={[
+          {
+            id: 'refueling-vehicles',
+            title: 'Vehicles',
+            description: 'Show refueling entries for selected vehicles.',
+            content:
+              refuelingFilterOptions.vehicles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No vehicles recorded yet.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {refuelingFilterOptions.vehicles.map((vehicle) => {
+                    const checked = draftRefuelingFilters.vehicles.includes(vehicle);
+                    return (
+                      <Label key={vehicle} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                            setDraftRefuelingFilters((prev) => {
+                              const isChecked = checkedValue === true;
+                              return {
+                                ...prev,
+                                vehicles: isChecked
+                                  ? [...prev.vehicles, vehicle]
+                                  : prev.vehicles.filter((item) => item !== vehicle),
+                              };
+                            })
+                          }
+                        />
+                        <span>{vehicle}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'refueling-fuel',
+            title: 'Fuel types',
+            description: 'Limit results to certain fuel types.',
+            content:
+              refuelingFilterOptions.fuelTypes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No fuel types available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {refuelingFilterOptions.fuelTypes.map((type) => {
+                    const checked = draftRefuelingFilters.fuelTypes.includes(type);
+                    return (
+                      <Label key={type} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                            setDraftRefuelingFilters((prev) => {
+                              const isChecked = checkedValue === true;
+                              return {
+                                ...prev,
+                                fuelTypes: isChecked
+                                  ? [...prev.fuelTypes, type]
+                                  : prev.fuelTypes.filter((item) => item !== type),
+                              };
+                            })
+                          }
+                        />
+                        <span>{type}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'refueling-date',
+            title: 'Date range',
+            description: 'Filter by refueling date.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="refueling-date-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="refueling-date-from"
+                    type="date"
+                    value={draftRefuelingFilters.dateFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftRefuelingFilters((prev) => ({
+                        ...prev,
+                        dateFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="refueling-date-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="refueling-date-to"
+                    type="date"
+                    value={draftRefuelingFilters.dateTo ?? ''}
+                    onChange={(event) =>
+                      setDraftRefuelingFilters((prev) => ({
+                        ...prev,
+                        dateTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'refueling-cost',
+            title: 'Cost range (₹)',
+            description: 'Limit results to a spend band.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="refueling-cost-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="refueling-cost-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftRefuelingFilters.costMin}
+                    onChange={(event) =>
+                      setDraftRefuelingFilters((prev) => ({
+                        ...prev,
+                        costMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="refueling-cost-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="refueling-cost-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftRefuelingFilters.costMax}
+                    onChange={(event) =>
+                      setDraftRefuelingFilters((prev) => ({
+                        ...prev,
+                        costMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'refueling-invoice',
+            title: 'Invoice status',
+            description: 'Show records with or without invoice numbers.',
+            content: (
+              <Select
+                value={draftRefuelingFilters.hasInvoice}
+                onValueChange={(value: RefuelingAdvancedFilterState['hasInvoice']) =>
+                  setDraftRefuelingFilters((prev) => ({ ...prev, hasInvoice: value }))
+                }
+              >
+                <SelectTrigger className="w-full sm:w-64">
+                  <SelectValue placeholder="Invoice status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All records</SelectItem>
+                  <SelectItem value="with">With invoice number</SelectItem>
+                  <SelectItem value="without">Without invoice number</SelectItem>
+                </SelectContent>
+              </Select>
+            ),
+          },
+        ]}
+        onApply={() => {
+          setAppliedRefuelingFilters(cloneRefuelingAdvancedFilters(draftRefuelingFilters));
+          setIsRefuelingFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const reset = createDefaultRefuelingAdvancedFilters();
+          setDraftRefuelingFilters(reset);
+          setAppliedRefuelingFilters(reset);
+        }}
+        isDirty={countRefuelingFilters(draftRefuelingFilters) > 0}
+      />
+
+      <FilterSheet
+        open={isUsageFilterSheetOpen}
+        onOpenChange={setIsUsageFilterSheetOpen}
+        title="Usage filters"
+        description="Refine vehicle usage records with additional criteria."
+        sections={[
+          {
+            id: 'usage-vehicles',
+            title: 'Vehicles',
+            description: 'Show usage entries for selected vehicles.',
+            content:
+              usageFilterOptions.vehicles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No vehicles recorded yet.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {usageFilterOptions.vehicles.map((vehicle) => {
+                    const checked = draftUsageFilters.vehicles.includes(vehicle);
+                    return (
+                      <Label key={vehicle} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                            setDraftUsageFilters((prev) => {
+                              const isChecked = checkedValue === true;
+                              return {
+                                ...prev,
+                                vehicles: isChecked
+                                  ? [...prev.vehicles, vehicle]
+                                  : prev.vehicles.filter((item) => item !== vehicle),
+                              };
+                            })
+                          }
+                        />
+                        <span>{vehicle}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'usage-sites',
+            title: 'Sites',
+            description: 'Limit usage entries to selected sites.',
+            content:
+              usageFilterOptions.sites.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No sites recorded yet.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {usageFilterOptions.sites.map((site) => {
+                    const checked = draftUsageFilters.sites.includes(site);
+                    return (
+                      <Label key={site} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                            setDraftUsageFilters((prev) => {
+                              const isChecked = checkedValue === true;
+                              return {
+                                ...prev,
+                                sites: isChecked
+                                  ? [...prev.sites, site]
+                                  : prev.sites.filter((item) => item !== site),
+                              };
+                            })
+                          }
+                        />
+                        <span>{site}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'usage-status',
+            title: 'Statuses',
+            description: 'Filter by usage status.',
+            content:
+              usageFilterOptions.statuses.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No statuses recorded yet.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {usageFilterOptions.statuses.map((status) => {
+                    const checked = draftUsageFilters.statuses.includes(status);
+                    return (
+                      <Label key={status} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                            setDraftUsageFilters((prev) => {
+                              const isChecked = checkedValue === true;
+                              return {
+                                ...prev,
+                                statuses: isChecked
+                                  ? [...prev.statuses, status]
+                                  : prev.statuses.filter((item) => item !== status),
+                              };
+                            })
+                          }
+                        />
+                        <span>{status}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'usage-date',
+            title: 'Date range',
+            description: 'Filter by usage date.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="usage-date-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="usage-date-from"
+                    type="date"
+                    value={draftUsageFilters.dateFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftUsageFilters((prev) => ({
+                        ...prev,
+                        dateFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="usage-date-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="usage-date-to"
+                    type="date"
+                    value={draftUsageFilters.dateTo ?? ''}
+                    onChange={(event) =>
+                      setDraftUsageFilters((prev) => ({
+                        ...prev,
+                        dateTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'usage-distance',
+            title: 'Distance (km)',
+            description: 'Limit entries to a distance range.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="usage-distance-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="usage-distance-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftUsageFilters.distanceMin}
+                    onChange={(event) =>
+                      setDraftUsageFilters((prev) => ({
+                        ...prev,
+                        distanceMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="usage-distance-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="usage-distance-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftUsageFilters.distanceMax}
+                    onChange={(event) =>
+                      setDraftUsageFilters((prev) => ({
+                        ...prev,
+                        distanceMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'usage-fuel',
+            title: 'Fuel consumed (L)',
+            description: 'Filter by reported fuel consumption.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="usage-fuel-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="usage-fuel-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftUsageFilters.fuelMin}
+                    onChange={(event) =>
+                      setDraftUsageFilters((prev) => ({
+                        ...prev,
+                        fuelMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="usage-fuel-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="usage-fuel-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftUsageFilters.fuelMax}
+                    onChange={(event) =>
+                      setDraftUsageFilters((prev) => ({
+                        ...prev,
+                        fuelMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'usage-rental',
+            title: 'Rental vs owned',
+            description: 'Filter entries based on vehicle ownership.',
+            content: (
+              <Select
+                value={draftUsageFilters.rentalType}
+                onValueChange={(value: UsageAdvancedFilterState['rentalType']) =>
+                  setDraftUsageFilters((prev) => ({ ...prev, rentalType: value }))
+                }
+              >
+                <SelectTrigger className="w-full sm:w-64">
+                  <SelectValue placeholder="Vehicle ownership" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All entries</SelectItem>
+                  <SelectItem value="owned">Owned vehicles</SelectItem>
+                  <SelectItem value="rental">Rental vehicles</SelectItem>
+                </SelectContent>
+              </Select>
+            ),
+          },
+        ]}
+        onApply={() => {
+          setAppliedUsageFilters(cloneUsageAdvancedFilters(draftUsageFilters));
+          setIsUsageFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const reset = createDefaultUsageAdvancedFilters();
+          setDraftUsageFilters(reset);
+          setAppliedUsageFilters(reset);
+        }}
+        isDirty={countUsageFilters(draftUsageFilters) > 0}
+      />
 
       {/* Refueling Dialog */}
       <FormDialog

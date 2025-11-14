@@ -88,7 +88,7 @@ export function PaymentsPage() {
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       clientName: '',
-      amount: 0,
+      amount: undefined,
       status: 'pending',
       dueDate: undefined,
       paidDate: undefined,
@@ -126,7 +126,7 @@ export function PaymentsPage() {
     if (!isDialogOpen) {
       form.reset({
         clientName: '',
-        amount: 0,
+        amount: undefined,
         status: 'pending',
         dueDate: undefined,
         paidDate: undefined,
@@ -394,7 +394,11 @@ export function PaymentsPage() {
                           type="number"
                           step="0.01"
                           {...field}
-                          onChange={(event) => field.onChange(Number(event.target.value))}
+                          value={field.value ?? ''}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            field.onChange(nextValue === '' ? undefined : Number(nextValue));
+                          }}
                         />
                       </FormControl>
                       <FormMessage />

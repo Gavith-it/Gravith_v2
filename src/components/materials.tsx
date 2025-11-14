@@ -2,7 +2,7 @@
 
 import {
   Package,
-  DollarSign,
+  BarChart3,
   TrendingUp,
   Edit,
   Search,
@@ -12,6 +12,8 @@ import {
   Filter,
   CheckCircle2,
   Pause,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -23,6 +25,7 @@ import MaterialMasterForm from './forms/MaterialMasterForm';
 import type { MaterialMasterItem } from './shared/materialMasterData';
 import type { MaterialMasterInput } from '@/types/materials';
 
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,7 +38,9 @@ import {
   DialogTrigger,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -53,7 +58,67 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+type MaterialAdvancedFilterState = {
+  units: string[];
+  taxRates: number[];
+  rateMin: string;
+  rateMax: string;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+};
+
+const createDefaultMaterialAdvancedFilters = (): MaterialAdvancedFilterState => ({
+  units: [],
+  taxRates: [],
+  rateMin: '',
+  rateMax: '',
+  createdFrom: undefined,
+  createdTo: undefined,
+  updatedFrom: undefined,
+  updatedTo: undefined,
+});
+
+const cloneMaterialAdvancedFilters = (
+  filters: MaterialAdvancedFilterState,
+): MaterialAdvancedFilterState => ({
+  ...filters,
+  units: [...filters.units],
+  taxRates: [...filters.taxRates],
+});
+
+const isMaterialAdvancedFilterDefault = (filters: MaterialAdvancedFilterState): boolean => {
+  return (
+    filters.units.length === 0 &&
+    filters.taxRates.length === 0 &&
+    filters.rateMin === '' &&
+    filters.rateMax === '' &&
+    !filters.createdFrom &&
+    !filters.createdTo &&
+    !filters.updatedFrom &&
+    !filters.updatedTo
+  );
+};
+
+const countMaterialAdvancedFilters = (filters: MaterialAdvancedFilterState): number => {
+  let count = 0;
+  count += filters.units.length;
+  count += filters.taxRates.length;
+  if (filters.rateMin !== '' || filters.rateMax !== '') count += 1;
+  if (filters.createdFrom || filters.createdTo) count += 1;
+  if (filters.updatedFrom || filters.updatedTo) count += 1;
+  return count;
+};
+
+const parseDateValue = (value?: string): Date | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 export function MaterialsPage() {
   // Material Master state
@@ -65,6 +130,13 @@ export function MaterialsPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isMaterialDialogOpen, setIsMaterialDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialMasterItem | null>(null);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<MaterialAdvancedFilterState>(
+    () => createDefaultMaterialAdvancedFilters(),
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<MaterialAdvancedFilterState>(() =>
+    createDefaultMaterialAdvancedFilters(),
+  );
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -94,6 +166,10 @@ export function MaterialsPage() {
         name: material.name,
         category: material.category,
         unit: material.unit,
+        siteId: material.siteId ?? null,
+        siteName: material.siteName ?? null,
+        quantity: material.quantity,
+        consumedQuantity: material.consumedQuantity,
         standardRate: material.standardRate,
         isActive: material.isActive,
         hsn: material.hsn,
@@ -115,20 +191,89 @@ export function MaterialsPage() {
     void fetchMaterials();
   }, [fetchMaterials]);
 
+  const unitOptions = useMemo(() => {
+    const units = new Set<string>();
+    materialMasterData.forEach((material) => {
+      if (material.unit) {
+        units.add(material.unit);
+      }
+    });
+    return Array.from(units).sort((a, b) => a.localeCompare(b));
+  }, [materialMasterData]);
+
+  const taxRateOptions = useMemo(() => {
+    const taxRates = new Set<number>();
+    materialMasterData.forEach((material) => {
+      if (typeof material.taxRate === 'number') {
+        taxRates.add(material.taxRate);
+      }
+    });
+    return Array.from(taxRates).sort((a, b) => a - b);
+  }, [materialMasterData]);
+
+  const activeAdvancedFilterCount = useMemo(
+    () => countMaterialAdvancedFilters(appliedAdvancedFilters),
+    [appliedAdvancedFilters],
+  );
+  const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
+
   const sortedAndFilteredMaterials = useMemo(() => {
+    const minRate =
+      appliedAdvancedFilters.rateMin !== '' ? Number(appliedAdvancedFilters.rateMin) : undefined;
+    const maxRate =
+      appliedAdvancedFilters.rateMax !== '' ? Number(appliedAdvancedFilters.rateMax) : undefined;
+    const createdFrom = parseDateValue(appliedAdvancedFilters.createdFrom);
+    const createdTo = parseDateValue(appliedAdvancedFilters.createdTo);
+    const updatedFrom = parseDateValue(appliedAdvancedFilters.updatedFrom);
+    const updatedTo = parseDateValue(appliedAdvancedFilters.updatedTo);
+
     return materialMasterData
       .filter((material) => {
         const matchesSearch =
           searchQuery === '' ||
           material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          material.category.toLowerCase().includes(searchQuery.toLowerCase());
+          material.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (material.siteName ?? '').toLowerCase().includes(searchQuery.toLowerCase());
         const matchesCategory =
           masterCategoryFilter === 'all' || material.category === masterCategoryFilter;
         const matchesStatus =
           masterStatusFilter === 'all' ||
           (masterStatusFilter === 'active' && material.isActive) ||
           (masterStatusFilter === 'inactive' && !material.isActive);
-        return matchesSearch && matchesCategory && matchesStatus;
+        const matchesUnits =
+          appliedAdvancedFilters.units.length === 0 ||
+          appliedAdvancedFilters.units.includes(material.unit);
+        const matchesTaxRates =
+          appliedAdvancedFilters.taxRates.length === 0 ||
+          appliedAdvancedFilters.taxRates.includes(material.taxRate);
+        const matchesMinRate =
+          minRate === undefined || Number.isNaN(minRate) || material.standardRate >= minRate;
+        const matchesMaxRate =
+          maxRate === undefined || Number.isNaN(maxRate) || material.standardRate <= maxRate;
+
+        const createdDate = parseDateValue(material.createdDate);
+        const updatedDate = parseDateValue(material.lastUpdated);
+
+        const matchesCreatedFrom =
+          !createdFrom || (createdDate !== null && createdDate >= createdFrom);
+        const matchesCreatedTo = !createdTo || (createdDate !== null && createdDate <= createdTo);
+        const matchesUpdatedFrom =
+          !updatedFrom || (updatedDate !== null && updatedDate >= updatedFrom);
+        const matchesUpdatedTo = !updatedTo || (updatedDate !== null && updatedDate <= updatedTo);
+
+        return (
+          matchesSearch &&
+          matchesCategory &&
+          matchesStatus &&
+          matchesUnits &&
+          matchesTaxRates &&
+          matchesMinRate &&
+          matchesMaxRate &&
+          matchesCreatedFrom &&
+          matchesCreatedTo &&
+          matchesUpdatedFrom &&
+          matchesUpdatedTo
+        );
       })
       .sort((a, b) => {
         const aValue = a[tableState.sortField as keyof MaterialMasterItem];
@@ -146,7 +291,14 @@ export function MaterialsPage() {
 
         return 0;
       });
-  }, [materialMasterData, masterCategoryFilter, masterStatusFilter, searchQuery, tableState]);
+  }, [
+    appliedAdvancedFilters,
+    materialMasterData,
+    masterCategoryFilter,
+    masterStatusFilter,
+    searchQuery,
+    tableState,
+  ]);
 
   // Material Master functions
   const handleMaterialSubmit = useCallback(
@@ -165,10 +317,13 @@ export function MaterialsPage() {
               name: formData.name,
               category: formData.category,
               unit: formData.unit,
+              quantity: formData.quantity,
+              consumedQuantity: formData.consumedQuantity ?? 0,
               standardRate: formData.standardRate,
               isActive: formData.isActive,
               hsn: formData.hsn,
               taxRate: formData.taxRate,
+              siteId: formData.siteId ?? null,
             }),
           },
         );
@@ -206,6 +361,44 @@ export function MaterialsPage() {
     setIsMaterialDialogOpen(true);
   };
 
+  const handleDeleteMaterial = useCallback(
+    async (materialId: string) => {
+      const target = materialMasterData.find((material) => material.id === materialId);
+      if (!target) {
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Delete "${target.name}" from material master? This action cannot be undone.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/materials/${materialId}`, {
+          method: 'DELETE',
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || 'Failed to delete material.');
+        }
+
+        setMaterialMasterData((prev) => prev.filter((material) => material.id !== materialId));
+        toast.success('Material deleted successfully.');
+      } catch (error) {
+        console.error('Failed to delete material', error);
+        toast.error(error instanceof Error ? error.message : 'Unable to delete material.');
+      }
+    },
+    [materialMasterData],
+  );
+
   const toggleMasterMaterialStatus = useCallback(
     async (materialId: string) => {
       try {
@@ -237,6 +430,7 @@ export function MaterialsPage() {
               ? {
                   ...item,
                   isActive: payload.material!.isActive,
+                  quantity: payload.material!.quantity ?? item.quantity,
                   lastUpdated: payload.material!.lastUpdated ?? item.lastUpdated,
                 }
               : item,
@@ -270,12 +464,12 @@ export function MaterialsPage() {
     () => new Set(materialMasterData.map((m) => m.category)).size,
     [materialMasterData],
   );
-  const averageRate = useMemo(() => {
-    if (!materialMasterData.length) {
-      return 0;
-    }
-    const total = materialMasterData.reduce((sum, m) => sum + m.standardRate, 0);
-    return Math.round(total / materialMasterData.length);
+  const totalTrackedQuantity = useMemo(() => {
+    return materialMasterData.reduce((sum, m) => sum + (m.quantity ?? 0), 0);
+  }, [materialMasterData]);
+
+  const totalConsumedQuantity = useMemo(() => {
+    return materialMasterData.reduce((sum, m) => sum + (m.consumedQuantity ?? 0), 0);
   }, [materialMasterData]);
 
   return (
@@ -332,13 +526,23 @@ export function MaterialsPage() {
                 <CardContent className="p-4 md:p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-muted-foreground">Avg. Rate</p>
-                      <p className="text-2xl font-bold text-purple-600">
-                        ₹{averageRate}
-                      </p>
+                      <p className="text-sm font-medium text-muted-foreground">Tracked Quantity</p>
+                      <div>
+                        <p className="text-2xl font-bold text-purple-600">
+                          {totalTrackedQuantity.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Consumed:{' '}
+                          {totalConsumedQuantity.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </p>
+                      </div>
                     </div>
                     <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-6 w-6 text-purple-600" />
+                      <BarChart3 className="h-6 w-6 text-purple-600" />
                     </div>
                   </div>
                 </CardContent>
@@ -400,16 +604,39 @@ export function MaterialsPage() {
                           variant="outline"
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
+                          onClick={() => {
+                            setDraftAdvancedFilters(cloneMaterialAdvancedFilters(appliedAdvancedFilters));
+                            setIsFilterSheetOpen(true);
+                          }}
                         >
                           <Filter className="h-4 w-4" />
                           <span className="hidden sm:inline">Filter</span>
+                        {hasActiveAdvancedFilters ? (
+                            <Badge variant="secondary" className="ml-2">
+                              {activeAdvancedFilterCount}
+                            </Badge>
+                          ) : null}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Filter materials by category and status</p>
+                        <p>Open advanced filter options</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 transition-all hover:shadow-md"
+                  disabled={!hasActiveAdvancedFilters}
+                  onClick={() => {
+                    const resetFilters = createDefaultMaterialAdvancedFilters();
+                    setAppliedAdvancedFilters(resetFilters);
+                    setDraftAdvancedFilters(resetFilters);
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span className="hidden sm:inline">Clear filters</span>
+                </Button>
                   <Dialog
                     open={isMaterialDialogOpen}
                     onOpenChange={(open) => {
@@ -451,6 +678,8 @@ export function MaterialsPage() {
                                     name: editingMaterial.name,
                                     category: editingMaterial.category,
                                     unit: editingMaterial.unit,
+                                    siteId: editingMaterial.siteId ?? undefined,
+                                    quantity: editingMaterial.quantity,
                                     standardRate: editingMaterial.standardRate,
                                     isActive: editingMaterial.isActive,
                                     hsn: editingMaterial.hsn,
@@ -474,6 +703,39 @@ export function MaterialsPage() {
                       sortedAndFilteredMaterials.length !== 1 ? 's' : ''
                     } found`}
               </Badge>
+              {hasActiveAdvancedFilters ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {(() => {
+                    const chips: string[] = [];
+                    if (appliedAdvancedFilters.units.length > 0) {
+                      chips.push(`Units: ${appliedAdvancedFilters.units.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.taxRates.length > 0) {
+                      chips.push(`GST: ${appliedAdvancedFilters.taxRates.join('%, ')}%`);
+                    }
+                    if (appliedAdvancedFilters.rateMin || appliedAdvancedFilters.rateMax) {
+                      const min = appliedAdvancedFilters.rateMin || 'Any';
+                      const max = appliedAdvancedFilters.rateMax || 'Any';
+                      chips.push(`Rate: ₹${min} - ₹${max}`);
+                    }
+                    if (appliedAdvancedFilters.createdFrom || appliedAdvancedFilters.createdTo) {
+                      chips.push(
+                        `Created: ${appliedAdvancedFilters.createdFrom ?? 'Any'} → ${appliedAdvancedFilters.createdTo ?? 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.updatedFrom || appliedAdvancedFilters.updatedTo) {
+                      chips.push(
+                        `Updated: ${appliedAdvancedFilters.updatedFrom ?? 'Any'} → ${appliedAdvancedFilters.updatedTo ?? 'Any'}`,
+                      );
+                    }
+                    return chips;
+                  })().map((chip) => (
+                    <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {chip}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -517,8 +779,11 @@ export function MaterialsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[250px]">Material</TableHead>
+                      <TableHead className="min-w-[160px]">Site</TableHead>
                       <TableHead className="min-w-[120px]">Category</TableHead>
                       <TableHead className="min-w-[80px]">Unit</TableHead>
+                      <TableHead className="min-w-[120px] text-right">Qty</TableHead>
+                      <TableHead className="min-w-[160px] text-right">Usage</TableHead>
                       <TableHead className="min-w-[120px] text-right">Rate (₹)</TableHead>
                       <TableHead className="min-w-[100px]">HSN Code</TableHead>
                       <TableHead className="min-w-[80px]">Tax %</TableHead>
@@ -774,6 +1039,12 @@ export function MaterialsPage() {
                         return unitMap[unit.toLowerCase()] || unit;
                       };
 
+                      const availableQuantity = material.quantity ?? 0;
+                      const consumedQuantity = material.consumedQuantity ?? 0;
+                      const totalQuantity = availableQuantity + consumedQuantity;
+                      const usagePercent =
+                        totalQuantity > 0 ? Math.min(100, (consumedQuantity / totalQuantity) * 100) : 0;
+
                       return (
                         <TableRow
                           key={material.id}
@@ -793,6 +1064,11 @@ export function MaterialsPage() {
                               </div>
                             </div>
                           </TableCell>
+                          <TableCell className="text-sm">
+                            <div className="font-medium">
+                              {material.siteName ?? 'Unassigned'}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="capitalize text-xs">
                               {material.category}
@@ -800,6 +1076,38 @@ export function MaterialsPage() {
                           </TableCell>
                           <TableCell className="text-sm font-medium">
                             {getShortUnit(material.unit)}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold whitespace-nowrap">
+                            <span>
+                              {availableQuantity.toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {getShortUnit(material.unit)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>
+                                  Used:{' '}
+                                  {consumedQuantity.toLocaleString(undefined, {
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                                <span>
+                                  Left:{' '}
+                                  {availableQuantity.toLocaleString(undefined, {
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              </div>
+                              <Progress value={usagePercent} className="h-1.5" />
+                              <div className="text-[11px] text-muted-foreground">
+                                {usagePercent.toFixed(1)}% consumed
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell className="font-semibold text-primary text-right whitespace-nowrap">
                             ₹{material.standardRate.toLocaleString()}
@@ -874,6 +1182,27 @@ export function MaterialsPage() {
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleDeleteMaterial(material.id);
+                                      }}
+                                      className="h-8 w-8 p-0 transition-all hover:bg-destructive/10"
+                                      aria-label="Delete material"
+                                    >
+                                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Delete material</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -886,6 +1215,221 @@ export function MaterialsPage() {
           </Card>
         )}
       </div>
+      <FilterSheet
+        open={isFilterSheetOpen}
+        onOpenChange={setIsFilterSheetOpen}
+        title="Material filters"
+        description="Refine the material master list with additional criteria."
+        sections={[
+          {
+            id: 'unit',
+            title: 'Unit of measure',
+            description: 'Show only materials measured in the selected units.',
+            content:
+              unitOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No units available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {unitOptions.map((unit) => {
+                    const isChecked = draftAdvancedFilters.units.includes(unit);
+                    return (
+                      <Label key={unit} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextUnits =
+                                checked === true
+                                  ? [...prev.units, unit]
+                                  : prev.units.filter((value) => value !== unit);
+                              return {
+                                ...prev,
+                                units: nextUnits,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{unit}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'tax-rate',
+            title: 'GST rate (%)',
+            description: 'Filter materials by their applicable GST rate.',
+            content:
+              taxRateOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No GST rates available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {taxRateOptions.map((rate) => {
+                    const isChecked = draftAdvancedFilters.taxRates.includes(rate);
+                    return (
+                      <Label key={rate} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextRates =
+                                checked === true
+                                  ? [...prev.taxRates, rate]
+                                  : prev.taxRates.filter((value) => value !== rate);
+                              return {
+                                ...prev,
+                                taxRates: nextRates,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{rate}%</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'standard-rate',
+            title: 'Standard rate (₹)',
+            description: 'Limit materials to a price band.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="material-rate-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="material-rate-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftAdvancedFilters.rateMin}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        rateMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="material-rate-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="material-rate-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftAdvancedFilters.rateMax}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        rateMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'created-date',
+            title: 'Created date',
+            description: 'Only include materials added in this period.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="material-created-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="material-created-from"
+                    type="date"
+                    value={draftAdvancedFilters.createdFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        createdFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="material-created-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="material-created-to"
+                    type="date"
+                    value={draftAdvancedFilters.createdTo ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        createdTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'updated-date',
+            title: 'Last updated',
+            description: 'Filter materials based on their most recent update.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="material-updated-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="material-updated-from"
+                    type="date"
+                    value={draftAdvancedFilters.updatedFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        updatedFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="material-updated-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="material-updated-to"
+                    type="date"
+                    value={draftAdvancedFilters.updatedTo ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        updatedTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+        ]}
+        onApply={() => {
+          setAppliedAdvancedFilters(cloneMaterialAdvancedFilters(draftAdvancedFilters));
+          setIsFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const resetFilters = createDefaultMaterialAdvancedFilters();
+          setDraftAdvancedFilters(resetFilters);
+          setAppliedAdvancedFilters(resetFilters);
+        }}
+        isDirty={!isMaterialAdvancedFilterDefault(draftAdvancedFilters)}
+      />
     </div>
   );
 }

@@ -16,6 +16,14 @@ interface TaxRateFormData {
   isActive: boolean;
 }
 
+type TaxRateFormState = {
+  code: string;
+  name: string;
+  rate: string;
+  description: string;
+  isActive: boolean;
+};
+
 interface TaxRateFormProps {
   onSubmit: (data: TaxRateFormData) => void;
   onCancel: () => void;
@@ -29,17 +37,25 @@ export default function TaxRateForm({
   defaultValues,
   isEdit = false,
 }: TaxRateFormProps) {
-  const [formData, setFormData] = useState<TaxRateFormData>({
+  const [formData, setFormData] = useState<TaxRateFormState>({
     code: defaultValues?.code || '',
     name: defaultValues?.name || '',
-    rate: defaultValues?.rate || 0,
+    rate: defaultValues?.rate !== undefined ? String(defaultValues.rate) : '',
     description: defaultValues?.description || '',
     isActive: defaultValues?.isActive ?? true,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    const payload: TaxRateFormData = {
+      code: formData.code,
+      name: formData.name,
+      rate: parseFloat(formData.rate || '0'),
+      description: formData.description,
+      isActive: formData.isActive,
+    };
+
+    onSubmit(payload);
   };
 
   return (
@@ -87,9 +103,7 @@ export default function TaxRateForm({
           min="0"
           max="100"
           value={formData.rate}
-          onChange={(e) =>
-            setFormData((prev) => ({ ...prev, rate: parseFloat(e.target.value) || 0 }))
-          }
+          onChange={(e) => setFormData((prev) => ({ ...prev, rate: e.target.value }))}
           placeholder="Enter tax rate percentage"
           required
           className="transition-all focus:ring-2 focus:ring-primary/20"

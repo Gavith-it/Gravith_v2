@@ -26,6 +26,8 @@ export default function MaterialMasterEditPage({ params }: MaterialMasterEditPag
       name: 'Portland Cement',
       category: 'Cement' as const,
       unit: 'bags',
+      quantity: 250,
+      consumedQuantity: 80,
       standardRate: 350,
       isActive: true,
       hsn: '25232910',

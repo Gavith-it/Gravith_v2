@@ -27,6 +27,8 @@ type ExpensePayload = {
   receipt?: string;
   status?: Expense['status'];
   approvedBy?: string;
+  purchaseId?: string | null;
+  materialId?: string | null;
 };
 
 type ExpenseUpdatePayload = Partial<ExpensePayload>;

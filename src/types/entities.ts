@@ -91,6 +91,10 @@ export interface MaterialMaster {
     | 'Paint'
     | 'Other';
   unit: string;
+  siteId?: string | null;
+  siteName?: string | null;
+  quantity: number;
+  consumedQuantity: number;
   standardRate: number;
   isActive: boolean;
   hsn: string;
@@ -160,6 +164,7 @@ export interface WorkProgressMaterial {
   id: string;
   workProgressId: string;
   materialId?: string | null;
+  purchaseId?: string | null;
   materialName: string;
   unit: string;
   quantity: number;
@@ -323,6 +328,10 @@ export interface Expense {
   status: 'paid' | 'pending' | 'overdue';
   approvedBy?: string;
   approvedByName?: string;
+  materialId?: string;
+  materialName?: string;
+  purchaseId?: string;
+  purchaseReference?: string;
   organizationId: string;
   createdAt: string;
   updatedAt: string;

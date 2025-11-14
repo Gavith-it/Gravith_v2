@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Search,
   Filter,
+  RotateCcw,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -27,7 +28,10 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { FilterSheet } from '@/components/filters/FilterSheet';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -39,6 +43,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMaterials } from '@/lib/contexts';
 import type { SharedMaterial } from '@/lib/contexts';
+import { Progress } from '@/components/ui/progress';
 
 interface PurchasePageProps {
   filterBySite?: string;
@@ -46,7 +51,7 @@ interface PurchasePageProps {
 
 export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const searchParams = useSearchParams();
-  const { materials, addMaterial, updateMaterial, deleteMaterial, isLoading } = useMaterials();
+  const { materials, deleteMaterial, isLoading } = useMaterials();
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -68,6 +73,68 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   // Filter state
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+
+  type PurchaseAdvancedFilterState = {
+    sites: string[];
+    vendors: string[];
+    dateFrom?: string;
+    dateTo?: string;
+    amountMin: string;
+    amountMax: string;
+    invoiceStatus: 'all' | 'with' | 'without';
+  };
+
+  const createDefaultPurchaseAdvancedFilters = (): PurchaseAdvancedFilterState => ({
+    sites: [],
+    vendors: [],
+    dateFrom: undefined,
+    dateTo: undefined,
+    amountMin: '',
+    amountMax: '',
+    invoiceStatus: 'all',
+  });
+
+  const clonePurchaseAdvancedFilters = (
+    filters: PurchaseAdvancedFilterState,
+  ): PurchaseAdvancedFilterState => ({
+    ...filters,
+    sites: [...filters.sites],
+    vendors: [...filters.vendors],
+  });
+
+  const isPurchaseAdvancedFilterDefault = (filters: PurchaseAdvancedFilterState): boolean => {
+    return (
+      filters.sites.length === 0 &&
+      filters.vendors.length === 0 &&
+      !filters.dateFrom &&
+      !filters.dateTo &&
+      filters.amountMin === '' &&
+      filters.amountMax === '' &&
+      filters.invoiceStatus === 'all'
+    );
+  };
+
+  const countPurchaseAdvancedFilters = (filters: PurchaseAdvancedFilterState): number => {
+    let count = 0;
+    count += filters.sites.length;
+    count += filters.vendors.length;
+    if (filters.dateFrom || filters.dateTo) count += 1;
+    if (filters.amountMin !== '' || filters.amountMax !== '') count += 1;
+    if (filters.invoiceStatus !== 'all') count += 1;
+    return count;
+  };
+
+  const parseDateValue = (value?: string): Date | null => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
+    useState<PurchaseAdvancedFilterState>(createDefaultPurchaseAdvancedFilters);
+  const [draftAdvancedFilters, setDraftAdvancedFilters] =
+    useState<PurchaseAdvancedFilterState>(createDefaultPurchaseAdvancedFilters);
 
   const categoryOptions = useMemo(() => {
     const categories = new Set<string>();
@@ -78,6 +145,32 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     });
     return Array.from(categories).sort();
   }, [materials]);
+
+  const siteOptions = useMemo(() => {
+    const sites = new Set<string>();
+    materials.forEach((material) => {
+      if (material.site) {
+        sites.add(material.site);
+      }
+    });
+    return Array.from(sites).sort((a, b) => a.localeCompare(b));
+  }, [materials]);
+
+  const vendorOptions = useMemo(() => {
+    const vendors = new Set<string>();
+    materials.forEach((material) => {
+      if (material.vendor) {
+        vendors.add(material.vendor);
+      }
+    });
+    return Array.from(vendors).sort((a, b) => a.localeCompare(b));
+  }, [materials]);
+
+  const activeAdvancedFilterCount = useMemo(
+    () => countPurchaseAdvancedFilters(appliedAdvancedFilters),
+    [appliedAdvancedFilters],
+  );
+  const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
 
   const filteredMaterialsForStats = useMemo(() => {
     const scopedMaterials = filterBySite
@@ -96,8 +189,35 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     (sum, material) => sum + (material.quantity || 0),
     0,
   );
+  const totalConsumedQuantity = filteredMaterialsForStats.reduce((sum, material) => {
+    const ordered = material.quantity ?? 0;
+    const remaining = material.remainingQuantity ?? ordered;
+    const consumed =
+      material.consumedQuantity ?? Math.max(0, ordered - remaining);
+    return sum + consumed;
+  }, 0);
+  const totalRemainingQuantity = filteredMaterialsForStats.reduce((sum, material) => {
+    const ordered = material.quantity ?? 0;
+    if (typeof material.remainingQuantity === 'number') {
+      return sum + material.remainingQuantity;
+    }
+    const consumed =
+      material.consumedQuantity ?? Math.max(0, ordered - (material.remainingQuantity ?? ordered));
+    return sum + Math.max(0, ordered - consumed);
+  }, 0);
 
   const sortedAndFilteredMaterials = useMemo(() => {
+    const minAmount =
+      appliedAdvancedFilters.amountMin !== ''
+        ? Number(appliedAdvancedFilters.amountMin)
+        : undefined;
+    const maxAmount =
+      appliedAdvancedFilters.amountMax !== ''
+        ? Number(appliedAdvancedFilters.amountMax)
+        : undefined;
+    const dateFrom = parseDateValue(appliedAdvancedFilters.dateFrom);
+    const dateTo = parseDateValue(appliedAdvancedFilters.dateTo);
+
     return materials
       .filter((material) => {
         const matchesSite = !filterBySite || material.site === filterBySite;
@@ -112,8 +232,40 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
             material.purchaseDate &&
             new Date(material.purchaseDate).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000) ||
           (statusFilter === 'pending' && (!material.totalAmount || material.totalAmount === 0));
+        const matchesAdvancedSites =
+          appliedAdvancedFilters.sites.length === 0 ||
+          appliedAdvancedFilters.sites.includes(material.site);
+        const matchesAdvancedVendors =
+          appliedAdvancedFilters.vendors.length === 0 ||
+          (material.vendor && appliedAdvancedFilters.vendors.includes(material.vendor));
+        const purchaseDate = parseDateValue(material.purchaseDate);
+        const matchesDateFrom =
+          !dateFrom || (purchaseDate !== null && purchaseDate >= dateFrom);
+        const matchesDateTo = !dateTo || (purchaseDate !== null && purchaseDate <= dateTo);
+        const amount = material.totalAmount ?? 0;
+        const matchesMinAmount =
+          minAmount === undefined || Number.isNaN(minAmount) || amount >= minAmount;
+        const matchesMaxAmount =
+          maxAmount === undefined || Number.isNaN(maxAmount) || amount <= maxAmount;
+        const hasInvoice = Boolean(material.invoiceNumber && material.invoiceNumber.trim() !== '');
+        const matchesInvoice =
+          appliedAdvancedFilters.invoiceStatus === 'all' ||
+          (appliedAdvancedFilters.invoiceStatus === 'with' && hasInvoice) ||
+          (appliedAdvancedFilters.invoiceStatus === 'without' && !hasInvoice);
 
-        return matchesSite && matchesSearch && matchesCategory && matchesStatus;
+        return (
+          matchesSite &&
+          matchesSearch &&
+          matchesCategory &&
+          matchesStatus &&
+          matchesAdvancedSites &&
+          matchesAdvancedVendors &&
+          matchesDateFrom &&
+          matchesDateTo &&
+          matchesMinAmount &&
+          matchesMaxAmount &&
+          matchesInvoice
+        );
       })
       .sort((a, b) => {
         const aValue = a[tableState.sortField as keyof SharedMaterial];
@@ -133,22 +285,8 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
       });
   }, [materials, filterBySite, tableState, categoryFilter, statusFilter]);
 
-  const handleFormSubmit = async (materialData: Omit<SharedMaterial, 'id'>) => {
-    try {
-      if (dialog.editingItem) {
-        await updateMaterial(dialog.editingItem.id, materialData);
-        toast.success('Purchase updated successfully.');
-      } else {
-        await addMaterial(materialData);
-        toast.success('Purchase recorded successfully.');
-      }
-      dialog.closeDialog();
-    } catch (error) {
-      console.error('Failed to save purchase', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Unable to save purchase. Please try again.',
-      );
-    }
+  const handleFormSubmit = () => {
+    dialog.closeDialog();
   };
 
   const handleFormCancel = () => {
@@ -228,10 +366,23 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                 <CardContent className="p-4 md:p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-muted-foreground">Total Quantity</p>
-                      <p className="text-2xl font-bold text-purple-600">
-                        {isLoading ? '—' : totalQuantity.toFixed(1)}
-                      </p>
+                      <p className="text-sm font-medium text-muted-foreground">Inventory Remaining</p>
+                      <div>
+                        <p className="text-2xl font-bold text-purple-600">
+                          {isLoading
+                            ? '—'
+                            : totalRemainingQuantity.toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Consumed:{' '}
+                          {totalConsumedQuantity.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          / Total {totalQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
                     </div>
                     <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
                       <Package className="h-6 w-6 text-purple-600" />
@@ -290,9 +441,18 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                           variant="outline"
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
+                          onClick={() => {
+                            setDraftAdvancedFilters(clonePurchaseAdvancedFilters(appliedAdvancedFilters));
+                            setIsFilterSheetOpen(true);
+                          }}
                         >
                           <Filter className="h-4 w-4" />
                           <span className="hidden sm:inline">Filter</span>
+                          {hasActiveAdvancedFilters ? (
+                            <Badge variant="secondary" className="ml-2">
+                              {activeAdvancedFilterCount}
+                            </Badge>
+                          ) : null}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -300,6 +460,20 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 transition-all hover:shadow-md"
+                    disabled={!hasActiveAdvancedFilters}
+                    onClick={() => {
+                      const resetFilters = createDefaultPurchaseAdvancedFilters();
+                      setAppliedAdvancedFilters(resetFilters);
+                      setDraftAdvancedFilters(resetFilters);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Clear filters</span>
+                  </Button>
                   <FormDialog
                     title="Add Material Purchase"
                     description="Record a new material purchase"
@@ -340,6 +514,41 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                 {sortedAndFilteredMaterials.length} purchase
                 {sortedAndFilteredMaterials.length !== 1 ? 's' : ''} found
               </Badge>
+              {hasActiveAdvancedFilters ? (
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const chips: string[] = [];
+                    if (appliedAdvancedFilters.sites.length > 0) {
+                      chips.push(`Sites: ${appliedAdvancedFilters.sites.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.vendors.length > 0) {
+                      chips.push(`Vendors: ${appliedAdvancedFilters.vendors.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.dateFrom || appliedAdvancedFilters.dateTo) {
+                      chips.push(
+                        `Date: ${appliedAdvancedFilters.dateFrom ?? 'Any'} → ${appliedAdvancedFilters.dateTo ?? 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.amountMin || appliedAdvancedFilters.amountMax) {
+                      chips.push(
+                        `Amount: ₹${appliedAdvancedFilters.amountMin || 'Any'} - ₹${appliedAdvancedFilters.amountMax || 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.invoiceStatus !== 'all') {
+                      chips.push(
+                        appliedAdvancedFilters.invoiceStatus === 'with'
+                          ? 'With invoice'
+                          : 'Without invoice',
+                      );
+                    }
+                    return chips;
+                  })().map((chip) => (
+                    <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {chip}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -383,12 +592,28 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                   { key: 'materialName', label: 'Material Name', sortable: true },
                   { key: 'vendor', label: 'Vendor', sortable: true },
                   { key: 'quantity', label: 'Quantity', sortable: true },
+                  { key: 'usage', label: 'Usage', sortable: false },
                   { key: 'unitRate', label: 'Rate (₹)', sortable: true },
                   { key: 'totalAmount', label: 'Total Amount', sortable: true },
                   { key: 'purchaseDate', label: 'Purchase Date', sortable: true },
                   { key: 'actions', label: 'Actions', sortable: false },
                 ]}
-                data={sortedAndFilteredMaterials.map((material) => ({
+                data={sortedAndFilteredMaterials.map((material) => {
+                  const totalOrdered = material.quantity ?? 0;
+                  const consumedQuantity =
+                    material.consumedQuantity ??
+                    Math.max(
+                      0,
+                      totalOrdered - (material.remainingQuantity ?? totalOrdered),
+                    );
+                  const remainingQuantity =
+                    material.remainingQuantity ?? Math.max(0, totalOrdered - consumedQuantity);
+                  const usagePercent =
+                    totalOrdered > 0
+                      ? Math.min(100, (consumedQuantity / totalOrdered) * 100)
+                      : 0;
+
+                  return {
                   materialName: (
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 bg-primary/10">
@@ -411,13 +636,35 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                   quantity: (
                     <div>
                       <div className="font-medium">
-                        {material.quantity?.toFixed(2)} {material.unit}
+                        {totalOrdered.toFixed(2)} {material.unit}
                       </div>
                       {material.filledWeight && (
                         <div className="text-sm text-muted-foreground">
                           Net: {material.netWeight?.toFixed(2)}kg
                         </div>
                       )}
+                    </div>
+                  ),
+                  usage: (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>
+                          Used:{' '}
+                          {consumedQuantity.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                        <span>
+                          Left:{' '}
+                          {remainingQuantity.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <Progress value={usagePercent} className="h-1.5" />
+                      <div className="text-[11px] text-muted-foreground text-right">
+                        {usagePercent.toFixed(1)}%
+                      </div>
                     </div>
                   ),
                   unitRate: (
@@ -475,7 +722,8 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                       </TooltipProvider>
                     </div>
                   ),
-                }))}
+                };
+                })}
                 onSort={tableState.setSortField}
                 onPageChange={tableState.setCurrentPage}
                 pageSize={tableState.itemsPerPage}
@@ -488,6 +736,205 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
           </Card>
         )}
       </div>
+      <FilterSheet
+        open={isFilterSheetOpen}
+        onOpenChange={setIsFilterSheetOpen}
+        title="Purchase filters"
+        description="Refine the purchase list with advanced criteria."
+        sections={[
+          {
+            id: 'sites',
+            title: 'Sites',
+            description: 'Limit purchases to the selected project sites.',
+            content:
+              siteOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No site options available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {siteOptions.map((site) => {
+                    const isChecked = draftAdvancedFilters.sites.includes(site);
+                    return (
+                      <Label key={site} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextSites =
+                                checked === true
+                                  ? [...prev.sites, site]
+                                  : prev.sites.filter((value) => value !== site);
+                              return {
+                                ...prev,
+                                sites: nextSites,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{site}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'vendors',
+            title: 'Vendors',
+            description: 'Show purchases from specific vendors.',
+            content:
+              vendorOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No vendor options available.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {vendorOptions.map((vendor) => {
+                    const isChecked = draftAdvancedFilters.vendors.includes(vendor);
+                    return (
+                      <Label key={vendor} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setDraftAdvancedFilters((prev) => {
+                              const nextVendors =
+                                checked === true
+                                  ? [...prev.vendors, vendor]
+                                  : prev.vendors.filter((value) => value !== vendor);
+                              return {
+                                ...prev,
+                                vendors: nextVendors,
+                              };
+                            });
+                          }}
+                        />
+                        <span>{vendor}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
+          },
+          {
+            id: 'date',
+            title: 'Purchase date',
+            description: 'Filter purchases by their recorded date.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="purchase-date-from" className="text-sm font-medium">
+                    From
+                  </Label>
+                  <Input
+                    id="purchase-date-from"
+                    type="date"
+                    value={draftAdvancedFilters.dateFrom ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        dateFrom: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="purchase-date-to" className="text-sm font-medium">
+                    To
+                  </Label>
+                  <Input
+                    id="purchase-date-to"
+                    type="date"
+                    value={draftAdvancedFilters.dateTo ?? ''}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        dateTo: event.target.value || undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'amount',
+            title: 'Amount (₹)',
+            description: 'Limit purchases to a spend range.',
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="purchase-amount-min" className="text-sm font-medium">
+                    Min
+                  </Label>
+                  <Input
+                    id="purchase-amount-min"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftAdvancedFilters.amountMin}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        amountMin: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="purchase-amount-max" className="text-sm font-medium">
+                    Max
+                  </Label>
+                  <Input
+                    id="purchase-amount-max"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Any"
+                    value={draftAdvancedFilters.amountMax}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((prev) => ({
+                        ...prev,
+                        amountMax: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: 'invoice',
+            title: 'Invoice status',
+            description: 'Filter by purchases with or without invoice details.',
+            content: (
+              <Select
+                value={draftAdvancedFilters.invoiceStatus}
+                onValueChange={(value: PurchaseAdvancedFilterState['invoiceStatus']) =>
+                  setDraftAdvancedFilters((prev) => ({
+                    ...prev,
+                    invoiceStatus: value,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full sm:w-64">
+                  <SelectValue placeholder="Invoice status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All purchases</SelectItem>
+                  <SelectItem value="with">With invoice number</SelectItem>
+                  <SelectItem value="without">Without invoice number</SelectItem>
+                </SelectContent>
+              </Select>
+            ),
+          },
+        ]}
+        onApply={() => {
+          setAppliedAdvancedFilters(clonePurchaseAdvancedFilters(draftAdvancedFilters));
+          setIsFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const resetFilters = createDefaultPurchaseAdvancedFilters();
+          setDraftAdvancedFilters(resetFilters);
+          setAppliedAdvancedFilters(resetFilters);
+        }}
+        isDirty={!isPurchaseAdvancedFilterDefault(draftAdvancedFilters)}
+      />
     </div>
   );
 }

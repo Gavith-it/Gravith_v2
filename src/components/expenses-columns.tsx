@@ -118,6 +118,26 @@ export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHan
     ),
   },
   {
+    key: 'links',
+    label: 'Links',
+    sortable: false,
+    minWidth: 'min-w-[160px]',
+    render: (expense: Expense) => (
+      <div className="flex flex-col gap-1 text-xs">
+        <div>
+          <span className="text-muted-foreground">Purchase:</span>{' '}
+          <span className="font-medium">
+            {expense.purchaseReference || expense.purchaseId || '—'}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Material:</span>{' '}
+          <span className="font-medium">{expense.materialName || expense.materialId || '—'}</span>
+        </div>
+      </div>
+    ),
+  },
+  {
     key: 'status',
     label: 'Status',
     sortable: true,

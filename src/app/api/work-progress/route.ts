@@ -33,6 +33,7 @@ interface WorkProgressPayload {
   photos?: string[];
   materials?: Array<{
     materialId?: string | null;
+    purchaseId?: string | null;
     materialName: string;
     unit: string;
     quantity: number;
@@ -76,6 +77,7 @@ type WorkProgressMaterialRow = {
   work_progress_id: string;
   organization_id: string;
   material_id: string | null;
+  purchase_id: string | null;
   material_name: string;
   unit: string;
   quantity: number | string | null;
@@ -133,6 +135,7 @@ function mapRowToWorkProgress(row: WorkProgressRow): WorkProgressEntry {
         id: material.id,
         workProgressId: material.work_progress_id,
         materialId: material.material_id,
+        purchaseId: material.purchase_id,
         materialName: material.material_name,
         unit: material.unit,
         quantity: Number(material.quantity ?? 0),
@@ -191,6 +194,7 @@ export async function GET() {
           work_progress_id,
           organization_id,
           material_id,
+          purchase_id,
           material_name,
           unit,
           quantity,
@@ -318,6 +322,7 @@ export async function POST(request: Request) {
       work_progress_id: insertedRow.id,
       organization_id: ctx.organizationId,
       material_id: material.materialId ?? null,
+      purchase_id: material.purchaseId ?? null,
       material_name: material.materialName,
       unit: material.unit,
       quantity: material.quantity,
@@ -372,6 +377,7 @@ export async function POST(request: Request) {
           work_progress_id,
           organization_id,
           material_id,
+          purchase_id,
           material_name,
           unit,
           quantity,

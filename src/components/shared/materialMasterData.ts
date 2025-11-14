@@ -14,6 +14,10 @@ export interface MaterialMasterItem {
     | 'Paint'
     | 'Other';
   unit: string;
+  siteId?: string | null;
+  siteName?: string | null;
+  quantity: number;
+  consumedQuantity: number;
   standardRate: number;
   isActive: boolean;
   createdDate: string;
@@ -30,6 +34,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'Ordinary Portland Cement (OPC 53)',
     category: 'Cement',
     unit: 'bags',
+    quantity: 500,
+    consumedQuantity: 120,
     standardRate: 425,
     isActive: true,
     createdDate: '2024-01-01',
@@ -42,6 +48,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'TMT Steel Bars 12mm',
     category: 'Steel',
     unit: 'kg',
+    quantity: 12000,
+    consumedQuantity: 4500,
     standardRate: 65,
     isActive: true,
     createdDate: '2024-01-01',
@@ -54,6 +62,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'Ready Mix Concrete M25',
     category: 'Concrete',
     unit: 'cubic meters',
+    quantity: 280,
+    consumedQuantity: 90,
     standardRate: 4500,
     isActive: true,
     createdDate: '2024-01-01',
@@ -66,6 +76,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'Clay Bricks',
     category: 'Bricks',
     unit: 'pieces',
+    quantity: 8000,
+    consumedQuantity: 3200,
     standardRate: 8,
     isActive: true,
     createdDate: '2024-01-01',
@@ -78,6 +90,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'River Sand (Fine)',
     category: 'Sand',
     unit: 'cubic meters',
+    quantity: 150,
+    consumedQuantity: 40,
     standardRate: 1200,
     isActive: true,
     createdDate: '2024-01-01',
@@ -90,6 +104,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'TMT Steel Bars 16mm',
     category: 'Steel',
     unit: 'kg',
+    quantity: 9000,
+    consumedQuantity: 3000,
     standardRate: 67,
     isActive: true,
     createdDate: '2024-01-01',
@@ -102,6 +118,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'PVC Electrical Conduit 20mm',
     category: 'Electrical',
     unit: 'meters',
+    quantity: 3200,
+    consumedQuantity: 950,
     standardRate: 25,
     isActive: false,
     createdDate: '2024-01-01',
@@ -114,6 +132,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'Crushed Stone Aggregate 20mm',
     category: 'Aggregate',
     unit: 'cubic meters',
+    quantity: 400,
+    consumedQuantity: 140,
     standardRate: 1800,
     isActive: true,
     createdDate: '2024-01-01',
@@ -126,6 +146,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'Teak Wood Planks',
     category: 'Timber',
     unit: 'cubic feet',
+    quantity: 240,
+    consumedQuantity: 80,
     standardRate: 2500,
     isActive: true,
     createdDate: '2024-01-01',
@@ -138,6 +160,8 @@ export const masterMaterials: MaterialMasterItem[] = [
     name: 'Asian Paints Primer',
     category: 'Paint',
     unit: 'liters',
+    quantity: 950,
+    consumedQuantity: 260,
     standardRate: 180,
     isActive: true,
     createdDate: '2024-01-01',

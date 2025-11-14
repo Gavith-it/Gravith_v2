@@ -20,6 +20,7 @@ import {
   XCircle,
   ShoppingCart,
   Target,
+  RotateCcw,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -45,6 +46,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { FilterSheet } from '@/components/filters/FilterSheet';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -76,6 +79,66 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+
+  type SiteAdvancedFilterState = {
+    locations: string[];
+    budgetMin: string;
+    budgetMax: string;
+    startFrom?: string;
+    startTo?: string;
+    endFrom?: string;
+    endTo?: string;
+  };
+
+  const createDefaultSiteAdvancedFilters = (): SiteAdvancedFilterState => ({
+    locations: [],
+    budgetMin: '',
+    budgetMax: '',
+    startFrom: undefined,
+    startTo: undefined,
+    endFrom: undefined,
+    endTo: undefined,
+  });
+
+  const cloneSiteAdvancedFilters = (filters: SiteAdvancedFilterState): SiteAdvancedFilterState => ({
+    ...filters,
+    locations: [...filters.locations],
+  });
+
+  const isSiteAdvancedFilterDefault = (filters: SiteAdvancedFilterState): boolean => {
+    return (
+      filters.locations.length === 0 &&
+      filters.budgetMin === '' &&
+      filters.budgetMax === '' &&
+      !filters.startFrom &&
+      !filters.startTo &&
+      !filters.endFrom &&
+      !filters.endTo
+    );
+  };
+
+  const countSiteAdvancedFilters = (filters: SiteAdvancedFilterState): number => {
+    let count = 0;
+    count += filters.locations.length;
+    if (filters.budgetMin !== '' || filters.budgetMax !== '') count += 1;
+    if (filters.startFrom || filters.startTo) count += 1;
+    if (filters.endFrom || filters.endTo) count += 1;
+    return count;
+  };
+
+  const parseDateValue = (value?: string): Date | null => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<SiteAdvancedFilterState>(() =>
+    createDefaultSiteAdvancedFilters(),
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<SiteAdvancedFilterState>(() =>
+    createDefaultSiteAdvancedFilters(),
+  );
 
   const fetchSites = useCallback(
     async (focusId?: string) => {
@@ -150,16 +213,69 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
     setSelectedSite(sites[0]?.id ?? null);
   }, [sites, selectedSite, isSitesLoading]);
 
+  const locationOptions = useMemo(() => {
+    const uniqueLocations = new Set<string>();
+    sites.forEach((site) => {
+      if (site.location) uniqueLocations.add(site.location);
+    });
+    return Array.from(uniqueLocations).sort((a, b) => a.localeCompare(b));
+  }, [sites]);
+
+  const activeAdvancedFilterCount = useMemo(
+    () => countSiteAdvancedFilters(appliedAdvancedFilters),
+    [appliedAdvancedFilters],
+  );
+  const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
+
   const filteredSites = useMemo(() => {
+    const budgetMin =
+      appliedAdvancedFilters.budgetMin !== ''
+        ? Number(appliedAdvancedFilters.budgetMin)
+        : undefined;
+    const budgetMax =
+      appliedAdvancedFilters.budgetMax !== ''
+        ? Number(appliedAdvancedFilters.budgetMax)
+        : undefined;
+    const startFrom = parseDateValue(appliedAdvancedFilters.startFrom);
+    const startTo = parseDateValue(appliedAdvancedFilters.startTo);
+    const endFrom = parseDateValue(appliedAdvancedFilters.endFrom);
+    const endTo = parseDateValue(appliedAdvancedFilters.endTo);
+
     return sites.filter((site) => {
       const matchesStatus = statusFilter === 'all' || site.status === statusFilter;
       const matchesSearch =
         searchQuery === '' ||
         site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         site.location.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesStatus && matchesSearch;
+      const matchesLocations =
+        appliedAdvancedFilters.locations.length === 0 ||
+        appliedAdvancedFilters.locations.includes(site.location);
+      const matchesBudgetMin =
+        budgetMin === undefined || Number.isNaN(budgetMin) || Number(site.budget ?? 0) >= budgetMin;
+      const matchesBudgetMax =
+        budgetMax === undefined || Number.isNaN(budgetMax) || Number(site.budget ?? 0) <= budgetMax;
+
+      const siteStart = parseDateValue(site.startDate);
+      const siteEnd = parseDateValue(site.expectedEndDate);
+
+      const matchesStartFrom = !startFrom || (siteStart !== null && siteStart >= startFrom);
+      const matchesStartTo = !startTo || (siteStart !== null && siteStart <= startTo);
+      const matchesEndFrom = !endFrom || (siteEnd !== null && siteEnd >= endFrom);
+      const matchesEndTo = !endTo || (siteEnd !== null && siteEnd <= endTo);
+
+      return (
+        matchesStatus &&
+        matchesSearch &&
+        matchesLocations &&
+        matchesBudgetMin &&
+        matchesBudgetMax &&
+        matchesStartFrom &&
+        matchesStartTo &&
+        matchesEndFrom &&
+        matchesEndTo
+      );
     });
-  }, [sites, statusFilter, searchQuery]);
+  }, [sites, statusFilter, searchQuery, appliedAdvancedFilters]);
 
   const currentSite = selectedSite
     ? sites.find((site) => site.id === selectedSite) ?? null
@@ -295,16 +411,39 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                         variant="outline"
                         size="sm"
                         className="gap-2 transition-all hover:shadow-md"
+                        onClick={() => {
+                          setDraftAdvancedFilters(cloneSiteAdvancedFilters(appliedAdvancedFilters));
+                          setIsFilterSheetOpen(true);
+                        }}
                       >
                         <Filter className="h-4 w-4" />
                         <span className="hidden sm:inline">Filter</span>
+                        {hasActiveAdvancedFilters ? (
+                          <Badge variant="secondary" className="ml-2">
+                            {activeAdvancedFilterCount}
+                          </Badge>
+                        ) : null}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Filter sites by status and criteria</p>
+                      <p>Open advanced filter options</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 transition-all hover:shadow-md"
+                  disabled={!hasActiveAdvancedFilters}
+                  onClick={() => {
+                    const resetFilters = createDefaultSiteAdvancedFilters();
+                    setAppliedAdvancedFilters(resetFilters);
+                    setDraftAdvancedFilters(resetFilters);
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span className="hidden sm:inline">Clear filters</span>
+                </Button>
                 <Dialog
                   open={isSiteDialogOpen}
                   onOpenChange={(open) => {
@@ -344,13 +483,45 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                 </Dialog>
               </div>
 
-              <Badge variant="secondary" className="px-4 py-2 text-sm font-medium">
-                {isSitesLoading
-                  ? 'Loading sites…'
-                  : filteredSites.length
-                    ? `${filteredSites.length} site${filteredSites.length !== 1 ? 's' : ''} found`
-                    : 'No sites found'}
-              </Badge>
+              <div className="flex flex-col gap-2">
+                <Badge variant="secondary" className="px-4 py-2 text-sm font-medium w-fit">
+                  {isSitesLoading
+                    ? 'Loading sites…'
+                    : filteredSites.length
+                      ? `${filteredSites.length} site${filteredSites.length !== 1 ? 's' : ''} found`
+                      : 'No sites found'}
+                </Badge>
+                {hasActiveAdvancedFilters ? (
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const chips: string[] = [];
+                      if (appliedAdvancedFilters.locations.length > 0) {
+                        chips.push(`Locations: ${appliedAdvancedFilters.locations.join(', ')}`);
+                      }
+                      if (appliedAdvancedFilters.budgetMin || appliedAdvancedFilters.budgetMax) {
+                        chips.push(
+                          `Budget: ₹${appliedAdvancedFilters.budgetMin || 'Any'} - ₹${appliedAdvancedFilters.budgetMax || 'Any'}`,
+                        );
+                      }
+                      if (appliedAdvancedFilters.startFrom || appliedAdvancedFilters.startTo) {
+                        chips.push(
+                          `Start: ${appliedAdvancedFilters.startFrom ?? 'Any'} → ${appliedAdvancedFilters.startTo ?? 'Any'}`,
+                        );
+                      }
+                      if (appliedAdvancedFilters.endFrom || appliedAdvancedFilters.endTo) {
+                        chips.push(
+                          `Completion: ${appliedAdvancedFilters.endFrom ?? 'Any'} → ${appliedAdvancedFilters.endTo ?? 'Any'}`,
+                        );
+                      }
+                      return chips;
+                    })().map((chip) => (
+                      <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                        {chip}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -891,6 +1062,186 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
             </div>
           )}
         </div>
+        <FilterSheet
+          open={isFilterSheetOpen}
+          onOpenChange={setIsFilterSheetOpen}
+          title="Site filters"
+          description="Refine the site list with advanced criteria."
+          sections={[
+            {
+              id: 'locations',
+              title: 'Locations',
+              description: 'Show sites that match the selected locations.',
+              content:
+                locationOptions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No locations available.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {locationOptions.map((location) => {
+                      const isChecked = draftAdvancedFilters.locations.includes(location);
+                      return (
+                        <Label key={location} className="flex items-center gap-3 text-sm font-normal">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={(checked) => {
+                              setDraftAdvancedFilters((prev) => {
+                                const nextLocations =
+                                  checked === true
+                                    ? [...prev.locations, location]
+                                    : prev.locations.filter((value) => value !== location);
+                                return {
+                                  ...prev,
+                                  locations: nextLocations,
+                                };
+                              });
+                            }}
+                          />
+                          <span>{location}</span>
+                        </Label>
+                      );
+                    })}
+                  </div>
+                ),
+            },
+            {
+              id: 'budget',
+              title: 'Budget (₹)',
+              description: 'Limit sites to a budget range.',
+              content: (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="site-budget-min" className="text-sm font-medium">
+                      Min
+                    </Label>
+                    <Input
+                      id="site-budget-min"
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={draftAdvancedFilters.budgetMin}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          budgetMin: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="site-budget-max" className="text-sm font-medium">
+                      Max
+                    </Label>
+                    <Input
+                      id="site-budget-max"
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Any"
+                      value={draftAdvancedFilters.budgetMax}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          budgetMax: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: 'start-date',
+              title: 'Start date',
+              description: 'Filter projects by their start date.',
+              content: (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="site-start-from" className="text-sm font-medium">
+                      From
+                    </Label>
+                    <Input
+                      id="site-start-from"
+                      type="date"
+                      value={draftAdvancedFilters.startFrom ?? ''}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          startFrom: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="site-start-to" className="text-sm font-medium">
+                      To
+                    </Label>
+                    <Input
+                      id="site-start-to"
+                      type="date"
+                      value={draftAdvancedFilters.startTo ?? ''}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          startTo: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: 'end-date',
+              title: 'Expected completion',
+              description: 'Filter by expected completion date.',
+              content: (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="site-end-from" className="text-sm font-medium">
+                      From
+                    </Label>
+                    <Input
+                      id="site-end-from"
+                      type="date"
+                      value={draftAdvancedFilters.endFrom ?? ''}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          endFrom: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="site-end-to" className="text-sm font-medium">
+                      To
+                    </Label>
+                    <Input
+                      id="site-end-to"
+                      type="date"
+                      value={draftAdvancedFilters.endTo ?? ''}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          endTo: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ),
+            },
+          ]}
+          onApply={() => {
+            setAppliedAdvancedFilters(cloneSiteAdvancedFilters(draftAdvancedFilters));
+            setIsFilterSheetOpen(false);
+          }}
+          onReset={() => {
+            const resetFilters = createDefaultSiteAdvancedFilters();
+            setDraftAdvancedFilters(resetFilters);
+            setAppliedAdvancedFilters(resetFilters);
+          }}
+          isDirty={!isSiteAdvancedFilterDefault(draftAdvancedFilters)}
+        />
       </div>
     </div>
   );

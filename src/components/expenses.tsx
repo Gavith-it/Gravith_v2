@@ -10,6 +10,7 @@ import {
   Filter,
   Receipt,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -20,9 +21,11 @@ import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
 import type { ExpenseFormData } from '@/components/forms/ExpenseForm';
 import { ExpenseForm } from '@/components/forms/ExpenseForm';
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -31,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
@@ -96,6 +100,66 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
   const [searchTerm, setSearchTerm] = useState('');
   const dialogState = useDialogState<Expense>();
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+
+  type ExpenseAdvancedFilterState = {
+    vendors: string[];
+    sites: string[];
+    approvers: string[];
+    dateFrom?: string;
+    dateTo?: string;
+    amountMin: string;
+    amountMax: string;
+    hasReceipt: 'all' | 'with' | 'without';
+  };
+
+  const createDefaultExpenseAdvancedFilters = (): ExpenseAdvancedFilterState => ({
+    vendors: [],
+    sites: [],
+    approvers: [],
+    dateFrom: undefined,
+    dateTo: undefined,
+    amountMin: '',
+    amountMax: '',
+    hasReceipt: 'all',
+  });
+
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
+    useState<ExpenseAdvancedFilterState>(createDefaultExpenseAdvancedFilters());
+  const [draftAdvancedFilters, setDraftAdvancedFilters] =
+    useState<ExpenseAdvancedFilterState>(createDefaultExpenseAdvancedFilters());
+
+  const cloneExpenseAdvancedFilters = (
+    filters: ExpenseAdvancedFilterState,
+  ): ExpenseAdvancedFilterState => ({
+    ...filters,
+    vendors: [...filters.vendors],
+    sites: [...filters.sites],
+    approvers: [...filters.approvers],
+  });
+
+  const countExpenseAdvancedFilters = (filters: ExpenseAdvancedFilterState): number => {
+    let count = 0;
+    count += filters.vendors.length;
+    count += filters.sites.length;
+    count += filters.approvers.length;
+    if (filters.dateFrom || filters.dateTo) count += 1;
+    if (filters.amountMin !== '' || filters.amountMax !== '') count += 1;
+    if (filters.hasReceipt !== 'all') count += 1;
+    return count;
+  };
+
+  const parseDateValue = (value?: string): Date | null => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const parseNumber = (value: string): number | undefined => {
+    if (value === '') return undefined;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
 
   // Use table state hook for filtering and pagination
   const tableState = useTableState({
@@ -128,6 +192,8 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           siteName: formData.siteName,
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
+          purchaseId: formData.purchaseId,
+          materialId: formData.materialId,
         });
 
         if (updated && viewingExpense?.id === updated.id) {
@@ -148,6 +214,8 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
           status: 'pending',
+          purchaseId: formData.purchaseId,
+          materialId: formData.materialId,
         });
 
         toast.success('Expense added successfully');
@@ -203,6 +271,36 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
   const categoryFilter = tableState.filter['category'];
   const statusFilter = tableState.filter['status'];
 
+  const vendorOptions = useMemo(() => {
+    const vendors = new Set<string>();
+    expenses.forEach((expense) => {
+      if (expense.vendor) {
+        vendors.add(expense.vendor);
+      }
+    });
+    return Array.from(vendors).sort((a, b) => a.localeCompare(b));
+  }, [expenses]);
+
+  const siteOptions = useMemo(() => {
+    const sites = new Set<string>();
+    expenses.forEach((expense) => {
+      if (expense.siteName) {
+        sites.add(expense.siteName);
+      }
+    });
+    return Array.from(sites).sort((a, b) => a.localeCompare(b));
+  }, [expenses]);
+
+  const approverOptions = useMemo(() => {
+    const approvers = new Set<string>();
+    expenses.forEach((expense) => {
+      if (expense.approvedBy) {
+        approvers.add(expense.approvedBy);
+      }
+    });
+    return Array.from(approvers).sort((a, b) => a.localeCompare(b));
+  }, [expenses]);
+
   const filteredExpenses = useMemo(() => {
     let data = filterExpenses(
       expenses,
@@ -215,8 +313,53 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
       data = data.filter((expense) => expense.siteName === filterBySite);
     }
 
-    return data;
-  }, [expenses, categoryFilter, statusFilter, searchTerm, filterBySite]);
+    const dateFrom = parseDateValue(appliedAdvancedFilters.dateFrom);
+    const dateTo = parseDateValue(appliedAdvancedFilters.dateTo);
+    const amountMin = parseNumber(appliedAdvancedFilters.amountMin);
+    const amountMax = parseNumber(appliedAdvancedFilters.amountMax);
+
+    return data.filter((expense) => {
+      const matchesVendors =
+        appliedAdvancedFilters.vendors.length === 0 ||
+        (expense.vendor && appliedAdvancedFilters.vendors.includes(expense.vendor));
+      const matchesSites =
+        filterBySite ||
+        appliedAdvancedFilters.sites.length === 0 ||
+        (expense.siteName && appliedAdvancedFilters.sites.includes(expense.siteName));
+      const matchesApprovers =
+        appliedAdvancedFilters.approvers.length === 0 ||
+        (expense.approvedBy && appliedAdvancedFilters.approvers.includes(expense.approvedBy));
+      const expenseDate = parseDateValue(expense.date);
+      const matchesDateFrom = !dateFrom || (expenseDate !== null && expenseDate >= dateFrom);
+      const matchesDateTo = !dateTo || (expenseDate !== null && expenseDate <= dateTo);
+      const matchesAmountMin =
+        amountMin === undefined || Number.isNaN(amountMin) || expense.amount >= amountMin;
+      const matchesAmountMax =
+        amountMax === undefined || Number.isNaN(amountMax) || expense.amount <= amountMax;
+      const hasReceipt = Boolean(expense.receipt);
+      const matchesReceipt =
+        appliedAdvancedFilters.hasReceipt === 'all' ||
+        (appliedAdvancedFilters.hasReceipt === 'with' && hasReceipt) ||
+        (appliedAdvancedFilters.hasReceipt === 'without' && !hasReceipt);
+
+      return (
+        matchesVendors &&
+        matchesSites &&
+        matchesApprovers &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        matchesAmountMin &&
+        matchesAmountMax &&
+        matchesReceipt
+      );
+    });
+  }, [expenses, categoryFilter, statusFilter, searchTerm, filterBySite, appliedAdvancedFilters]);
+
+  const activeAdvancedFilterCount = useMemo(
+    () => countExpenseAdvancedFilters(appliedAdvancedFilters),
+    [appliedAdvancedFilters],
+  );
+  const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
 
   const categories = useMemo(() => {
     return Array.from(new Set(expenses.map((expense) => expense.category)));
@@ -351,16 +494,37 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                           variant="outline"
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
+                          onClick={() => {
+                            setDraftAdvancedFilters(cloneExpenseAdvancedFilters(appliedAdvancedFilters));
+                            setIsFilterSheetOpen(true);
+                          }}
                         >
                           <Filter className="h-4 w-4" />
                           <span className="hidden sm:inline">Filter</span>
+                          {hasActiveAdvancedFilters ? (
+                            <Badge variant="secondary" className="ml-2">
+                              {activeAdvancedFilterCount}
+                            </Badge>
+                          ) : null}
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Filter expenses by category and status</p>
-                      </TooltipContent>
+                      <TooltipContent>Open advanced filters</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 transition-all hover:shadow-md"
+                    disabled={!hasActiveAdvancedFilters}
+                    onClick={() => {
+                      const resetFilters = createDefaultExpenseAdvancedFilters();
+                      setAppliedAdvancedFilters(resetFilters);
+                      setDraftAdvancedFilters(resetFilters);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Clear filters</span>
+                  </Button>
                   <Button
                     onClick={() => dialogState.openDialog()}
                     className="gap-2 transition-all hover:shadow-md whitespace-nowrap"
@@ -376,6 +540,42 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                   ? 'Loading expenses…'
                   : `${filteredExpenses.length} expense${filteredExpenses.length !== 1 ? 's' : ''} found`}
               </Badge>
+              {hasActiveAdvancedFilters ? (
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const chips: string[] = [];
+                    if (appliedAdvancedFilters.vendors.length > 0) {
+                      chips.push(`Vendors: ${appliedAdvancedFilters.vendors.join(', ')}`);
+                    }
+                    if (!filterBySite && appliedAdvancedFilters.sites.length > 0) {
+                      chips.push(`Sites: ${appliedAdvancedFilters.sites.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.approvers.length > 0) {
+                      chips.push(`Approvers: ${appliedAdvancedFilters.approvers.join(', ')}`);
+                    }
+                    if (appliedAdvancedFilters.dateFrom || appliedAdvancedFilters.dateTo) {
+                      chips.push(
+                        `Date: ${appliedAdvancedFilters.dateFrom ?? 'Any'} → ${appliedAdvancedFilters.dateTo ?? 'Any'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.amountMin || appliedAdvancedFilters.amountMax) {
+                      chips.push(
+                        `Amount: ₹${appliedAdvancedFilters.amountMin || '0'} - ₹${appliedAdvancedFilters.amountMax || '∞'}`,
+                      );
+                    }
+                    if (appliedAdvancedFilters.hasReceipt !== 'all') {
+                      chips.push(
+                        appliedAdvancedFilters.hasReceipt === 'with' ? 'With receipt' : 'Without receipt',
+                      );
+                    }
+                    return chips;
+                  })().map((chip) => (
+                    <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {chip}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -466,6 +666,8 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                     siteName: dialogState.editingItem.siteName || '',
                     receipt: dialogState.editingItem.receipt || '',
                     approvedBy: dialogState.editingItem.approvedBy || '',
+                    purchaseId: dialogState.editingItem.purchaseId || undefined,
+                    materialId: dialogState.editingItem.materialId || undefined,
                   }
                 : undefined
             }
@@ -514,6 +716,20 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                   <p className="text-muted-foreground">Approved By</p>
                   <p className="font-medium">{viewingExpense.approvedBy || 'N/A'}</p>
                 </div>
+                <div>
+                  <p className="text-muted-foreground">Linked Purchase</p>
+                  <p className="font-medium">
+                    {viewingExpense.purchaseId
+                      ? viewingExpense.purchaseReference || viewingExpense.purchaseId
+                      : 'None'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Linked Material</p>
+                  <p className="font-medium">
+                    {viewingExpense.materialName || viewingExpense.materialId || 'None'}
+                  </p>
+                </div>
               </div>
               <div>
                 <p className="text-muted-foreground mb-1">Description</p>
@@ -529,6 +745,241 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
             </div>
           )}
         </FormDialog>
+
+        <FilterSheet
+          open={isFilterSheetOpen}
+          onOpenChange={setIsFilterSheetOpen}
+          title="Expense filters"
+          description="Refine expense records with additional criteria."
+          sections={[
+            {
+              id: 'vendors',
+              title: 'Vendors',
+              description: 'Show expenses from selected vendors.',
+              content:
+                vendorOptions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No vendors recorded yet.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {vendorOptions.map((vendor) => {
+                      const checked = draftAdvancedFilters.vendors.includes(vendor);
+                      return (
+                        <Label key={vendor} className="flex items-center gap-3 text-sm font-normal">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                              setDraftAdvancedFilters((prev) => {
+                                const isChecked = checkedValue === true;
+                                return {
+                                  ...prev,
+                                  vendors: isChecked
+                                    ? [...prev.vendors, vendor]
+                                    : prev.vendors.filter((item) => item !== vendor),
+                                };
+                              })
+                            }
+                          />
+                          <span>{vendor}</span>
+                        </Label>
+                      );
+                    })}
+                  </div>
+                ),
+            },
+            {
+              id: 'sites',
+              title: 'Sites',
+              description: filterBySite
+                ? `Expenses already scoped to ${filterBySite}.`
+                : 'Filter expenses by project site.',
+              content:
+                filterBySite ? (
+                  <p className="text-sm text-muted-foreground">
+                    The list is already filtered to {filterBySite}.
+                  </p>
+                ) : siteOptions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No sites recorded yet.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {siteOptions.map((site) => {
+                      const checked = draftAdvancedFilters.sites.includes(site);
+                      return (
+                        <Label key={site} className="flex items-center gap-3 text-sm font-normal">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                              setDraftAdvancedFilters((prev) => {
+                                const isChecked = checkedValue === true;
+                                return {
+                                  ...prev,
+                                  sites: isChecked
+                                    ? [...prev.sites, site]
+                                    : prev.sites.filter((item) => item !== site),
+                                };
+                              })
+                            }
+                          />
+                          <span>{site}</span>
+                        </Label>
+                      );
+                    })}
+                  </div>
+                ),
+            },
+            {
+              id: 'approvers',
+              title: 'Approvers',
+              description: 'Limit to expenses approved by selected team members.',
+              content:
+                approverOptions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No approvers recorded yet.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {approverOptions.map((approver) => {
+                      const checked = draftAdvancedFilters.approvers.includes(approver);
+                      return (
+                        <Label key={approver} className="flex items-center gap-3 text-sm font-normal">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                              setDraftAdvancedFilters((prev) => {
+                                const isChecked = checkedValue === true;
+                                return {
+                                  ...prev,
+                                  approvers: isChecked
+                                    ? [...prev.approvers, approver]
+                                    : prev.approvers.filter((item) => item !== approver),
+                                };
+                              })
+                            }
+                          />
+                          <span>{approver}</span>
+                        </Label>
+                      );
+                    })}
+                  </div>
+                ),
+            },
+            {
+              id: 'date-range',
+              title: 'Date range',
+              description: 'Filter expenses by their recorded date.',
+              content: (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="expenses-date-from" className="text-sm font-medium">
+                      From
+                    </Label>
+                    <Input
+                      id="expenses-date-from"
+                      type="date"
+                      value={draftAdvancedFilters.dateFrom ?? ''}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          dateFrom: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="expenses-date-to" className="text-sm font-medium">
+                      To
+                    </Label>
+                    <Input
+                      id="expenses-date-to"
+                      type="date"
+                      value={draftAdvancedFilters.dateTo ?? ''}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          dateTo: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: 'amount-range',
+              title: 'Amount (₹)',
+              description: 'Limit expenses to an amount range.',
+              content: (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="expenses-amount-min" className="text-sm font-medium">
+                      Min
+                    </Label>
+                    <Input
+                      id="expenses-amount-min"
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={draftAdvancedFilters.amountMin}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          amountMin: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="expenses-amount-max" className="text-sm font-medium">
+                      Max
+                    </Label>
+                    <Input
+                      id="expenses-amount-max"
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Any"
+                      value={draftAdvancedFilters.amountMax}
+                      onChange={(event) =>
+                        setDraftAdvancedFilters((prev) => ({
+                          ...prev,
+                          amountMax: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: 'receipt',
+              title: 'Receipt status',
+              description: 'Filter expenses that include receipts.',
+              content: (
+                <Select
+                  value={draftAdvancedFilters.hasReceipt}
+                  onValueChange={(value: ExpenseAdvancedFilterState['hasReceipt']) =>
+                    setDraftAdvancedFilters((prev) => ({ ...prev, hasReceipt: value }))
+                  }
+                >
+                  <SelectTrigger className="w-full sm:w-64">
+                    <SelectValue placeholder="Receipt status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All expenses</SelectItem>
+                    <SelectItem value="with">With receipt</SelectItem>
+                    <SelectItem value="without">Without receipt</SelectItem>
+                  </SelectContent>
+                </Select>
+              ),
+            },
+          ]}
+        onApply={() => {
+          setAppliedAdvancedFilters(cloneExpenseAdvancedFilters(draftAdvancedFilters));
+          setIsFilterSheetOpen(false);
+        }}
+        onReset={() => {
+          const resetFilters = createDefaultExpenseAdvancedFilters();
+          setDraftAdvancedFilters(resetFilters);
+          setAppliedAdvancedFilters(resetFilters);
+        }}
+        isDirty={countExpenseAdvancedFilters(draftAdvancedFilters) > 0}
+      />
       </div>
     </div>
   );

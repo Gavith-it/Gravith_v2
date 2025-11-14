@@ -112,7 +112,10 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
         throw new Error(payload.error || 'Failed to create purchase.');
       }
 
-      setMaterials((prev) => [payload.purchase!, ...prev]);
+      setMaterials((prev) => {
+        const withoutDuplicate = prev.filter((item) => item.id !== payload.purchase!.id);
+        return [payload.purchase!, ...withoutDuplicate];
+      });
       return payload.purchase ?? null;
     },
     [],
