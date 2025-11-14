@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { useMaterialReceipts, useVendors } from '@/lib/contexts';
 import type { MaterialMaster, MaterialReceipt } from '@/types/entities';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface MaterialReceiptFormProps {
   editingReceipt?: MaterialReceipt | null;
@@ -63,7 +64,7 @@ export function MaterialReceiptForm({
   const form = useForm<ReceiptFormData>({
     resolver: zodResolver(receiptFormSchema),
     defaultValues: {
-      date: editingReceipt?.date ? new Date(editingReceipt.date) : undefined,
+      date: parseDateOnly(editingReceipt?.date),
       vehicleNumber: editingReceipt?.vehicleNumber ?? '',
       materialId: editingReceipt?.materialId ?? '',
       materialName: editingReceipt?.materialName ?? '',
@@ -144,7 +145,7 @@ export function MaterialReceiptForm({
         MaterialReceipt,
         'id' | 'createdAt' | 'updatedAt' | 'organizationId'
       > = {
-        date: data.date.toISOString().split('T')[0],
+        date: formatDateOnly(data.date),
         vehicleNumber: data.vehicleNumber,
         materialId: data.materialId,
         materialName: data.materialName,

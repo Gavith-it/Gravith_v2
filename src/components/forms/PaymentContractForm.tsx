@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface PaymentContractFormData {
   clientName: string;
@@ -47,7 +48,7 @@ export default function PaymentContractForm({ onSubmit, onCancel }: PaymentContr
   };
 
   const handleDateChange = (date: Date | undefined) => {
-    setFormData((prev) => ({ ...prev, dueDate: date ? date.toISOString().split('T')[0] : '' }));
+    setFormData((prev) => ({ ...prev, dueDate: date ? formatDateOnly(date) : '' }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -95,7 +96,7 @@ export default function PaymentContractForm({ onSubmit, onCancel }: PaymentContr
         <div className="space-y-2">
           <Label htmlFor="dueDate">Due Date *</Label>
           <DatePicker
-            date={formData.dueDate ? new Date(formData.dueDate) : undefined}
+            date={parseDateOnly(formData.dueDate) ?? undefined}
             onSelect={handleDateChange}
             placeholder="Select due date"
           />

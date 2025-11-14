@@ -7,6 +7,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface MilestoneFormData {
   name: string;
@@ -32,7 +33,7 @@ export default function MilestoneForm({ onSubmit, onCancel }: MilestoneFormProps
   };
 
   const handleDateChange = (date: Date | undefined) => {
-    setFormData((prev) => ({ ...prev, date: date ? date.toISOString().split('T')[0] : '' }));
+    setFormData((prev) => ({ ...prev, date: date ? formatDateOnly(date) : '' }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -56,7 +57,7 @@ export default function MilestoneForm({ onSubmit, onCancel }: MilestoneFormProps
       <div className="space-y-2">
         <Label htmlFor="date">Target Date *</Label>
         <DatePicker
-          date={formData.date ? new Date(formData.date) : undefined}
+          date={parseDateOnly(formData.date) ?? undefined}
           onSelect={handleDateChange}
           placeholder="Select milestone date"
         />

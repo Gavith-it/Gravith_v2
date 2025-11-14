@@ -7,6 +7,7 @@
 import { MOCK_MATERIALS } from '../mock/materials.mock';
 
 import type { MaterialMaster } from '@/types';
+import { formatDateOnly } from '@/lib/utils/date';
 
 
 /**
@@ -107,7 +108,7 @@ export async function createMaterial(
   // if (error) throw error;
   // return data;
 
-  const now = new Date().toISOString().split('T')[0];
+  const now = formatDateOnly(new Date());
   const newMaterial: MaterialMaster = {
     ...material,
     id: (MOCK_MATERIALS.length + 1).toString(),
@@ -156,7 +157,7 @@ export async function updateMaterial(
   const updatedMaterial: MaterialMaster = {
     ...MOCK_MATERIALS[materialIndex],
     ...updates,
-    lastUpdated: new Date().toISOString().split('T')[0],
+    lastUpdated: formatDateOnly(new Date()),
     updatedAt: new Date().toISOString(),
   };
 

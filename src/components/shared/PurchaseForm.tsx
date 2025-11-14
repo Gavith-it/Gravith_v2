@@ -41,6 +41,7 @@ import {
 import type { SharedMaterial } from '@/lib/contexts';
 import { useMaterialReceipts, useMaterials, useVendors } from '@/lib/contexts';
 import type { MaterialMaster } from '@/types/entities';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface PurchaseFormProps {
   selectedSite?: string;
@@ -111,9 +112,7 @@ export function PurchaseForm({
       unit: editingMaterial?.unit || '',
       unitRate: editingMaterial?.unitRate || undefined,
       invoiceNumber: editingMaterial?.invoiceNumber || '',
-      purchaseDate: editingMaterial?.purchaseDate
-        ? new Date(editingMaterial.purchaseDate)
-        : undefined,
+      purchaseDate: parseDateOnly(editingMaterial?.purchaseDate),
       linkedReceiptIds: editingMaterial?.linkedReceiptId ? [editingMaterial.linkedReceiptId] : [],
       filledWeight: editingMaterial?.filledWeight,
       emptyWeight: editingMaterial?.emptyWeight,
@@ -273,7 +272,9 @@ export function PurchaseForm({
 
   // Format date helper - memoized to prevent recreating on every render
   const formatDate = React.useCallback((dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-IN', {
+    const parsed = parseDateOnly(dateStr);
+    if (!parsed) return dateStr;
+    return parsed.toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -299,7 +300,7 @@ export function PurchaseForm({
         totalAmount,
         vendor: data.vendor,
         invoiceNumber: data.invoiceNumber,
-        purchaseDate: data.purchaseDate.toISOString().split('T')[0],
+        purchaseDate: formatDateOnly(data.purchaseDate),
         addedBy: 'Current User',
         consumedQuantity: previousConsumed,
         remainingQuantity:

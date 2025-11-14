@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { Site, SiteInput } from '@/types/sites';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface SiteFormProps {
   mode: 'new' | 'edit';
@@ -67,8 +68,8 @@ export default function SiteForm({ mode, site, onSubmit, onCancel }: SiteFormPro
       location: site?.location || '',
       status: site?.status || 'Active',
       description: site?.description || '',
-      startDate: site?.startDate ? new Date(site.startDate) : undefined,
-      expectedEndDate: site?.expectedEndDate ? new Date(site.expectedEndDate) : undefined,
+      startDate: parseDateOnly(site?.startDate),
+      expectedEndDate: parseDateOnly(site?.expectedEndDate),
       budget: undefined, // Start with undefined to avoid hydration mismatch
     },
   });
@@ -100,8 +101,8 @@ export default function SiteForm({ mode, site, onSubmit, onCancel }: SiteFormPro
     const siteData: SiteInput = {
       name: data.name,
       location: data.location,
-      startDate: data.startDate.toISOString().split('T')[0],
-      expectedEndDate: data.expectedEndDate.toISOString().split('T')[0],
+      startDate: formatDateOnly(data.startDate),
+      expectedEndDate: formatDateOnly(data.expectedEndDate),
       status: data.status,
       budget: data.budget,
       description: data.description || '',

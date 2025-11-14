@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateOnly } from '@/lib/utils/date';
 import { useScheduling } from '@/lib/contexts';
 import { formatDate } from '@/lib/utils';
 import type { ProjectActivity, ProjectMilestone } from '@/types';
@@ -285,8 +286,8 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         siteName: site?.name ?? data.siteName ?? '',
         name: data.name,
         description: data.description ?? '',
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
+        startDate: formatDateOnly(startDate),
+        endDate: formatDateOnly(endDate),
         duration,
         progress: data.progress,
         status: data.status,
@@ -321,7 +322,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
       const payload = {
         siteId: data.siteId,
         name: data.name,
-        date: data.date.toISOString().split('T')[0],
+        date: formatDateOnly(data.date),
         description: data.description ?? '',
         status: data.status ?? 'pending',
         siteName: site?.name ?? data.siteName ?? '',

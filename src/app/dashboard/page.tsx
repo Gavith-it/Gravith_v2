@@ -20,6 +20,7 @@ export default function DashboardPage() {
       'nav-expenses': '/expenses',
       'nav-vendors': '/vendors',
       'nav-progress': '/work-progress',
+      reports: '/reports',
     };
 
     const route = routeMap[action] || '/';

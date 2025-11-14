@@ -37,6 +37,7 @@ import { Progress } from './ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Textarea } from './ui/textarea';
+import { formatDateOnly, parseDateOnly } from '../lib/utils/date';
 
 // Interface for Project Activity
 interface ProjectActivity {
@@ -259,7 +260,10 @@ export function ProjectActivity({ selectedSiteId, onSiteSelect }: ProjectActivit
   const handleActivitySubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const startDate = new Date(activityForm.startDate);
+    const startDate = parseDateOnly(activityForm.startDate);
+    if (!startDate) {
+      return;
+    }
     const endDate = new Date(
       startDate.getTime() + Number(activityForm.duration) * 24 * 60 * 60 * 1000,
     );
@@ -272,7 +276,7 @@ export function ProjectActivity({ selectedSiteId, onSiteSelect }: ProjectActivit
       name: activityForm.name,
       description: activityForm.description,
       startDate: activityForm.startDate,
-      endDate: endDate.toISOString().split('T')[0],
+      endDate: formatDateOnly(endDate),
       duration: Number(activityForm.duration),
       progress: 0,
       status: 'not-started',
@@ -287,8 +291,8 @@ export function ProjectActivity({ selectedSiteId, onSiteSelect }: ProjectActivit
       milestones: activityForm.milestones,
       estimatedCost: Number(activityForm.estimatedCost),
       actualCost: 0,
-      createdDate: new Date().toISOString().split('T')[0],
-      lastUpdated: new Date().toISOString().split('T')[0],
+      createdDate: formatDateOnly(new Date()),
+      lastUpdated: formatDateOnly(new Date()),
     };
 
     if (editingActivity) {
@@ -355,7 +359,7 @@ export function ProjectActivity({ selectedSiteId, onSiteSelect }: ProjectActivit
               ...activity,
               progress,
               status: progress === 100 ? 'completed' : progress > 0 ? 'in-progress' : 'not-started',
-              lastUpdated: new Date().toISOString().split('T')[0],
+              lastUpdated: formatDateOnly(new Date()),
             }
           : activity,
       ),
@@ -518,11 +522,11 @@ export function ProjectActivity({ selectedSiteId, onSiteSelect }: ProjectActivit
                   <div className="space-y-2">
                     <Label htmlFor="startDate">Start Date *</Label>
                     <DatePicker
-                      date={activityForm.startDate ? new Date(activityForm.startDate) : undefined}
+                      date={parseDateOnly(activityForm.startDate) ?? undefined}
                       onSelect={(date) =>
                         setActivityForm((prev) => ({
                           ...prev,
-                          startDate: date ? date.toISOString().split('T')[0] : '',
+                          startDate: date ? formatDateOnly(date) : '',
                         }))
                       }
                       placeholder="Select start date"

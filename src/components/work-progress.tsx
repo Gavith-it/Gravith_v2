@@ -55,6 +55,7 @@ import type { WorkProgressEntry as WorkProgressEntity } from '@/types/entities';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDateShort } from '@/lib/utils';
+import { formatDateOnly } from '@/lib/utils/date';
 
 interface SiteOption {
   id: string;
@@ -1110,7 +1111,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                   onSelect={(date) =>
                                     setWorkProgressForm((prev) => ({
                                       ...prev,
-                                      date: date ? date.toISOString().split('T')[0] : '',
+                                      date: date ? formatDateOnly(date) : '',
                                     }))
                                   }
                                   placeholder="Select work date"

@@ -5,15 +5,15 @@ import {
   DollarSign,
   Building2,
   Package,
-  Truck,
   AlertTriangle,
   Activity,
   Calendar,
   Target,
   Info,
   BarChart3,
+  Loader2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   XAxis,
   YAxis,
@@ -33,6 +33,7 @@ import { formatDate } from '../lib/utils';
 
 import { DataTable } from './common/DataTable';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -43,136 +44,120 @@ import {
   TooltipTrigger,
 } from './ui/tooltip';
 
-// Mock data for demonstration
-const monthlyExpenses = [
-  { month: 'Jan', Labour: 120000, Materials: 180000, Vehicles: 95000, Other: 45000, Total: 440000 },
-  {
-    month: 'Feb',
-    Labour: 135000,
-    Materials: 200000,
-    Vehicles: 110000,
-    Other: 38000,
-    Total: 483000,
-  },
-  {
-    month: 'Mar',
-    Labour: 145000,
-    Materials: 170000,
-    Vehicles: 125000,
-    Other: 52000,
-    Total: 492000,
-  },
-  {
-    month: 'Apr',
-    Labour: 125000,
-    Materials: 220000,
-    Vehicles: 105000,
-    Other: 48000,
-    Total: 498000,
-  },
-  {
-    month: 'May',
-    Labour: 155000,
-    Materials: 190000,
-    Vehicles: 140000,
-    Other: 35000,
-    Total: 520000,
-  },
-  {
-    month: 'Jun',
-    Labour: 165000,
-    Materials: 210000,
-    Vehicles: 130000,
-    Other: 41000,
-    Total: 546000,
-  },
-];
+type MonthlyExpensePoint = {
+  key: string;
+  label: string;
+  Labour: number;
+  Materials: number;
+  Equipment: number;
+  Transport: number;
+  Utilities: number;
+  Other: number;
+  Total: number;
+};
 
-// Site performance data with comprehensive progress tracking
-// Progress % is calculated based on multiple factors:
-// 1. Budget utilization (40% weight) - Amount spent vs total budget
-// 2. Timeline adherence (30% weight) - Actual vs planned schedule
-// 3. Milestone completion (20% weight) - Major deliverables completed
-// 4. Quality metrics (10% weight) - Inspections passed, rework needed
-const sitePerformance = [
-  {
-    name: 'Residential Complex A',
-    budget: 5000000,
-    spent: 3200000,
-    progress: 64,
-    startDate: '2024-01-15',
-    endDate: '2024-12-30',
-    completionPercentage: 64,
-    budgetProgress: 64, // 3.2Cr spent out of 5Cr = 64%
-    timelineProgress: 70, // 70% of planned time elapsed
-    milestoneProgress: 60, // 6 out of 10 major milestones completed
-    qualityScore: 85, // 85% quality compliance
-  },
-  {
-    name: 'Commercial Plaza B',
-    budget: 7500000,
-    spent: 4100000,
-    progress: 55,
-    startDate: '2024-02-01',
-    endDate: '2025-06-15',
-    completionPercentage: 55,
-    budgetProgress: 55, // 4.1Cr spent out of 7.5Cr = 55%
-    timelineProgress: 60, // 60% of planned time elapsed
-    milestoneProgress: 50, // 5 out of 10 major milestones completed
-    qualityScore: 90, // 90% quality compliance
-  },
-  {
-    name: 'Highway Bridge Project',
-    budget: 3500000,
-    spent: 3350000,
-    progress: 96,
-    startDate: '2024-03-10',
-    endDate: '2024-11-20',
-    completionPercentage: 96,
-    budgetProgress: 96, // 3.35Cr spent out of 3.5Cr = 96%
-    timelineProgress: 95, // 95% of planned time elapsed
-    milestoneProgress: 100, // All 8 major milestones completed
-    qualityScore: 92, // 92% quality compliance
-  },
-];
+type ExpenseBreakdownSlice = {
+  name: string;
+  value: number;
+};
 
-const expenseBreakdown = [
-  { name: 'Labour', value: 890000, color: '#0088FE' },
-  { name: 'Materials', value: 1170000, color: '#00C49F' },
-  { name: 'Vehicles', value: 705000, color: '#FFBB28' },
-  { name: 'Other', value: 269000, color: '#FF8042' },
-];
-
-const lowStockMaterials = [
-  { name: 'Cement (OPC 53)', current: 45, minimum: 50, unit: 'bags' },
-  { name: 'Steel Bars (16mm)', current: 850, minimum: 1000, unit: 'kg' },
-  { name: 'Aggregates', current: 12, minimum: 15, unit: 'tons' },
-];
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
-
-// Calculate weighted progress based on multiple factors
-const calculateSiteProgress = (site: {
+type SitePerformanceEntry = {
+  id: string;
+  name: string;
   budget: number;
   spent: number;
+  progress: number;
+  status: string;
   startDate: string;
   endDate: string;
-  completionPercentage: number;
-  budgetProgress?: number;
-  timelineProgress?: number;
-  milestoneProgress?: number;
-  qualityScore?: number;
-}) => {
+  timelineProgress: number;
+  milestoneProgress: number;
+  qualityScore: number;
+};
+
+type LowStockMaterial = {
+  id: string;
+  name: string;
+  unit: string;
+  available: number;
+  reorderLevel: number;
+  updatedAt?: string;
+};
+
+type RecentActivityItem = {
+  id: string;
+  type: 'purchase' | 'expense' | 'work';
+  title: string;
+  description?: string;
+  timestamp: string;
+};
+
+type ReportsOverview = {
+  metrics: {
+    totalSites: number;
+    activeSites: number;
+    totalBudget: number;
+    totalSpent: number;
+    avgProgress: number;
+  };
+  monthlyExpenses: MonthlyExpensePoint[];
+  expenseBreakdown: ExpenseBreakdownSlice[];
+  sitePerformance: SitePerformanceEntry[];
+  lowStockMaterials: LowStockMaterial[];
+  recentActivity: RecentActivityItem[];
+};
+
+const PIE_COLOR_MAP: Record<string, string> = {
+  Labour: '#0088FE',
+  Materials: '#00C49F',
+  Equipment: '#FFBB28',
+  Transport: '#FF8042',
+  Utilities: '#8884D8',
+  Other: '#A855F7',
+};
+
+const DEFAULT_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+
+const AREA_CATEGORY_KEYS = ['Labour', 'Materials', 'Equipment', 'Transport'] as const;
+
+const AREA_COLORS: Record<(typeof AREA_CATEGORY_KEYS)[number], string> = {
+  Labour: '#82ca9d',
+  Materials: '#ffc658',
+  Equipment: '#8884d8',
+  Transport: '#ff7300',
+};
+
+const RECENT_ACTIVITY_ICONS = {
+  purchase: Package,
+  expense: DollarSign,
+  work: Activity,
+};
+
+const RECENT_ACTIVITY_STYLES = {
+  purchase: { background: 'bg-green-50 border border-green-200', icon: 'text-green-600' },
+  expense: { background: 'bg-blue-50 border border-blue-200', icon: 'text-blue-600' },
+  work: { background: 'bg-orange-50 border border-orange-200', icon: 'text-orange-600' },
+};
+
+const CRORE_DIVISOR = 10_000_000;
+
+const formatCroreValue = (value: number) =>
+  value > 0 ? `₹${(value / CRORE_DIVISOR).toFixed(1)}Cr` : '₹0';
+
+const formatLakhValue = (value: number) => `₹${(value / 100000).toFixed(1)}L`;
+
+// Calculate weighted progress based on multiple factors
+const calculateSiteProgress = (site: SitePerformanceEntry) => {
   const budgetWeight = 0.4;
   const timelineWeight = 0.3;
   const milestoneWeight = 0.2;
   const qualityWeight = 0.1;
 
   // Calculate missing properties if not provided
-  const budgetProgress = site.budgetProgress ?? (site.spent / site.budget) * 100;
-  const timelineProgress = site.timelineProgress ?? site.completionPercentage;
-  const milestoneProgress = site.milestoneProgress ?? site.completionPercentage;
-  const qualityScore = site.qualityScore ?? 85; // Default quality score
+  const budgetProgress = site.budget > 0 ? (site.spent / site.budget) * 100 : site.progress;
+  const timelineProgress = site.timelineProgress ?? site.progress;
+  const milestoneProgress = site.milestoneProgress ?? site.progress;
+  const qualityScore = site.qualityScore ?? 85;
 
   return Math.round(
     budgetProgress * budgetWeight +
@@ -184,8 +169,69 @@ const calculateSiteProgress = (site: {
 
 export function ReportsPage() {
   const [activeSegment, setActiveSegment] = useState<number | null>(null);
+  const [overview, setOverview] = useState<ReportsOverview | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchVersion, setFetchVersion] = useState(0);
 
-  // Use shared state hooks
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchOverview = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const response = await fetch('/api/reports/overview', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as ReportsOverview & {
+          error?: string;
+        };
+        if (!response.ok || !payload || (payload as { error?: string }).error) {
+          throw new Error(payload?.error || 'Failed to load reports overview.');
+        }
+        if (isMounted) {
+          setOverview(payload);
+        }
+      } catch (fetchError) {
+        if (isMounted) {
+          setOverview((prev) => prev); // keep previous data if available
+          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load reports overview.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void fetchOverview();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchVersion]);
+
+  const metrics = overview?.metrics ?? {
+    totalSites: 0,
+    activeSites: 0,
+    totalBudget: 0,
+    totalSpent: 0,
+    avgProgress: 0,
+  };
+
+  const monthlyExpenses = overview?.monthlyExpenses ?? [];
+  const expenseBreakdown = overview?.expenseBreakdown ?? [];
+  const sitePerformance = overview?.sitePerformance ?? [];
+  const lowStockMaterials = overview?.lowStockMaterials ?? [];
+  const recentActivity = overview?.recentActivity ?? [];
+
+  const pieData = expenseBreakdown.map((slice, index) => ({
+    ...slice,
+    color: PIE_COLOR_MAP[slice.name] ?? DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+  }));
+
+  const handleRefresh = () => setFetchVersion((prev) => prev + 1);
+
+  // Shared table state (must be declared before conditional returns to keep hook order)
   const tableState = useTableState({
     initialSortField: 'calculatedProgress',
     initialSortDirection: 'desc',
@@ -193,17 +239,38 @@ export function ReportsPage() {
   });
 
   // Calculate real-time progress for each site
-  const sitesWithCalculatedProgress = sitePerformance.map((site) => ({
-    ...site,
-    calculatedProgress: calculateSiteProgress(site),
-  }));
-
-  const totalBudget = sitePerformance.reduce((sum, site) => sum + site.budget, 0);
-  const totalSpent = sitePerformance.reduce((sum, site) => sum + site.spent, 0);
-  const avgProgress = Math.round(
-    sitesWithCalculatedProgress.reduce((sum, site) => sum + site.calculatedProgress, 0) /
-      sitesWithCalculatedProgress.length,
+  const sitesWithCalculatedProgress = useMemo(
+    () =>
+      sitePerformance.map((site) => ({
+        ...site,
+        calculatedProgress: calculateSiteProgress(site),
+      })),
+    [sitePerformance],
   );
+
+  if (!overview && isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!overview && error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+        <div className="space-y-2">
+          <p className="text-xl font-semibold text-destructive">Unable to load reports</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+        <Button onClick={handleRefresh} variant="outline">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  const lowStockCount = lowStockMaterials.length;
 
   // Financial tab content
   const FinancialContent = () => (
@@ -230,8 +297,10 @@ export function ReportsPage() {
                     </UITooltip>
                   </TooltipProvider>
                 </div>
-                <p className="text-2xl font-semibold">3</p>
-                <p className="text-xs text-green-600">All operational</p>
+                <p className="text-2xl font-semibold">{metrics.activeSites}</p>
+                <p className="text-xs text-muted-foreground">
+                  {metrics.totalSites > 0 ? `${metrics.totalSites} total sites` : 'No active sites'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -258,8 +327,10 @@ export function ReportsPage() {
                     </UITooltip>
                   </TooltipProvider>
                 </div>
-                <p className="text-2xl font-semibold">₹{(totalBudget / 10000000).toFixed(1)}Cr</p>
-                <p className="text-xs text-muted-foreground">Across all sites</p>
+                <p className="text-2xl font-semibold">{formatCroreValue(metrics.totalBudget)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {metrics.totalSites > 0 ? `Across ${metrics.totalSites} sites` : 'Awaiting site data'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -287,9 +358,11 @@ export function ReportsPage() {
                     </UITooltip>
                   </TooltipProvider>
                 </div>
-                <p className="text-2xl font-semibold">₹{(totalSpent / 10000000).toFixed(1)}Cr</p>
+                <p className="text-2xl font-semibold">{formatCroreValue(metrics.totalSpent)}</p>
                 <p className="text-xs text-orange-600">
-                  {((totalSpent / totalBudget) * 100).toFixed(1)}% used
+                  {metrics.totalBudget > 0
+                    ? `${((metrics.totalSpent / metrics.totalBudget) * 100).toFixed(1)}% used`
+                    : 'No budget recorded'}
                 </p>
               </div>
             </div>
@@ -321,8 +394,10 @@ export function ReportsPage() {
                     </UITooltip>
                   </TooltipProvider>
                 </div>
-                <p className="text-2xl font-semibold">{avgProgress}%</p>
-                <p className="text-xs text-purple-600">Overall completion</p>
+                <p className="text-2xl font-semibold">{metrics.avgProgress}%</p>
+                <p className="text-xs text-purple-600">
+                  {metrics.totalSites > 0 ? 'Overall completion' : 'Awaiting progress updates'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -350,8 +425,10 @@ export function ReportsPage() {
                     </UITooltip>
                   </TooltipProvider>
                 </div>
-                <p className="text-2xl font-semibold">{lowStockMaterials.length}</p>
-                <p className="text-xs text-red-600">Materials below min</p>
+                <p className="text-2xl font-semibold">{lowStockCount}</p>
+                <p className="text-xs text-red-600">
+                  {lowStockCount > 0 ? 'Materials below min' : 'All stock healthy'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -386,15 +463,13 @@ export function ReportsPage() {
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={monthlyExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
+                <XAxis dataKey="label" />
                 <YAxis />
                 <Tooltip
                   formatter={(value, name, props) => {
                     const formatted = `₹${Number(value).toLocaleString()}`;
-                    const total =
-                      monthlyExpenses.find(
-                        (item) => item.month === (props as { label?: string }).label,
-                      )?.Total || 0;
+                    const label = (props as { payload?: MonthlyExpensePoint }).payload?.label ?? '';
+                    const total = monthlyExpenses.find((item) => item.label === label)?.Total ?? 0;
                     const percentage = total > 0 ? ((Number(value) / total) * 100).toFixed(1) : '0';
                     return [`${formatted} (${percentage}%)`, name];
                   }}
@@ -432,20 +507,17 @@ export function ReportsPage() {
                   fill="#8884d8"
                   fillOpacity={0.3}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="Labour"
-                  stroke="#82ca9d"
-                  fill="#82ca9d"
-                  fillOpacity={0.6}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Materials"
-                  stroke="#ffc658"
-                  fill="#ffc658"
-                  fillOpacity={0.6}
-                />
+                {AREA_CATEGORY_KEYS.map((key) => (
+                  <Area
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    stroke={AREA_COLORS[key]}
+                    fill={AREA_COLORS[key]}
+                    fillOpacity={0.4}
+                    connectNulls
+                  />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -466,8 +538,9 @@ export function ReportsPage() {
                       <p>Categories include:</p>
                       <p>• Labour: Worker wages and contractor payments</p>
                       <p>• Materials: Raw materials and supplies</p>
-                      <p>• Vehicles: Equipment rental and fuel</p>
-                      <p>• Other: Utilities, permits, miscellaneous</p>
+                      <p>• Equipment: Rentals, maintenance, depreciation</p>
+                      <p>• Transport: Fuel and logistics</p>
+                      <p>• Utilities & Other: Overheads, permits, misc.</p>
                     </div>
                   </TooltipContent>
                 </UITooltip>
@@ -475,79 +548,83 @@ export function ReportsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={expenseBreakdown}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  outerRadius={activeSegment !== null ? 90 : 80}
-                  fill="#8884d8"
-                  dataKey="value"
-                  onMouseEnter={(_, index) => setActiveSegment(index)}
-                  onMouseLeave={() => setActiveSegment(null)}
-                >
-                  {expenseBreakdown.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                      stroke={activeSegment === index ? '#fff' : 'none'}
-                      strokeWidth={activeSegment === index ? 3 : 0}
-                      style={{
-                        filter:
-                          activeSegment === index
-                            ? 'brightness(1.1) drop-shadow(0px 4px 8px rgba(0,0,0,0.2))'
-                            : 'none',
-                        transformOrigin: 'center',
-                        transform: activeSegment === index ? 'scale(1.05)' : 'scale(1)',
-                        transition: 'all 0.2s ease-in-out',
-                      }}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, name) => {
-                    const total = expenseBreakdown.reduce((sum, item) => sum + item.value, 0);
-                    const percentage = ((Number(value) / total) * 100).toFixed(1);
-                    return [`₹${Number(value).toLocaleString()} (${percentage}%)`, name];
-                  }}
-                  contentStyle={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-                    border: '2px solid rgba(6, 182, 212, 0.3)',
-                    borderRadius: '12px',
-                    boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
-                    backdropFilter: 'blur(12px)',
-                    padding: '12px 16px',
-                    fontFamily:
-                      '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-                  }}
-                  labelStyle={{
-                    color: '#1e40af',
-                    fontWeight: '700',
-                    fontSize: '15px',
-                    marginBottom: '10px',
-                    textAlign: 'center',
-                    borderBottom: '1px solid rgba(6, 182, 212, 0.2)',
-                    paddingBottom: '6px',
-                  }}
-                  itemStyle={{
-                    color: '#374151',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    margin: '4px 0',
-                  }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  iconType="circle"
-                  formatter={(value, entry) => (
-                    <span style={{ color: entry.color, fontWeight: 500 }}>{value}</span>
-                  )}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {pieData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No expenses recorded for this period.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={activeSegment !== null ? 90 : 80}
+                    dataKey="value"
+                    onMouseEnter={(_, index) => setActiveSegment(index)}
+                    onMouseLeave={() => setActiveSegment(null)}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${entry.name}`}
+                        fill={entry.color}
+                        stroke={activeSegment === index ? '#fff' : 'none'}
+                        strokeWidth={activeSegment === index ? 3 : 0}
+                        style={{
+                          filter:
+                            activeSegment === index
+                              ? 'brightness(1.1) drop-shadow(0px 4px 8px rgba(0,0,0,0.2))'
+                              : 'none',
+                          transformOrigin: 'center',
+                          transform: activeSegment === index ? 'scale(1.05)' : 'scale(1)',
+                          transition: 'all 0.2s ease-in-out',
+                        }}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, name) => {
+                      const total = pieData.reduce((sum, item) => sum + item.value, 0);
+                      const percentage =
+                        total > 0 ? ((Number(value) / total) * 100).toFixed(1) : '0';
+                      return [`₹${Number(value).toLocaleString()} (${percentage}%)`, name];
+                    }}
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                      border: '2px solid rgba(6, 182, 212, 0.3)',
+                      borderRadius: '12px',
+                      boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
+                      backdropFilter: 'blur(12px)',
+                      padding: '12px 16px',
+                      fontFamily:
+                        '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+                    }}
+                    labelStyle={{
+                      color: '#1e40af',
+                      fontWeight: '700',
+                      fontSize: '15px',
+                      marginBottom: '10px',
+                      textAlign: 'center',
+                      borderBottom: '1px solid rgba(6, 182, 212, 0.2)',
+                      paddingBottom: '6px',
+                    }}
+                    itemStyle={{
+                      color: '#374151',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      margin: '4px 0',
+                    }}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    formatter={(value, entry) => (
+                      <span style={{ color: entry.color, fontWeight: 500 }}>{value}</span>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -589,47 +666,56 @@ export function ReportsPage() {
               { key: 'budget', label: 'Budget Status', sortable: true },
               { key: 'details', label: 'Details', sortable: false },
             ]}
-            data={sitesWithCalculatedProgress.map((site) => ({
-              name: <span className="font-medium">{site.name}</span>,
-              progress: (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <TooltipProvider>
-                      <UITooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-muted-foreground cursor-help hover:text-foreground transition-colors">
-                            {site.calculatedProgress}% Complete
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <div className="text-xs space-y-1">
-                            <p className="font-medium">Progress Breakdown:</p>
-                            <p>Budget: {site.budgetProgress}% (40% weight)</p>
-                            <p>Timeline: {site.timelineProgress}% (30% weight)</p>
-                            <p>Milestones: {site.milestoneProgress}% (20% weight)</p>
-                            <p>Quality: {site.qualityScore}% (10% weight)</p>
-                          </div>
-                        </TooltipContent>
-                      </UITooltip>
-                    </TooltipProvider>
+            data={sitesWithCalculatedProgress.map((site) => {
+              const budgetPercent =
+                site.budget > 0 ? ((site.spent / site.budget) * 100).toFixed(1) : '0';
+              const timelinePercent = site.timelineProgress.toFixed(1);
+              const milestonePercent = site.milestoneProgress.toFixed(1);
+              const qualityPercent = (site.qualityScore ?? 85).toFixed(1);
+
+              return {
+                name: <span className="font-medium">{site.name}</span>,
+                progress: (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <TooltipProvider>
+                        <UITooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-muted-foreground cursor-help hover:text-foreground transition-colors">
+                              {site.calculatedProgress}% Complete
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <div className="text-xs space-y-1">
+                              <p className="font-medium">Progress Breakdown:</p>
+                              <p>Budget: {budgetPercent}% (40% weight)</p>
+                              <p>Timeline: {timelinePercent}% (30% weight)</p>
+                              <p>Milestones: {milestonePercent}% (20% weight)</p>
+                              <p>Quality: {qualityPercent}% (10% weight)</p>
+                            </div>
+                          </TooltipContent>
+                        </UITooltip>
+                      </TooltipProvider>
+                    </div>
+                    <Progress value={site.calculatedProgress} className="h-2" />
                   </div>
-                  <Progress value={site.calculatedProgress} className="h-2" />
-                </div>
-              ),
-              budget: (
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Spent: ₹{(site.spent / 100000).toFixed(1)}L</span>
-                  <span>Budget: ₹{(site.budget / 100000).toFixed(1)}L</span>
-                </div>
-              ),
-              details: (
-                <div className="text-xs text-muted-foreground">
-                  <div>Progress: {site.progress}%</div>
-                  <div>Start: {formatDate(site.startDate)}</div>
-                  <div>End: {formatDate(site.endDate)}</div>
-                </div>
-              ),
-            }))}
+                ),
+                budget: (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Spent: {formatLakhValue(site.spent)}</span>
+                    <span>Budget: {formatLakhValue(site.budget)}</span>
+                  </div>
+                ),
+                details: (
+                  <div className="text-xs text-muted-foreground">
+                    <div>Status: {site.status}</div>
+                    <div>Reported Progress: {site.progress}%</div>
+                    <div>Start: {site.startDate ? formatDate(site.startDate) : '—'}</div>
+                    <div>End: {site.endDate ? formatDate(site.endDate) : '—'}</div>
+                  </div>
+                ),
+              };
+            })}
             onSort={tableState.setSortField}
             onPageChange={tableState.setCurrentPage}
             pageSize={tableState.itemsPerPage}
@@ -654,29 +740,40 @@ export function ReportsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {lowStockMaterials.map((material, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200"
-              >
-                <div>
-                  <p className="font-medium text-red-800">{material.name}</p>
-                  <p className="text-sm text-red-600">
-                    Current: {material.current} {material.unit}
-                  </p>
+          {lowStockMaterials.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              All tracked materials are above their reorder levels.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {lowStockMaterials.map((material) => (
+                <div
+                  key={material.id}
+                  className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200"
+                >
+                  <div>
+                    <p className="font-medium text-red-800">{material.name}</p>
+                    <p className="text-sm text-red-600">
+                      Available: {material.available.toLocaleString()} {material.unit || 'units'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="destructive" className="text-xs">
+                      Low Stock
+                    </Badge>
+                    <p className="text-xs text-red-600 mt-1">
+                      Reorder at: {material.reorderLevel.toFixed(0)} {material.unit || 'units'}
+                    </p>
+                    {material.updatedAt && (
+                      <p className="text-xs text-muted-foreground">
+                        Updated {formatDate(material.updatedAt)}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <Badge variant="destructive" className="text-xs">
-                    Low Stock
-                  </Badge>
-                  <p className="text-xs text-red-600 mt-1">
-                    Min: {material.minimum} {material.unit}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -689,40 +786,33 @@ export function ReportsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-              <Building2 className="h-4 w-4 text-blue-600" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">New budget revision approved</p>
-                <p className="text-xs text-muted-foreground">
-                  Residential Complex A - ₹50Cr budget increased
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">2 hours ago</span>
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No recent activity recorded.</p>
+          ) : (
+            <div className="space-y-3">
+              {recentActivity.map((item) => {
+                const Icon = RECENT_ACTIVITY_ICONS[item.type];
+                const styles = RECENT_ACTIVITY_STYLES[item.type];
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg ${styles.background}`}
+                  >
+                    <Icon className={`h-4 w-4 ${styles.icon}`} />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{item.title}</p>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground">{item.description}</p>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {item.timestamp ? formatDate(item.timestamp) : '—'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-
-            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-              <Package className="h-4 w-4 text-green-600" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Material delivery completed</p>
-                <p className="text-xs text-muted-foreground">
-                  Steel bars (500kg) delivered to Commercial Plaza B
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">4 hours ago</span>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg">
-              <Truck className="h-4 w-4 text-orange-600" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Vehicle maintenance scheduled</p>
-                <p className="text-xs text-muted-foreground">
-                  Excavator MH-12-AB-1234 due for service
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">6 hours ago</span>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -734,7 +824,7 @@ export function ReportsPage() {
         {/* Navigation Tabs - Topmost */}
         <Card className="border-0 shadow-none rounded-none border-b bg-gradient-to-r from-background to-muted/20">
           <CardContent className="px-6 py-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <TabsList className="grid w-auto grid-cols-3">
                 <TabsTrigger value="financial" className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4" />
@@ -749,11 +839,42 @@ export function ReportsPage() {
                   Analytics
                 </TabsTrigger>
               </TabsList>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Activity className="h-3 w-3" />
-                Live Data
-              </Badge>
+              <div className="flex items-center gap-3">
+                {error && (
+                  <span className="hidden text-sm text-destructive sm:inline">{error}</span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={isLoading}
+                  className="gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Refreshing
+                    </>
+                  ) : (
+                    'Refresh'
+                  )}
+                </Button>
+                <Badge variant="outline" className="flex items-center gap-1">
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Updating…
+                    </>
+                  ) : (
+                    <>
+                      <Activity className="h-3 w-3" />
+                      Live Data
+                    </>
+                  )}
+                </Badge>
+              </div>
             </div>
+            {error && <p className="mt-2 text-sm text-destructive sm:hidden">{error}</p>}
           </CardContent>
         </Card>
 

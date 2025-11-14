@@ -30,6 +30,7 @@ import type { Vendor } from './vendors-columns';
 import { createVendorTableData } from './vendors-columns';
 import { toast } from 'sonner';
 import { useVendors } from '@/lib/contexts';
+import { formatDateOnly } from '@/lib/utils/date';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -361,7 +362,7 @@ export function VendorsPage() {
             pendingAmount: 0,
             rating: 0,
             lastPayment: '',
-            registrationDate: new Date().toISOString().split('T')[0],
+            registrationDate: formatDateOnly(new Date()),
           });
           toast.success('Vendor added successfully');
         }

@@ -5,6 +5,7 @@ import type { SharedMaterial } from '@/lib/contexts/materials-context';
 import { createClient } from '@/lib/supabase/server';
 import type { MaterialMaster } from '@/types/entities';
 import type { MaterialMasterInput } from '@/types/materials';
+import { formatDateOnly } from '@/lib/utils/date';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -263,7 +264,7 @@ export async function POST(request: Request) {
       total_amount: totalAmount ?? quantity * unitRate,
       vendor_invoice_number: invoiceNumber ?? '',
       vendor_name: vendor ?? '',
-      purchase_date: purchaseDate ?? new Date().toISOString().split('T')[0],
+      purchase_date: purchaseDate ?? formatDateOnly(new Date()),
       filled_weight: filledWeight ?? null,
       empty_weight: emptyWeight ?? null,
       net_weight: netWeight ?? null,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
+import { formatDateOnly } from '@/lib/utils/date';
 
 type QuickStats = {
   activeSites: number;
@@ -279,7 +280,7 @@ function startOfCurrentMonth(): string {
   const date = new Date();
   date.setDate(1);
   date.setHours(0, 0, 0, 0);
-  return date.toISOString().split('T')[0]!;
+  return formatDateOnly(date);
 }
 
 function endOfCurrentMonth(): string {
@@ -287,7 +288,7 @@ function endOfCurrentMonth(): string {
   date.setMonth(date.getMonth() + 1);
   date.setDate(0);
   date.setHours(23, 59, 59, 999);
-  return date.toISOString().split('T')[0]!;
+  return formatDateOnly(date);
 }
 
 function calculateAverageProgress(activities: { progress?: number | null }[]): number {

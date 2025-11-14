@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface Vehicle {
   id: string;
@@ -130,11 +131,11 @@ export default function VehicleRefuelingForm({
         <div className="space-y-2">
           <Label htmlFor="date">Date *</Label>
           <DatePicker
-            date={formData.date ? new Date(formData.date) : undefined}
+            date={parseDateOnly(formData.date) ?? undefined}
             onSelect={(date) =>
               setFormData((prev) => ({
                 ...prev,
-                date: date ? date.toISOString().split('T')[0] : '',
+                date: date ? formatDateOnly(date) : '',
               }))
             }
             placeholder="Select refueling date"

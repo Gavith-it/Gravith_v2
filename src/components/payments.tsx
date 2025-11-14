@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/table';
 import { usePayments } from '@/lib/contexts';
 import { formatDate } from '@/lib/utils';
+import { formatDateOnly } from '@/lib/utils/date';
 import type { Payment } from '@/types';
 import { toast } from 'sonner';
 
@@ -169,8 +170,8 @@ export function PaymentsPage() {
         clientName: data.clientName,
         amount: data.amount,
         status: data.status,
-        dueDate: data.dueDate ? data.dueDate.toISOString().split('T')[0] : undefined,
-        paidDate: data.paidDate ? data.paidDate.toISOString().split('T')[0] : undefined,
+        dueDate: data.dueDate ? formatDateOnly(data.dueDate) : undefined,
+        paidDate: data.paidDate ? formatDateOnly(data.paidDate) : undefined,
         siteId: data.siteId && data.siteId.length > 0 ? data.siteId : null,
         siteName: data.siteName && data.siteName.length > 0 ? data.siteName : null,
       } satisfies Parameters<typeof addPayment>[0];

@@ -5,6 +5,7 @@ import type { VendorRow } from './_utils';
 
 import { createClient } from '@/lib/supabase/server';
 import type { Vendor } from '@/types';
+import { formatDateOnly } from '@/lib/utils/date';
 
 
 const VENDOR_SELECT = `
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
       payment_terms: paymentTerms ?? null,
       notes: notes ?? null,
       status: (body.status ?? 'active') as Vendor['status'],
-      registration_date: body.registrationDate ?? new Date().toISOString().split('T')[0],
+      registration_date: body.registrationDate ?? formatDateOnly(new Date()),
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       updated_by: ctx.userId,

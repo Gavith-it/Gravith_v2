@@ -49,6 +49,7 @@ import type {
   VehicleUsage as VehicleUsageEntity,
 } from '@/types/entities';
 import { formatDateShort } from '@/lib/utils';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 type Vehicle = VehicleEntity;
 type VehicleRefueling = VehicleRefuelingEntity;
@@ -1878,11 +1879,11 @@ export function VehiclesPage({
                 <div className="space-y-2">
                   <Label htmlFor="date">Date *</Label>
                   <DatePicker
-                    date={refuelingForm.date ? new Date(refuelingForm.date) : undefined}
+                    date={parseDateOnly(refuelingForm.date) ?? undefined}
                     onSelect={(date) =>
                       setRefuelingForm((prev) => ({
                         ...prev,
-                        date: date ? date.toISOString().split('T')[0] : '',
+                        date: date ? formatDateOnly(date) : '',
                       }))
                     }
                     placeholder="Select refueling date"
@@ -2042,11 +2043,11 @@ export function VehiclesPage({
                 <div className="space-y-2">
                   <Label htmlFor="date">Date *</Label>
                   <DatePicker
-                    date={usageForm.date ? new Date(usageForm.date) : undefined}
+                    date={parseDateOnly(usageForm.date) ?? undefined}
                     onSelect={(date) =>
                       setUsageForm((prev) => ({
                         ...prev,
-                        date: date ? date.toISOString().split('T')[0] : '',
+                        date: date ? formatDateOnly(date) : '',
                       }))
                     }
                     placeholder="Select usage date"

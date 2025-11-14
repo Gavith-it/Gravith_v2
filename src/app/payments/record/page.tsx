@@ -6,6 +6,7 @@ import { useCallback } from 'react';
 import PaymentRecordForm, { type PaymentRecordFormData } from '@/components/forms/PaymentRecordForm';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { usePayments } from '@/lib/contexts';
+import { formatDateOnly } from '@/lib/utils/date';
 import { toast } from 'sonner';
 
 export default function PaymentRecordPage() {
@@ -16,7 +17,7 @@ export default function PaymentRecordPage() {
     async (data: PaymentRecordFormData) => {
       try {
         await updatePayment(data.paymentId, {
-          paidDate: data.paidDate ? data.paidDate.toISOString().split('T')[0] : undefined,
+          paidDate: data.paidDate ? formatDateOnly(data.paidDate) : undefined,
           status: data.status,
         });
         toast.success('Payment updated successfully');

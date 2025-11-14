@@ -39,6 +39,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDate } from '@/lib/utils';
+import { formatDateOnly } from '@/lib/utils/date';
 import type { Expense } from '@/types';
 import { toast } from 'sonner';
 import { useExpenses } from '@/lib/contexts';
@@ -186,14 +187,12 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           subcategory: formData.subcategory,
           description: formData.description,
           amount: formData.amount,
-          date: formData.date.toISOString().split('T')[0],
+          date: formatDateOnly(formData.date),
           vendor: formData.vendor,
           siteId: formData.siteId,
           siteName: formData.siteName,
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
-          purchaseId: formData.purchaseId,
-          materialId: formData.materialId,
         });
 
         if (updated && viewingExpense?.id === updated.id) {
@@ -207,15 +206,13 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           subcategory: formData.subcategory,
           description: formData.description,
           amount: formData.amount,
-          date: formData.date.toISOString().split('T')[0],
+          date: formatDateOnly(formData.date),
           vendor: formData.vendor,
           siteId: formData.siteId,
           siteName: formData.siteName,
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
           status: 'pending',
-          purchaseId: formData.purchaseId,
-          materialId: formData.materialId,
         });
 
         toast.success('Expense added successfully');
@@ -666,8 +663,6 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                     siteName: dialogState.editingItem.siteName || '',
                     receipt: dialogState.editingItem.receipt || '',
                     approvedBy: dialogState.editingItem.approvedBy || '',
-                    purchaseId: dialogState.editingItem.purchaseId || undefined,
-                    materialId: dialogState.editingItem.materialId || undefined,
                   }
                 : undefined
             }
@@ -715,20 +710,6 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                 <div>
                   <p className="text-muted-foreground">Approved By</p>
                   <p className="font-medium">{viewingExpense.approvedBy || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Linked Purchase</p>
-                  <p className="font-medium">
-                    {viewingExpense.purchaseId
-                      ? viewingExpense.purchaseReference || viewingExpense.purchaseId
-                      : 'None'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Linked Material</p>
-                  <p className="font-medium">
-                    {viewingExpense.materialName || viewingExpense.materialId || 'None'}
-                  </p>
                 </div>
               </div>
               <div>

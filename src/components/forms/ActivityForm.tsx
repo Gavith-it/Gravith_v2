@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface ActivityFormData {
   siteId: string;
@@ -63,7 +64,7 @@ export default function ActivityForm({ sites, onSubmit, onCancel }: ActivityForm
   };
 
   const handleDateChange = (date: Date | undefined) => {
-    setFormData((prev) => ({ ...prev, startDate: date ? date.toISOString().split('T')[0] : '' }));
+    setFormData((prev) => ({ ...prev, startDate: date ? formatDateOnly(date) : '' }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -120,7 +121,7 @@ export default function ActivityForm({ sites, onSubmit, onCancel }: ActivityForm
         <div className="space-y-2">
           <Label htmlFor="startDate">Start Date *</Label>
           <DatePicker
-            date={formData.startDate ? new Date(formData.startDate) : undefined}
+            date={parseDateOnly(formData.startDate) ?? undefined}
             onSelect={handleDateChange}
             placeholder="Select start date"
           />
