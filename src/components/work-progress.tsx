@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   Upload,
   RotateCcw,
+  Loader2,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -382,6 +383,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
   // Material selection state
   const [selectedMaterial, setSelectedMaterial] = useState('');
   const [materialQuantity, setMaterialQuantity] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
 
   const selectedMaterialDetails = useMemo(() => {
     if (!selectedMaterial) return undefined;
@@ -619,6 +621,10 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       return;
     }
 
+    if (isSaving) {
+      return;
+    }
+
     const payload = buildPayload(workProgressForm);
     const masterBaseTotals = buildMasterTotals();
     const masterAdjustments = new Map<string, { remainingDelta: number; consumedDelta: number }>();
@@ -632,6 +638,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     };
 
     try {
+      setIsSaving(true);
       if (dialog.editingItem) {
         await updateWorkProgressEntry(dialog.editingItem.id, payload);
         toast.success('Work progress updated successfully!');
@@ -746,6 +753,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
           ? error.message
           : 'Unable to save work progress entry. Please try again.',
       );
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1563,8 +1572,20 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                         >
                           Cancel
                         </Button>
-                        <Button type="submit">
-                          {dialog.editingItem ? 'Update Entry' : 'Add Entry'}
+                        <Button
+                          type="submit"
+                          disabled={isSaving}
+                          aria-busy={isSaving}
+                          className="gap-2 transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-60"
+                        >
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              {dialog.editingItem ? 'Saving...' : 'Adding...'}
+                            </>
+                          ) : (
+                            dialog.editingItem ? 'Update Entry' : 'Add Entry'
+                          )}
                         </Button>
                       </div>
                     </form>
