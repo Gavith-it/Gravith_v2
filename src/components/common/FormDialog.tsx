@@ -63,16 +63,18 @@ export function FormDialog({
         className={cn(
           'w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:w-full',
           responsiveMaxWidth,
-          'p-0 px-4 sm:px-6 py-4 sm:py-6 max-h-[82vh] overflow-hidden',
+          'p-0',
         )}
       >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className={description ? undefined : 'sr-only'}>
-            {description ?? 'Provide the requested information and submit the form.'}
-          </DialogDescription>
-        </DialogHeader>
-        {children}
+        <div className="flex max-h-[90vh] sm:max-h-[82vh] flex-col overflow-hidden">
+          <DialogHeader className="px-4 pt-4 pb-3 sm:px-6 sm:pt-6 sm:pb-4 border-b bg-background">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription className={description ? undefined : 'sr-only'}>
+              {description ?? 'Provide the requested information and submit the form.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6">{children}</div>
+        </div>
       </DialogContent>
     </Dialog>
   );
