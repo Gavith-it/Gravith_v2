@@ -21,6 +21,7 @@ import { useTableState } from '../lib/hooks/useTableState';
 
 import { DataTable } from './common/DataTable';
 import { FormDialog } from './common/FormDialog';
+import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 import { PurchaseForm } from './shared/PurchaseForm';
 
@@ -309,10 +310,23 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     }
   };
 
+const [activeInnerTab, setActiveInnerTab] = useState<'bills' | 'receipts'>(
+  filterBySite ? 'bills' : 'bills',
+);
+
+if (activeInnerTab === 'receipts') {
   return (
     <div className="w-full min-w-0 bg-background">
-      <PurchaseTabs />
-      <div className="p-4 md:p-6 space-y-6 max-w-full min-w-0">
+      <PurchaseTabs activeTab={activeInnerTab} onTabChange={setActiveInnerTab} />
+      <MaterialReceiptsPage filterBySite={filterBySite} showTabs={false} />
+    </div>
+  );
+}
+
+return (
+  <div className="w-full min-w-0 bg-background">
+    <PurchaseTabs activeTab={activeInnerTab} onTabChange={setActiveInnerTab} />
+    <div className="p-4 md:p-6 space-y-6 max-w-full min-w-0">
         {/* Purchase Statistics */}
         <Card className="w-full overflow-hidden">
           <CardContent className="p-4 md:p-6">

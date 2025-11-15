@@ -2246,22 +2246,48 @@ export function VehiclesPage({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="vendor">Vendor *</Label>
-                  <Input
-                    list="refueling-vendor-options"
-                    value={refuelingForm.vendor}
-                    onChange={(e) =>
-                      setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
+                  <Select
+                    value={
+                      vendorOptions.includes(refuelingForm.vendor)
+                        ? refuelingForm.vendor
+                        : refuelingForm.vendor
+                        ? '__custom__'
+                        : ''
                     }
-                    placeholder="BP Fuel Station"
-                    required
-                  />
-                  {vendorOptions.length > 0 ? (
-                    <datalist id="refueling-vendor-options">
+                    onValueChange={(value) => {
+                      if (value === '__custom__') {
+                        setRefuelingForm((prev) => ({ ...prev, vendor: '' }));
+                      } else {
+                        setRefuelingForm((prev) => ({ ...prev, vendor: value }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder="Select vendor"
+                        aria-label="Vendor selection"
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
                       {vendorOptions.map((name) => (
-                        <option key={name} value={name} />
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
                       ))}
-                    </datalist>
-                  ) : null}
+                      <SelectItem value="__custom__">Other (enter manually)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(refuelingForm.vendor && !vendorOptions.includes(refuelingForm.vendor)) && (
+                    <Input
+                      className="mt-2"
+                      value={refuelingForm.vendor}
+                      onChange={(e) =>
+                        setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
+                      }
+                      placeholder="Enter vendor name"
+                      aria-label="Vendor name"
+                    />
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="invoice">Invoice Number *</Label>

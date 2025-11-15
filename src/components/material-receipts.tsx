@@ -19,13 +19,12 @@ import { toast } from 'sonner';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
+import { useRouter } from 'next/navigation';
 
 import { DataTable } from './common/DataTable';
 import { FormDialog } from './common/FormDialog';
 import { MaterialReceiptForm } from './forms/MaterialReceiptForm';
 import { PurchaseTabs } from './layout/PurchaseTabs';
-
-
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,7 +52,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
 import type { MaterialReceipt } from '@/types';
 
-export function MaterialReceiptsPage() {
+interface MaterialReceiptsPageProps {
+  filterBySite?: string;
+  showTabs?: boolean;
+}
+
+export function MaterialReceiptsPage({ filterBySite, showTabs = true }: MaterialReceiptsPageProps = {}) {
+  const router = useRouter();
   const {
     receipts,
     isLoading: isReceiptsLoading,
@@ -67,6 +72,18 @@ export function MaterialReceiptsPage() {
     isLoading: isMaterialsLoading,
     refresh: refreshMaterials,
   } = useMaterials();
+
+  const scopedReceipts = useMemo(() => {
+    if (!filterBySite) {
+      return receipts;
+    }
+    const filterLower = filterBySite.toLowerCase();
+    return receipts.filter(
+      (receipt) =>
+        receipt.siteId?.toLowerCase() === filterLower ||
+        (receipt.siteName ?? '').toLowerCase() === filterLower,
+    );
+  }, [filterBySite, receipts]);
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -156,10 +173,10 @@ export function MaterialReceiptsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Calculate summary statistics
-  const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => {
-    const receiptCount = receipts.length;
-    const netWeightSum = receipts.reduce((sum, receipt) => sum + (receipt.netWeight ?? 0), 0);
-    const linked = receipts.filter((r) => r.linkedPurchaseId).length;
+const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => {
+    const receiptCount = scopedReceipts.length;
+    const netWeightSum = scopedReceipts.reduce((sum, receipt) => sum + (receipt.netWeight ?? 0), 0);
+    const linked = scopedReceipts.filter((r) => r.linkedPurchaseId).length;
     const open = receiptCount - linked;
 
     return {
@@ -168,37 +185,37 @@ export function MaterialReceiptsPage() {
       linkedCount: linked,
       openCount: open,
     };
-  }, [receipts]);
+  }, [scopedReceipts]);
 
   const siteOptions = useMemo(() => {
     const sites = new Set<string>();
-    receipts.forEach((receipt) => {
+    scopedReceipts.forEach((receipt) => {
       if (receipt.siteName) {
         sites.add(receipt.siteName);
       }
     });
     return Array.from(sites).sort((a, b) => a.localeCompare(b));
-  }, [receipts]);
+  }, [scopedReceipts]);
 
   const vendorOptions = useMemo(() => {
     const vendors = new Set<string>();
-    receipts.forEach((receipt) => {
+    scopedReceipts.forEach((receipt) => {
       if (receipt.vendorName) {
         vendors.add(receipt.vendorName);
       }
     });
     return Array.from(vendors).sort((a, b) => a.localeCompare(b));
-  }, [receipts]);
+  }, [scopedReceipts]);
 
   const vehicleOptions = useMemo(() => {
     const vehicles = new Set<string>();
-    receipts.forEach((receipt) => {
+    scopedReceipts.forEach((receipt) => {
       if (receipt.vehicleNumber) {
         vehicles.add(receipt.vehicleNumber);
       }
     });
     return Array.from(vehicles).sort((a, b) => a.localeCompare(b));
-  }, [receipts]);
+  }, [scopedReceipts]);
 
   const activeAdvancedFilterCount = useMemo(
     () => countReceiptAdvancedFilters(appliedAdvancedFilters),
@@ -206,7 +223,7 @@ export function MaterialReceiptsPage() {
   );
   const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
 
-  const sortedAndFilteredReceipts = receipts
+  const sortedAndFilteredReceipts = scopedReceipts
     .filter((receipt) => {
       const matchesSearch =
         receipt.vehicleNumber.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
@@ -359,15 +376,26 @@ export function MaterialReceiptsPage() {
   const availablePurchases = useMemo(
     () =>
       materials.filter(
-        (material) => !receipts.some((receipt) => receipt.linkedPurchaseId === material.id),
+        (material) => !scopedReceipts.some((receipt) => receipt.linkedPurchaseId === material.id),
       ),
-    [materials, receipts],
+    [materials, scopedReceipts],
   );
 
-  if (isReceiptsLoading && receipts.length === 0) {
+  const renderTabs = showTabs ? (
+    <PurchaseTabs
+      activeTab="receipts"
+      onTabChange={(value) => {
+        if (value === 'bills') {
+          router.push('/purchase');
+        }
+      }}
+    />
+  ) : null;
+
+  if (isReceiptsLoading && scopedReceipts.length === 0) {
     return (
       <div className="w-full bg-background">
-        <PurchaseTabs />
+        {renderTabs}
         <div className="p-4 md:p-6 space-y-6">
           <Card className="w-full">
             <CardContent className="p-6">
@@ -385,7 +413,7 @@ export function MaterialReceiptsPage() {
 
   return (
     <div className="w-full bg-background">
-      <PurchaseTabs />
+      {renderTabs}
       <div className="p-4 md:p-6 space-y-6 max-w-full">
         {/* Statistics */}
         <Card className="w-full overflow-hidden">
@@ -607,7 +635,7 @@ export function MaterialReceiptsPage() {
                 <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No Receipts Found</h3>
                 <p className="text-muted-foreground text-center mb-6">
-                  {receipts.length === 0
+                  {scopedReceipts.length === 0
                     ? 'Start by recording your first material receipt.'
                     : 'No receipts match your current search and filter criteria.'}
                 </p>
