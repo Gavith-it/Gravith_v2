@@ -12,6 +12,7 @@ import {
   Clock,
   Pause,
   XCircle,
+  Layers,
 } from 'lucide-react';
 import React from 'react';
 
@@ -494,6 +495,94 @@ export const getSiteVehicleColumns = (): DataTableColumn<SiteVehicle>[] => [
         </DropdownMenu>
       </div>
     ),
+  },
+];
+
+// Material Master Columns
+interface SiteMaterialMaster {
+  id: string;
+  materialName: string;
+  category: string;
+  unit: string;
+  siteStock: number;
+  allocated: number;
+  reserved: number;
+  status: 'available' | 'low' | 'critical';
+}
+
+export const getSiteMaterialMasterColumns = (): DataTableColumn<SiteMaterialMaster>[] => [
+  {
+    key: 'materialName',
+    label: 'Material',
+    sortable: true,
+    minWidth: 'min-w-[180px]',
+    render: (material: SiteMaterialMaster) => (
+      <div className="flex items-center gap-3">
+        <Avatar className="h-9 w-9 bg-primary/10">
+          <AvatarFallback className="bg-primary/10 text-primary">
+            <Layers className="h-4 w-4" />
+          </AvatarFallback>
+        </Avatar>
+        <div>
+          <div className="font-semibold text-sm">{material.materialName}</div>
+          <div className="text-xs text-muted-foreground">{material.category}</div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    key: 'siteStock',
+    label: 'On Site',
+    sortable: true,
+    minWidth: 'min-w-[110px]',
+    render: (material: SiteMaterialMaster) => (
+      <div className="text-sm font-semibold">
+        {material.siteStock.toLocaleString()} <span className="text-muted-foreground">{material.unit}</span>
+      </div>
+    ),
+  },
+  {
+    key: 'allocated',
+    label: 'Allocated',
+    sortable: true,
+    minWidth: 'min-w-[110px]',
+    render: (material: SiteMaterialMaster) => (
+      <div className="text-sm">
+        {material.allocated.toLocaleString()} <span className="text-muted-foreground">{material.unit}</span>
+      </div>
+    ),
+  },
+  {
+    key: 'reserved',
+    label: 'Reserved',
+    sortable: true,
+    minWidth: 'min-w-[110px]',
+    render: (material: SiteMaterialMaster) => (
+      <div className="text-sm">
+        {material.reserved.toLocaleString()} <span className="text-muted-foreground">{material.unit}</span>
+      </div>
+    ),
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    sortable: true,
+    minWidth: 'min-w-[120px]',
+    render: (material: SiteMaterialMaster) => {
+      const statusConfig = {
+        available: { label: 'Available', variant: 'default' as const, dotColor: 'bg-green-500' },
+        low: { label: 'Low Stock', variant: 'secondary' as const, dotColor: 'bg-yellow-500' },
+        critical: { label: 'Critical', variant: 'destructive' as const, dotColor: 'bg-red-500' },
+      };
+
+      const config = statusConfig[material.status];
+      return (
+        <Badge variant={config.variant} className="text-xs flex items-center gap-1.5 w-fit">
+          <span className={`h-1.5 w-1.5 rounded-full ${config.dotColor}`} />
+          {config.label}
+        </Badge>
+      );
+    },
   },
 ];
 

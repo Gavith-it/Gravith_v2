@@ -26,6 +26,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ExpensesPage } from './expenses';
+import { MaterialsPage } from './materials';
 import { PurchasePage } from './purchase';
 import { SchedulingPage } from './scheduling';
 import { WorkProgressPage } from './work-progress';
@@ -883,7 +884,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                         onValueChange={setActiveTab}
                         className="w-full min-w-0"
                       >
-                        <TabsList className="grid w-full grid-cols-5 lg:grid-cols-5 lg:gap-1 bg-muted/50">
+                        <TabsList className="grid w-full grid-cols-6 lg:grid-cols-6 lg:gap-1 bg-muted/50">
                           <TabsTrigger
                             value="overview"
                             className="flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all truncate min-w-0"
@@ -897,6 +898,13 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                           >
                             <ShoppingCart className="h-4 w-4 flex-shrink-0" />
                             <span className="hidden sm:inline truncate">Purchase</span>
+                          </TabsTrigger>
+                          <TabsTrigger
+                            value="materials"
+                            className="flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all truncate min-w-0"
+                          >
+                            <Package className="h-4 w-4 flex-shrink-0" />
+                            <span className="hidden sm:inline truncate">Materials</span>
                           </TabsTrigger>
                           <TabsTrigger
                             value="work-progress"
@@ -1020,6 +1028,10 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
 
                             <TabsContent value="purchase" className="mt-0 min-w-0">
                               <PurchasePage filterBySite={currentSite?.name} />
+                            </TabsContent>
+
+                            <TabsContent value="materials" className="mt-0 min-w-0">
+                              <MaterialsPage filterBySite={currentSite?.id ?? undefined} />
                             </TabsContent>
 
                             <TabsContent value="work-progress" className="mt-0 min-w-0">

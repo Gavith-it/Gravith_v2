@@ -120,7 +120,11 @@ const parseDateValue = (value?: string): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-export function MaterialsPage() {
+interface MaterialsPageProps {
+  filterBySite?: string;
+}
+
+export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
   // Material Master state
   const [materialMasterData, setMaterialMasterData] = useState<MaterialMasterItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -191,15 +195,25 @@ export function MaterialsPage() {
     void fetchMaterials();
   }, [fetchMaterials]);
 
+  const scopedMaterials = useMemo(() => {
+    if (!filterBySite) return materialMasterData;
+    const filterLower = filterBySite.toLowerCase();
+    return materialMasterData.filter(
+      (material) =>
+        material.siteId?.toLowerCase() === filterLower ||
+        (material.siteName ?? '').toLowerCase() === filterLower,
+    );
+  }, [filterBySite, materialMasterData]);
+
   const unitOptions = useMemo(() => {
     const units = new Set<string>();
-    materialMasterData.forEach((material) => {
+    scopedMaterials.forEach((material) => {
       if (material.unit) {
         units.add(material.unit);
       }
     });
     return Array.from(units).sort((a, b) => a.localeCompare(b));
-  }, [materialMasterData]);
+  }, [scopedMaterials]);
 
   const taxRateOptions = useMemo(() => {
     const taxRates = new Set<number>();
@@ -227,7 +241,7 @@ export function MaterialsPage() {
     const updatedFrom = parseDateValue(appliedAdvancedFilters.updatedFrom);
     const updatedTo = parseDateValue(appliedAdvancedFilters.updatedTo);
 
-    return materialMasterData
+    return scopedMaterials
       .filter((material) => {
         const matchesSearch =
           searchQuery === '' ||
@@ -291,14 +305,7 @@ export function MaterialsPage() {
 
         return 0;
       });
-  }, [
-    appliedAdvancedFilters,
-    materialMasterData,
-    masterCategoryFilter,
-    masterStatusFilter,
-    searchQuery,
-    tableState,
-  ]);
+  }, [appliedAdvancedFilters, scopedMaterials, masterCategoryFilter, masterStatusFilter, searchQuery, tableState]);
 
   // Material Master functions
   const handleMaterialSubmit = useCallback(
@@ -455,22 +462,22 @@ export function MaterialsPage() {
     }
   };
 
-  const totalMaterials = materialMasterData.length;
+  const totalMaterials = scopedMaterials.length;
   const activeMaterials = useMemo(
-    () => materialMasterData.filter((m) => m.isActive).length,
-    [materialMasterData],
+    () => scopedMaterials.filter((m) => m.isActive).length,
+    [scopedMaterials],
   );
   const totalCategories = useMemo(
-    () => new Set(materialMasterData.map((m) => m.category)).size,
-    [materialMasterData],
+    () => new Set(scopedMaterials.map((m) => m.category)).size,
+    [scopedMaterials],
   );
   const totalTrackedQuantity = useMemo(() => {
-    return materialMasterData.reduce((sum, m) => sum + (m.quantity ?? 0), 0);
-  }, [materialMasterData]);
+    return scopedMaterials.reduce((sum, m) => sum + (m.quantity ?? 0), 0);
+  }, [scopedMaterials]);
 
   const totalConsumedQuantity = useMemo(() => {
-    return materialMasterData.reduce((sum, m) => sum + (m.consumedQuantity ?? 0), 0);
-  }, [materialMasterData]);
+    return scopedMaterials.reduce((sum, m) => sum + (m.consumedQuantity ?? 0), 0);
+  }, [scopedMaterials]);
 
   return (
     <div className="w-full bg-background">

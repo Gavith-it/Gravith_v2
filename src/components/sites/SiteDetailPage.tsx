@@ -19,6 +19,7 @@ import {
   XCircle,
   Plus,
   BarChart3,
+  Layers,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
@@ -34,6 +35,7 @@ import {
   getSiteVehicleColumns,
   getSiteLabourColumns,
   getSiteWorkProgressColumns,
+  getSiteMaterialMasterColumns,
 } from '@/components/sites/site-detail-columns';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -113,6 +115,18 @@ interface SiteWorkProgress {
   status: 'not-started' | 'in-progress' | 'completed' | 'on-hold';
   progress: number;
   assignedTo: string;
+}
+
+interface SiteMaterialMaster {
+  id: string;
+  siteId: string;
+  materialName: string;
+  category: string;
+  unit: string;
+  siteStock: number;
+  allocated: number;
+  reserved: number;
+  status: 'available' | 'low' | 'critical';
 }
 
 const mockSiteData: Record<string, SiteDetails> = {
@@ -289,6 +303,42 @@ const mockWorkProgress: SiteWorkProgress[] = [
   },
 ];
 
+const mockMaterialMasters: SiteMaterialMaster[] = [
+  {
+    id: 'mm-1',
+    siteId: '1',
+    materialName: 'M25 Ready Mix Concrete',
+    category: 'Concrete',
+    unit: 'm³',
+    siteStock: 120,
+    allocated: 80,
+    reserved: 25,
+    status: 'available',
+  },
+  {
+    id: 'mm-2',
+    siteId: '1',
+    materialName: 'TMT Steel Bars 16mm',
+    category: 'Steel',
+    unit: 'kg',
+    siteStock: 4500,
+    allocated: 3800,
+    reserved: 200,
+    status: 'low',
+  },
+  {
+    id: 'mm-3',
+    siteId: '2',
+    materialName: 'AAC Blocks',
+    category: 'Blocks',
+    unit: 'pieces',
+    siteStock: 3200,
+    allocated: 2000,
+    reserved: 600,
+    status: 'available',
+  },
+];
+
 interface SiteDetailPageProps {
   siteId: string;
 }
@@ -308,6 +358,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const siteVehicles = mockVehicles;
   const siteLabour = mockLabour;
   const siteWorkProgress = mockWorkProgress;
+  const siteMaterialMasters = mockMaterialMasters.filter((material) => material.siteId === siteId);
 
   // Table states
   const purchaseTableState = useTableState({ initialItemsPerPage: 5 });
@@ -315,6 +366,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const vehicleTableState = useTableState({ initialItemsPerPage: 5 });
   const labourTableState = useTableState({ initialItemsPerPage: 5 });
   const workProgressTableState = useTableState({ initialItemsPerPage: 5 });
+  const materialMasterTableState = useTableState({ initialItemsPerPage: 5 });
 
   // Calculate statistics
   const totalPurchaseValue = sitePurchases.reduce((sum, p) => sum + p.totalAmount, 0);
@@ -324,6 +376,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
     0,
   );
   const totalLabourCost = siteLabour.reduce((sum, l) => sum + l.dailyWage * l.daysWorked, 0);
+  const totalMaterialStock = siteMaterialMasters.reduce((sum, m) => sum + m.siteStock, 0);
 
   if (!site) {
     return (
@@ -528,7 +581,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
 
       {/* Tabs Section */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
+        <TabsList className="flex flex-wrap gap-3 bg-muted/40 p-1 rounded-2xl w-full">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -536,6 +589,10 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           <TabsTrigger value="purchases" className="flex items-center gap-2">
             <ShoppingCart className="h-4 w-4" />
             <span className="hidden sm:inline">Purchases</span>
+          </TabsTrigger>
+          <TabsTrigger value="materials" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            <span className="hidden sm:inline">Materials</span>
           </TabsTrigger>
           <TabsTrigger value="expenses" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
@@ -694,6 +751,65 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                 currentPage={purchaseTableState.currentPage}
                 sortField={purchaseTableState.sortField}
                 sortDirection={purchaseTableState.sortDirection}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Materials Tab */}
+        <TabsContent value="materials" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Material Masters</h3>
+              <p className="text-sm text-muted-foreground">
+                Monitor on-site material availability and allocation
+              </p>
+            </div>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Material
+            </Button>
+          </div>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                  <Layers className="h-8 w-8 text-primary" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Tracked Materials</p>
+                    <p className="text-xl font-bold">{siteMaterialMasters.length}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                  <Package className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Site Stock</p>
+                    <p className="text-xl font-bold text-green-600">
+                      {totalMaterialStock.toLocaleString()} units
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                  <Target className="h-8 w-8 text-blue-600" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Low / Critical Items</p>
+                    <p className="text-xl font-bold text-blue-600">
+                      {siteMaterialMasters.filter((m) => m.status !== 'available').length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <DataTable
+                columns={getSiteMaterialMasterColumns() as never}
+                data={siteMaterialMasters as never}
+                onSort={materialMasterTableState.setSortField}
+                onPageChange={materialMasterTableState.setCurrentPage}
+                pageSize={materialMasterTableState.itemsPerPage}
+                currentPage={materialMasterTableState.currentPage}
+                sortField={materialMasterTableState.sortField}
+                sortDirection={materialMasterTableState.sortDirection}
               />
             </CardContent>
           </Card>
