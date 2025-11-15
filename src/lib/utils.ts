@@ -42,3 +42,21 @@ export function formatDateTime(date: string | Date): string {
 export function formatPercentage(value: number, decimals: number = 1): string {
   return value.toFixed(decimals);
 }
+
+export function formatIndianCurrencyShort(amount: number, decimals: number = 1): string {
+  const absAmount = Math.abs(amount);
+
+  if (absAmount >= 10_000_000) {
+    return `${(amount / 10_000_000).toFixed(decimals)}Cr`;
+  }
+
+  if (absAmount >= 100_000) {
+    return `${(amount / 100_000).toFixed(decimals)}L`;
+  }
+
+  if (absAmount >= 1_000) {
+    return `${(amount / 1_000).toFixed(decimals)}K`;
+  }
+
+  return amount.toLocaleString('en-IN');
+}

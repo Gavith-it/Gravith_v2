@@ -19,7 +19,7 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
-import { formatCurrency, formatDate, formatPercentage } from '../lib/utils';
+import { formatCurrency, formatDate, formatIndianCurrencyShort, formatPercentage } from '../lib/utils';
 import type {
   DashboardActiveSite,
   DashboardData,
@@ -268,6 +268,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           subtitle="Currently operational"
           tooltipLabel="Information about active sites"
           tooltipContent={<p>Number of construction sites currently operational</p>}
+          onClick={() => onNavigate?.('nav-sites')}
         />
 
         <StatCard
@@ -279,6 +280,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           subtitle="Fleet & equipment"
           tooltipLabel="Information about vehicles and equipment"
           tooltipContent={<p>Total vehicles and equipment across all sites</p>}
+          onClick={() => onNavigate?.('nav-vehicles')}
         />
 
         <StatCard
@@ -286,7 +288,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           iconBgColor="bg-green-50"
           iconColor="text-green-600"
           title="Material Value"
-          value={`₹${formatPercentage(quickStats.materialValue / 10000000, 1)}Cr`}
+          value={`₹${formatIndianCurrencyShort(quickStats.materialValue, 2)}`}
           subtitle="Inventory value"
           tooltipLabel="Information about material value"
           tooltipContent={
@@ -295,6 +297,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               <p>Includes: cement, steel, aggregates, etc.</p>
             </>
           }
+          onClick={() => onNavigate?.('nav-materials')}
         />
 
         <StatCard
@@ -311,6 +314,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               <p>Includes: labour, materials, equipment, transport</p>
             </>
           }
+          onClick={() => onNavigate?.('nav-expenses')}
         />
 
         <StatCard
@@ -322,6 +326,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           subtitle="Engaged partners"
           tooltipLabel="Information about active vendors"
           tooltipContent={<p>Number of vendors currently engaged in projects</p>}
+          onClick={() => onNavigate?.('nav-vendors')}
         />
 
         <StatCard
@@ -338,6 +343,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               <p>Calculated from project milestones</p>
             </>
           }
+          onClick={() => onNavigate?.('nav-progress')}
         />
       </div>
 
@@ -460,7 +466,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               {quickActions.map((action) => {
-                // Map action to dialog opener
                 const dialogMap: Record<string, () => void> = {
                   expenses: expenseDialog.openDialog,
                   'material-master': materialMasterDialog.openDialog,
@@ -468,19 +473,26 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                   vehicles: vehicleUsageDialog.openDialog,
                   sites: activityDialog.openDialog,
                 };
-                const onClick = dialogMap[action.action] || undefined;
+                const fallback = dialogMap[action.action];
+                const handleAction = () => {
+                  if (onNavigate) {
+                    onNavigate(action.action);
+                    return;
+                  }
+                  fallback?.();
+                };
 
                 return (
                   <Card
                     key={action.id}
                     className="group cursor-pointer transition-all hover:shadow-md hover:scale-105 h-full"
-                    onClick={onClick}
+                    onClick={handleAction}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        onClick?.();
+                        handleAction();
                       }
                     }}
                     aria-label={`${action.title}: ${action.description}`}

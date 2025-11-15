@@ -98,6 +98,7 @@ export async function GET() {
       { data: siteRows },
       { count: vehicleCount },
       { data: materialPurchaseRows },
+      { data: materialPurchaseTotals },
       { data: monthlyExpenseRows },
       { count: activeVendorCount },
       { data: activityRows },
@@ -123,10 +124,14 @@ export async function GET() {
         .not('status', 'eq', 'returned'),
       supabase
         .from('material_purchases')
-        .select('total_amount, created_at, vendor_invoice_number')
+        .select('total_amount, created_at, vendor_invoice_number, description')
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false })
         .limit(5),
+      supabase
+        .from('material_purchases')
+        .select('total_amount')
+        .eq('organization_id', organizationId),
       supabase
         .from('expenses')
         .select('amount, date, description, status')
@@ -144,7 +149,7 @@ export async function GET() {
         .eq('organization_id', organizationId),
     ]);
 
-    const materialValue = (materialPurchaseRows ?? []).reduce<number>(
+    const materialValue = (materialPurchaseTotals ?? []).reduce<number>(
       (sum, purchase) => sum + Number(purchase.total_amount ?? 0),
       0,
     );
