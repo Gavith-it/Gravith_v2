@@ -18,6 +18,7 @@ import gavithLogo from '../assets/40b9a52cc41bb9e286b6859d260d4a3571e6e982.png';
 import type { Organization, User as UserType } from '../types';
 
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -26,7 +27,7 @@ import { Label } from './ui/label';
 import { Progress } from './ui/progress';
 
 interface OrganizationSetupProps {
-  onComplete: (organization: Organization, adminUser: UserType) => void;
+  onComplete: (organization: Organization, adminUser: UserType) => void | Promise<void>;
   onBack: () => void;
 }
 
@@ -37,6 +38,7 @@ export function OrganizationSetup({ onComplete, onBack }: OrganizationSetupProps
   const [adminEmail, setAdminEmail] = useState('');
   const [selectedPlan, setSelectedPlan] = useState('free');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const totalSteps = 3;
   const progress = (step / totalSteps) * 100;
@@ -96,40 +98,45 @@ export function OrganizationSetup({ onComplete, onBack }: OrganizationSetupProps
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orgName || !adminName || !adminEmail) return;
 
+    if (isLoading) return;
+
     setIsLoading(true);
+    setError(null);
 
-    // Simulate setup delay
-    setTimeout(() => {
-      const organization: Organization = {
-        id: `org-${Date.now()}`,
-        name: orgName,
-        isActive: true,
-        subscription: selectedPlan as 'free' | 'basic' | 'premium',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: 'setup-wizard',
+    try {
+      const response = await fetch('/api/organization/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationName: orgName,
+          adminName,
+          adminEmail,
+          plan: selectedPlan,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        organization?: Organization;
+        adminUser?: UserType;
       };
 
-      const adminUser: UserType = {
-        id: `user-${Date.now()}`,
-        username: adminEmail.split('@')[0],
-        email: adminEmail,
-        firstName: adminName.split(' ')[0],
-        lastName: adminName.split(' ')[1] || '',
-        role: 'admin',
-        organizationId: organization.id,
-        organizationRole: 'owner',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      if (!response.ok || !payload.organization || !payload.adminUser) {
+        setError(payload.error || 'Failed to complete setup. Please try again.');
+        return;
+      }
 
-      onComplete(organization, adminUser);
-    }, 2000);
+      await Promise.resolve(onComplete(payload.organization, payload.adminUser));
+    } catch (requestError) {
+      console.error('Organization setup failed', requestError);
+      setError('Unexpected error occurred. Please try again in a moment.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const canProceedStep1 = orgName.trim().length > 0;
@@ -358,6 +365,12 @@ export function OrganizationSetup({ onComplete, onBack }: OrganizationSetupProps
                     later from your organization settings.
                   </p>
                 </div>
+
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
 
                 <form onSubmit={handleSubmit}>
                   <div className="flex justify-between pt-4">
