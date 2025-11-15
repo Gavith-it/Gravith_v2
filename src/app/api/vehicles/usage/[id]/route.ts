@@ -153,7 +153,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     const body = (await request.json()) as UsagePayload;
-    const updates: Record<string, unknown> = { updated_by: ctx.userId };
+    const updates: Record<string, unknown> = {};
 
     if (body.date !== undefined) updates['date'] = body.date;
     if (body.startTime !== undefined) updates['start_time'] = body.startTime;
@@ -213,7 +213,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update usage record.' }, { status: 500 });
     }
 
-    return NextResponse.json({ record: mapRowToUsage(data as VehicleUsageRow) });
     return NextResponse.json({ record: mapRowToUsage(data as VehicleUsageRow) });
   } catch (error) {
     console.error('Unexpected error updating usage record', error);

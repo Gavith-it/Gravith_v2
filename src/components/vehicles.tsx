@@ -36,12 +36,14 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import {
   useVehicleRefueling,
   useVehicles,
   useVehicleUsage,
+  useVendors,
 } from '@/lib/contexts';
 import type {
   Vehicle as VehicleEntity,
@@ -54,6 +56,26 @@ import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 type Vehicle = VehicleEntity;
 type VehicleRefueling = VehicleRefuelingEntity;
 type VehicleUsage = VehicleUsageEntity;
+
+const VEHICLE_TYPE_OPTIONS: string[] = [
+  'truck',
+  'excavator',
+  'crane',
+  'mixer',
+  'jcb',
+  'loader',
+  'compactor',
+  'generator',
+  'other',
+];
+
+const VEHICLE_STATUS_OPTIONS: Vehicle['status'][] = [
+  'available',
+  'in_use',
+  'maintenance',
+  'idle',
+  'returned',
+];
 
 interface VehicleManagementProps {
   selectedVehicle?: string;
@@ -96,6 +118,7 @@ type UsageFormState = {
   workDescription: string;
   workCategory: VehicleUsage['workCategory'];
   siteId: string;
+  operator: string;
   fuelConsumed: string;
   notes: string;
 };
@@ -108,8 +131,9 @@ const emptyUsageFormState: UsageFormState = {
   startOdometer: '',
   endOdometer: '',
   workDescription: '',
-  workCategory: 'construction',
+  workCategory: 'transport',
   siteId: '',
+  operator: '',
   fuelConsumed: '',
   notes: '',
 };
@@ -118,7 +142,8 @@ export function VehiclesPage({
   selectedVehicle: propSelectedVehicle,
   onVehicleSelect,
 }: VehicleManagementProps) {
-  const { vehicles, isLoading: isVehiclesLoading } = useVehicles();
+  const { vehicles, isLoading: isVehiclesLoading, addVehicle } = useVehicles();
+  const { vendors } = useVendors();
 
   const {
     records: refuelingRecords,
@@ -138,6 +163,70 @@ export function VehiclesPage({
 
   const [selectedVehicle, setSelectedVehicle] = useState<string>(propSelectedVehicle || '');
   const [activeTab, setActiveTab] = useState('refueling');
+  const [isVehicleDialogOpen, setIsVehicleDialogOpen] = useState(false);
+  const [isSavingVehicle, setIsSavingVehicle] = useState(false);
+  const [isSavingRefueling, setIsSavingRefueling] = useState(false);
+  const [isSavingUsage, setIsSavingUsage] = useState(false);
+  const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [isSitesLoading, setIsSitesLoading] = useState(false);
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSites = async () => {
+      try {
+        setIsSitesLoading(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Array<{ id: string; name?: string | null }>;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load sites.');
+        }
+
+        const normalized = (payload.sites ?? []).map((site) => ({
+          id: site.id,
+          name: site.name?.trim() || 'Unnamed site',
+        }));
+
+        normalized.sort((a, b) => a.name.localeCompare(b.name));
+        if (isMounted) {
+          setSiteOptions(normalized);
+        }
+      } catch (error) {
+        console.error('Error loading sites', error);
+        if (isMounted) {
+          setSiteOptions([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsSitesLoading(false);
+        }
+      }
+    };
+
+    void fetchSites();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const vendorOptions = useMemo(() => {
+    return vendors
+      .map((vendor) => vendor.name?.trim())
+      .filter((name): name is string => Boolean(name && name.length > 0))
+      .sort((a, b) => a.localeCompare(b));
+  }, [vendors]);
+
+  const [vehicleForm, setVehicleForm] = useState({
+    vehicleNumber: '',
+    type: VEHICLE_TYPE_OPTIONS[0],
+    status: 'available' as Vehicle['status'],
+    isRental: false,
+    vendor: '',
+    make: '',
+    model: '',
+  });
 
   const refuelingDialog = useDialogState<VehicleRefueling>();
   const usageDialog = useDialogState<VehicleUsage>();
@@ -442,6 +531,7 @@ export function VehiclesPage({
       ...emptyUsageFormState,
       vehicleId: selectedVehicle || '',
       siteId: vehicle?.siteId || '',
+      operator: vehicle?.operator || '',
     });
   }, [selectedVehicle, vehicles]);
 
@@ -513,6 +603,7 @@ export function VehiclesPage({
         workDescription: item.workDescription,
         workCategory: item.workCategory,
         siteId: item.siteId,
+        operator: item.operator,
         fuelConsumed: item.fuelConsumed.toString(),
         notes: item.notes ?? '',
       });
@@ -547,15 +638,49 @@ export function VehiclesPage({
 
   const currentVehicle = vehicles.find((vehicle) => vehicle.id === selectedVehicle);
 
-  const vehicleSiteOptions = useMemo(() => {
-    const unique = new Map<string, string>();
-    vehicles.forEach((vehicle) => {
-      if (vehicle.siteId) {
-        unique.set(vehicle.siteId, vehicle.siteName ?? vehicle.siteId);
-      }
+  const vehicleSiteOptions = siteOptions;
+
+  const resetVehicleForm = useCallback(() => {
+    setVehicleForm({
+      vehicleNumber: '',
+      type: VEHICLE_TYPE_OPTIONS[0],
+      status: 'available',
+      isRental: false,
+      vendor: '',
+      make: '',
+      model: '',
     });
-    return Array.from(unique.entries()).map(([id, name]) => ({ id, name }));
-  }, [vehicles]);
+  }, []);
+
+  const handleVehicleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!vehicleForm.vehicleNumber.trim()) {
+      toast.error('Vehicle number is required.');
+      return;
+    }
+
+    setIsSavingVehicle(true);
+    try {
+      await addVehicle({
+        vehicleNumber: vehicleForm.vehicleNumber.trim(),
+        type: vehicleForm.type,
+        status: vehicleForm.status,
+        isRental: vehicleForm.isRental,
+        vendor: vehicleForm.vendor.trim() || null,
+        make: vehicleForm.make.trim() || null,
+        model: vehicleForm.model.trim() || null,
+      });
+      toast.success('Vehicle created.');
+      resetVehicleForm();
+      setIsVehicleDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to create vehicle', error);
+      toast.error(error instanceof Error ? error.message : 'Unable to create vehicle right now.');
+    } finally {
+      setIsSavingVehicle(false);
+    }
+  };
 
   const handleRefuelingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -599,6 +724,7 @@ export function VehiclesPage({
       notes: refuelingForm.notes || null,
     };
 
+    setIsSavingRefueling(true);
     try {
       if (refuelingDialog.editingItem) {
         await editRefuelingRecord(refuelingDialog.editingItem.id, payload);
@@ -614,6 +740,8 @@ export function VehiclesPage({
       toast.error(
         error instanceof Error ? error.message : 'Unable to save refueling record right now.',
       );
+    } finally {
+      setIsSavingRefueling(false);
     }
   };
 
@@ -652,6 +780,8 @@ export function VehiclesPage({
       vehicle.siteName ??
       '';
 
+    const operatorName = usageForm.operator.trim() || vehicle.operator || '';
+
     const payload = {
       vehicleId: vehicle.id,
       vehicleNumber: vehicle.vehicleNumber,
@@ -665,7 +795,7 @@ export function VehiclesPage({
       workCategory: usageForm.workCategory,
       siteId: usageForm.siteId,
       siteName,
-      operator: vehicle.operator ?? '',
+      operator: operatorName,
       fuelConsumed,
       isRental: vehicle.isRental,
       rentalCost: vehicle.isRental ? vehicle.rentalCostPerDay ?? null : null,
@@ -674,6 +804,7 @@ export function VehiclesPage({
       notes: usageForm.notes || null,
     };
 
+    setIsSavingUsage(true);
     try {
       if (usageDialog.editingItem) {
         await editUsageRecord(usageDialog.editingItem.id, payload);
@@ -690,6 +821,8 @@ export function VehiclesPage({
       toast.error(
         error instanceof Error ? error.message : 'Unable to save usage record right now.',
       );
+    } finally {
+      setIsSavingUsage(false);
     }
   };
 
@@ -759,6 +892,25 @@ export function VehiclesPage({
   return (
     <>
       <div className="h-full w-full bg-background flex flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b bg-background/80">
+          <div>
+            <p className="text-sm text-muted-foreground">Vehicles</p>
+            <p className="text-lg font-semibold">
+              {vehicles.length > 0 ? `${vehicles.length} tracked` : 'No vehicles yet'}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="gap-2"
+            onClick={() => {
+              resetVehicleForm();
+              setIsVehicleDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Add Vehicle
+          </Button>
+        </div>
         {currentVehicle ? (
           <Tabs
             value={activeTab}
@@ -1839,6 +1991,137 @@ export function VehiclesPage({
         isDirty={countUsageFilters(draftUsageFilters) > 0}
       />
 
+      {/* New Vehicle Dialog */}
+      <FormDialog
+        title="Add Vehicle"
+        description="Create a vehicle record so you can log refueling and usage against it."
+        isOpen={isVehicleDialogOpen}
+        onOpenChange={(open) => {
+          setIsVehicleDialogOpen(open);
+          if (!open) {
+            resetVehicleForm();
+          }
+        }}
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleVehicleSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="vehicle-number">Vehicle Number *</Label>
+              <Input
+                id="vehicle-number"
+                value={vehicleForm.vehicleNumber}
+                onChange={(event) =>
+                  setVehicleForm((prev) => ({ ...prev, vehicleNumber: event.target.value }))
+                }
+                placeholder="MH-14-TC-9087"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vehicle-type">Vehicle Type *</Label>
+              <Select
+                value={vehicleForm.type}
+                onValueChange={(value) => setVehicleForm((prev) => ({ ...prev, type: value }))}
+              >
+                <SelectTrigger id="vehicle-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VEHICLE_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option.charAt(0).toUpperCase() + option.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="vehicle-status">Status *</Label>
+              <Select
+                value={vehicleForm.status}
+                onValueChange={(value: Vehicle['status']) =>
+                  setVehicleForm((prev) => ({ ...prev, status: value }))
+                }
+              >
+                <SelectTrigger id="vehicle-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VEHICLE_STATUS_OPTIONS.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status.replace('_', ' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Ownership</Label>
+              <div className="flex items-center gap-3 rounded-md border px-4 py-2">
+                <Switch
+                  id="vehicle-owned"
+                  checked={vehicleForm.isRental}
+                  onCheckedChange={(checked) =>
+                    setVehicleForm((prev) => ({ ...prev, isRental: checked }))
+                  }
+                />
+                <span className="text-sm text-muted-foreground">
+                  {vehicleForm.isRental ? 'Rental vehicle' : 'Owned vehicle'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="vehicle-make">Make</Label>
+              <Input
+                id="vehicle-make"
+                value={vehicleForm.make}
+                onChange={(event) =>
+                  setVehicleForm((prev) => ({ ...prev, make: event.target.value }))
+                }
+                placeholder="Volvo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vehicle-model">Model</Label>
+              <Input
+                id="vehicle-model"
+                value={vehicleForm.model}
+                onChange={(event) =>
+                  setVehicleForm((prev) => ({ ...prev, model: event.target.value }))
+                }
+                placeholder="FMX 460"
+              />
+            </div>
+          </div>
+          {vehicleForm.isRental && (
+            <div className="space-y-2">
+              <Label htmlFor="vehicle-vendor">Vendor</Label>
+              <Input
+                id="vehicle-vendor"
+                value={vehicleForm.vendor}
+                onChange={(event) =>
+                  setVehicleForm((prev) => ({ ...prev, vendor: event.target.value }))
+                }
+                placeholder="Shivam Equip Rentals"
+              />
+            </div>
+          )}
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => setIsVehicleDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSavingVehicle}>
+              {isSavingVehicle ? 'Saving…' : 'Create Vehicle'}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
+
       {/* Refueling Dialog */}
       <FormDialog
         title={refuelingDialog.isEditing ? 'Edit Refueling Record' : 'Add Refueling Record'}
@@ -1852,8 +2135,8 @@ export function VehiclesPage({
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleRefuelingSubmit} className="space-y-4">
-          <ScrollArea className="max-h-[60vh] pr-2">
-            <div className="space-y-4 pr-2">
+          <ScrollArea className="max-h-[72vh] pr-2">
+            <div className="space-y-4 pr-2 pb-16">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="vehicle">Vehicle *</Label>
@@ -1964,6 +2247,7 @@ export function VehiclesPage({
                 <div className="space-y-2">
                   <Label htmlFor="vendor">Vendor *</Label>
                   <Input
+                    list="refueling-vendor-options"
                     value={refuelingForm.vendor}
                     onChange={(e) =>
                       setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
@@ -1971,6 +2255,13 @@ export function VehiclesPage({
                     placeholder="BP Fuel Station"
                     required
                   />
+                  {vendorOptions.length > 0 ? (
+                    <datalist id="refueling-vendor-options">
+                      {vendorOptions.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="invoice">Invoice Number *</Label>
@@ -1994,12 +2285,22 @@ export function VehiclesPage({
               </div>
             </div>
           </ScrollArea>
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          <div className="flex justify-end gap-2 pt-4 border-t mt-2">
             <Button type="button" variant="outline" onClick={() => refuelingDialog.closeDialog()}>
               Cancel
             </Button>
-            <Button type="submit">
-              {refuelingDialog.isEditing ? 'Update Refueling' : 'Add Refueling'}
+            <Button type="submit" className="gap-2" disabled={isSavingRefueling}>
+              {isSavingRefueling ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Fuel className="h-4 w-4" />
+                  {refuelingDialog.isEditing ? 'Update Refueling' : 'Add Refueling'}
+                </>
+              )}
             </Button>
           </div>
         </form>
@@ -2015,9 +2316,9 @@ export function VehiclesPage({
         }
         maxWidth="max-w-2xl"
       >
-        <form onSubmit={handleUsageSubmit} className="space-y-4">
-          <ScrollArea className="max-h-[60vh] pr-2">
-            <div className="space-y-4 pr-2">
+        <form onSubmit={handleUsageSubmit} className="flex flex-col gap-4">
+          <ScrollArea className="max-h-[72vh] pr-2">
+            <div className="space-y-4 pr-2 pb-16">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="vehicle">Vehicle *</Label>
@@ -2113,6 +2414,17 @@ export function VehiclesPage({
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="usage-driver">Driver / Operator</Label>
+                <Input
+                  id="usage-driver"
+                  value={usageForm.operator}
+                  onChange={(e) =>
+                    setUsageForm((prev) => ({ ...prev, operator: e.target.value }))
+                  }
+                  placeholder="Enter driver name"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="workCategory">Work Category *</Label>
@@ -2126,11 +2438,12 @@ export function VehiclesPage({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Construction">Construction</SelectItem>
-                      <SelectItem value="Transport">Transport</SelectItem>
-                      <SelectItem value="Delivery">Delivery</SelectItem>
-                      <SelectItem value="Maintenance">Maintenance</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="construction">Construction</SelectItem>
+                      <SelectItem value="transport">Transport</SelectItem>
+                      <SelectItem value="delivery">Delivery</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="inspection">Inspection</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2138,10 +2451,19 @@ export function VehiclesPage({
                   <Label htmlFor="site">Site *</Label>
                   <Select
                     value={usageForm.siteId}
+                    disabled={isSitesLoading || vehicleSiteOptions.length === 0}
                     onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select site" />
+                      <SelectValue
+                        placeholder={
+                          isSitesLoading
+                            ? 'Loading sites...'
+                            : vehicleSiteOptions.length === 0
+                              ? 'No sites found'
+                              : 'Select site'
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {vehicleSiteOptions.map((site) => (
@@ -2153,37 +2475,44 @@ export function VehiclesPage({
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) *</Label>
-                  <Input
-                    type="number"
-                    value={usageForm.fuelConsumed}
-                    onChange={(e) =>
-                      setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))
-                    }
-                    placeholder="40"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    value={usageForm.notes}
-                    onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Additional notes..."
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) *</Label>
+                <Input
+                  type="number"
+                  value={usageForm.fuelConsumed}
+                  onChange={(e) =>
+                    setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))
+                  }
+                  placeholder="40"
+                  required
+                />
               </div>
             </div>
           </ScrollArea>
+          <div className="space-y-2 pt-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              value={usageForm.notes}
+              onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
+              placeholder="Additional notes..."
+            />
+          </div>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => usageDialog.closeDialog()}>
               Cancel
             </Button>
-            <Button type="submit">
-              <Activity className="h-4 w-4 mr-2" />
-              {usageDialog.isEditing ? 'Update Usage Record' : 'Add Usage Record'}
+            <Button type="submit" className="gap-2" disabled={isSavingUsage}>
+              {isSavingUsage ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Activity className="h-4 w-4" />
+                  {usageDialog.isEditing ? 'Update Usage Record' : 'Add Usage Record'}
+                </>
+              )}
             </Button>
           </div>
         </form>

@@ -235,8 +235,6 @@ export async function POST(request: Request) {
       notes: body.notes ?? null,
       recorded_by: ctx.userId,
       organization_id: ctx.organizationId,
-      created_by: ctx.userId,
-      updated_by: ctx.userId,
     };
 
     const { data, error } = await supabase
@@ -274,7 +272,10 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error('Error creating usage record', error);
-      return NextResponse.json({ error: 'Failed to create usage record.' }, { status: 500 });
+      return NextResponse.json(
+        { error: error?.message || 'Failed to create usage record.' },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ record: mapRowToUsage(data as VehicleUsageRow) }, { status: 201 });

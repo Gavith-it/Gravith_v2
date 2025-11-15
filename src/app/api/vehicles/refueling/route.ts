@@ -208,8 +208,6 @@ export async function POST(request: Request) {
       notes: body.notes ?? null,
       recorded_by: ctx.userId,
       organization_id: ctx.organizationId,
-      created_by: ctx.userId,
-      updated_by: ctx.userId,
     };
 
     const { data, error } = await supabase
@@ -241,7 +239,10 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error('Error creating refueling record', error);
-      return NextResponse.json({ error: 'Failed to create refueling record.' }, { status: 500 });
+      return NextResponse.json(
+        { error: error?.message || 'Failed to create refueling record.' },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json(
