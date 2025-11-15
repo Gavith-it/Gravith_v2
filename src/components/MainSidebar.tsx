@@ -122,26 +122,24 @@ export function MainSidebar({ currentPage, onNavigate }: MainSidebarProps) {
   return (
     <TooltipProvider>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="border-b border-sidebar-border">
-          <div className="flex items-center justify-center h-full">
-            <div className="flex items-center">
-              <Image
-                src={gLogo}
-                alt="Build Logo"
-                width={40}
-                height={40}
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  objectFit: 'fill',
-                }}
-              />
-              {state === 'expanded' && (
-                <span className="text-2xl font-bold text-sidebar-foreground leading-tight tracking-tight ml-3">
-                  BUILD
-                </span>
-              )}
-            </div>
+        <SidebarHeader className="border-b border-sidebar-border h-16 px-4">
+          <div className="flex h-full w-full items-center justify-center">
+            <Image
+              src={gLogo}
+              alt="Build Logo"
+              width={40}
+              height={40}
+              style={{
+                width: '40px',
+                height: '40px',
+                objectFit: 'fill',
+              }}
+            />
+            {state === 'expanded' && (
+              <span className="text-2xl font-bold text-sidebar-foreground leading-tight tracking-tight ml-3">
+                BUILD
+              </span>
+            )}
           </div>
         </SidebarHeader>
 
