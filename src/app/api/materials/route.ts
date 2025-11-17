@@ -153,7 +153,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load materials.' }, { status: 500 });
     }
 
-    const { data: purchaseRowsRaw, error: purchaseError } = await supabase
+    const { data: purchaseRowsRaw } = await supabase
       .from('material_purchases')
       .select('id, material_id, quantity, consumed_quantity, remaining_quantity')
       .eq('organization_id', organizationId);

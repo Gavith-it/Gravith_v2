@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { buildPurchaseUsageMap } from '@/app/api/_utils/work-progress-usage';
+import { formatDateOnly } from '@/lib/utils/date';
 import type { SharedMaterial } from '@/lib/contexts/materials-context';
 import { createClient } from '@/lib/supabase/server';
 import type { MaterialMaster } from '@/types/entities';
-import type { MaterialMasterInput } from '@/types/materials';
-import { formatDateOnly } from '@/lib/utils/date';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 

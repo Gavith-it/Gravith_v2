@@ -10,7 +10,6 @@ import * as z from 'zod';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -38,10 +37,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 import type { SharedMaterial } from '@/lib/contexts';
 import { useMaterialReceipts, useMaterials, useVendors } from '@/lib/contexts';
 import type { MaterialMaster } from '@/types/entities';
-import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface PurchaseFormProps {
   selectedSite?: string;
@@ -126,8 +125,6 @@ export function PurchaseForm({
   const isEditMode = !!editingMaterial;
   const formId = isEditMode ? 'purchase-edit-form' : 'purchase-new-form';
   const [isClient, setIsClient] = React.useState(false);
-  const [materialOptions, setMaterialOptions] = useState<MaterialMaster[]>([]);
-  const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(true);
   const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
   const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
 
@@ -188,34 +185,7 @@ export function PurchaseForm({
     void loadSites();
   }, []);
 
-  useEffect(() => {
-    const loadMaterials = async () => {
-      try {
-        setIsLoadingMaterials(true);
-        const response = await fetch('/api/materials', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          materials?: MaterialMaster[];
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load materials.');
-        }
-
-        setMaterialOptions(payload.materials ?? []);
-      } catch (error) {
-        console.error('Failed to load materials', error);
-        toast.error('Failed to load materials list.');
-        setMaterialOptions([]);
-      } finally {
-        setIsLoadingMaterials(false);
-      }
-    };
-
-    void loadMaterials();
-  }, []);
-
-  // Removed auto-fill logic - users now type material names freely
+  // Material options loading removed - users now type material names freely
 
   // Get unlinked receipts directly from receipts array
   const unlinkedReceipts = React.useMemo(() => {
@@ -525,7 +495,7 @@ export function PurchaseForm({
                   value={field.value ?? ''}
                 />
                 <FieldDescription>
-                  Enter the material name. It will be automatically added to Material Master if it doesn't exist.
+                  Enter the material name. It will be automatically added to Material Master if it doesn&apos;t exist.
                 </FieldDescription>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </Field>
