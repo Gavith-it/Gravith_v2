@@ -10,6 +10,7 @@ import * as z from 'zod';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -363,179 +364,182 @@ export function PurchaseForm({
   // Prevent hydration issues by only rendering after client-side mount
   if (!isClient) {
     return (
-      <div className="w-full">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-        </div>
-      </div>
+      <Card className="w-full">
+        <CardContent className="pt-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <form
-      id={formId}
-      onSubmit={form.handleSubmit(handleFormSubmit)}
-      aria-labelledby="purchase-form-heading"
-      className="w-full"
-    >
-      <FieldGroup>
-        {/* Vendor Row */}
-        <Controller
-          name="vendor"
-          control={form.control}
-          render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor={`${formId}-vendor`}>
-                Vendor <span className="text-destructive">*</span>
-              </FieldLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger id={`${formId}-vendor`} aria-invalid={fieldState.invalid}>
-                  <SelectValue
-                    placeholder={
-                      isVendorsLoading
-                        ? 'Loading vendors…'
-                        : vendorOptions.length === 0
-                          ? 'No vendors available'
-                          : 'Select vendor'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {isVendorsLoading ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">Loading vendors…</div>
-                  ) : vendorOptions.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No vendors found. Add vendors first.
-                    </div>
-                  ) : (
-                    vendorOptions.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.name}>
-                        {vendor.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                Supplier of the material. Maintain vendors from the Vendors page.
-              </FieldDescription>
-              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
-          )}
-        />
+    <Card className="w-full">
+      <CardContent className="pt-6">
+        <form
+          id={formId}
+          onSubmit={form.handleSubmit(handleFormSubmit)}
+          aria-labelledby="purchase-form-heading"
+        >
+          <FieldGroup>
+            {/* Vendor and Site Row */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Controller
+                name="vendor"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-vendor`}>
+                      Vendor <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id={`${formId}-vendor`} aria-invalid={fieldState.invalid}>
+                        <SelectValue
+                          placeholder={
+                            isVendorsLoading
+                              ? 'Loading vendors…'
+                              : vendorOptions.length === 0
+                                ? 'No vendors available'
+                                : 'Select vendor'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {isVendorsLoading ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">Loading vendors…</div>
+                        ) : vendorOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No vendors found. Add vendors first.
+                          </div>
+                        ) : (
+                          vendorOptions.map((vendor) => (
+                            <SelectItem key={vendor.id} value={vendor.name}>
+                              {vendor.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      Supplier of the material. Maintain vendors from the Vendors page.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
 
-        {/* Site and Material Row */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Controller
-            name="site"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-site`}>
-                  Site <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                disabled={!!selectedSite || isLoadingSites || siteOptionEntries.length === 0}
-                >
-                  <SelectTrigger
-                    id={`${formId}-site`}
-                    aria-invalid={fieldState.invalid}
-                    className={selectedSite ? 'bg-muted' : ''}
-                  >
-                  <SelectValue
-                    placeholder={
-                      isLoadingSites
-                        ? 'Loading sites…'
-                        : siteOptionEntries.length === 0
-                          ? 'No sites available'
-                          : 'Select site'
-                    }
-                  />
-                  </SelectTrigger>
-                  <SelectContent>
-                  {isLoadingSites ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">Loading sites…</div>
-                  ) : siteOptionEntries.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No sites found. Add sites first.
-                    </div>
-                  ) : (
-                    siteOptionEntries.map((site) => (
-                      <SelectItem key={site.id} value={site.name}>
-                        {site.name}
-                      </SelectItem>
-                    ))
-                  )}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>Delivery destination for this material.</FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
+              <Controller
+                name="site"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-site`}>
+                      Site <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={!!selectedSite || isLoadingSites || siteOptionEntries.length === 0}
+                    >
+                      <SelectTrigger
+                        id={`${formId}-site`}
+                        aria-invalid={fieldState.invalid}
+                        className={selectedSite ? 'bg-muted' : ''}
+                      >
+                        <SelectValue
+                          placeholder={
+                            isLoadingSites
+                              ? 'Loading sites…'
+                              : siteOptionEntries.length === 0
+                                ? 'No sites available'
+                                : 'Select site'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {isLoadingSites ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">Loading sites…</div>
+                        ) : siteOptionEntries.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No sites found. Add sites first.
+                          </div>
+                        ) : (
+                          siteOptionEntries.map((site) => (
+                            <SelectItem key={site.id} value={site.name}>
+                              {site.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>Delivery destination for this material.</FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </div>
 
-          <Controller
-            name="materialName"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-material`}>
-                  Material <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  {...field}
-                  id={`${formId}-material`}
-                  type="text"
-                  aria-invalid={fieldState.invalid}
-                  placeholder="Enter material name (e.g., Cement, Steel, Paint)"
-                  value={field.value ?? ''}
-                />
-                <FieldDescription>
-                  Enter the material name. It will be automatically added to Material Master if it doesn&apos;t exist.
-                </FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
+            {/* Material and Category Row */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Controller
+                name="materialName"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-material`}>
+                      Material <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      {...field}
+                      id={`${formId}-material`}
+                      type="text"
+                      aria-invalid={fieldState.invalid}
+                      placeholder="Enter material name (e.g., Cement, Steel, Paint)"
+                      value={field.value ?? ''}
+                      autoComplete="off"
+                    />
+                    <FieldDescription>
+                      Enter the material name. It will be automatically added to Material Master if it doesn&apos;t exist.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
 
-          <Controller
-            name="category"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-category`}>
-                  Category <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                >
-                  <SelectTrigger id={`${formId}-category`} aria-invalid={fieldState.invalid}>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materialCategories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>
-                  Material category for organization and reporting.
-                </FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
-        </div>
+              <Controller
+                name="category"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-category`}>
+                      Category <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id={`${formId}-category`} aria-invalid={fieldState.invalid}>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {materialCategories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      Material category for organization and reporting.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </div>
 
-        {/* Quantity, Unit, and Unit Rate Row */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Quantity, Unit, and Unit Rate Row */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Controller
             name="quantity"
             control={form.control}
@@ -556,6 +560,7 @@ export function PurchaseForm({
                     field.onChange(value === '' ? undefined : Number(value));
                   }}
                   value={field.value ?? ''}
+                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                 />
                 <FieldDescription>Total quantity purchased.</FieldDescription>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -563,59 +568,60 @@ export function PurchaseForm({
             )}
           />
 
-          <Controller
-            name="unit"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-unit`}>
-                  Unit <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger id={`${formId}-unit`} aria-invalid={fieldState.invalid}>
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {units.map((unit) => (
-                      <SelectItem key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>Unit of measurement.</FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
+              <Controller
+                name="unit"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-unit`}>
+                      Unit <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id={`${formId}-unit`} aria-invalid={fieldState.invalid}>
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {units.map((unit) => (
+                          <SelectItem key={unit.value} value={unit.value}>
+                            {unit.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>Unit of measurement.</FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
 
-          <Controller
-            name="unitRate"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-unit-rate`}>
-                  Unit Rate (₹) <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  {...field}
-                  id={`${formId}-unit-rate`}
-                  type="number"
-                  step="0.01"
-                  aria-invalid={fieldState.invalid}
-                  placeholder="Enter rate"
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    field.onChange(value === '' ? undefined : Number(value));
-                  }}
-                  value={field.value ?? ''}
-                />
-                <FieldDescription>Price per unit.</FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
-        </div>
+              <Controller
+                name="unitRate"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-unit-rate`}>
+                      Unit Rate (₹) <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      {...field}
+                      id={`${formId}-unit-rate`}
+                      type="number"
+                      step="0.01"
+                      aria-invalid={fieldState.invalid}
+                      placeholder="Enter rate"
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value === '' ? undefined : Number(value));
+                      }}
+                      value={field.value ?? ''}
+                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                    />
+                    <FieldDescription>Price per unit.</FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </div>
 
         {/* Invoice and Purchase Date Row */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -640,27 +646,27 @@ export function PurchaseForm({
             )}
           />
 
-          <Controller
-            name="purchaseDate"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-purchase-date`}>
-                  Purchase Date <span className="text-destructive">*</span>
-                </FieldLabel>
-                <DatePicker
-                  date={field.value}
-                  onSelect={(date) => field.onChange(date)}
-                  placeholder="Select purchase date"
-                  showClear={!isEditMode}
-                  ariaLabel="Purchase date"
-                />
-                <FieldDescription>Date of material purchase.</FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
-        </div>
+              <Controller
+                name="purchaseDate"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-purchase-date`}>
+                      Purchase Date <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <DatePicker
+                      date={field.value}
+                      onSelect={(date) => field.onChange(date)}
+                      placeholder="Select purchase date"
+                      showClear={!isEditMode}
+                      ariaLabel="Purchase date"
+                    />
+                    <FieldDescription>Date of material purchase.</FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </div>
 
         {/* Link Material Receipts (Optional) */}
         <Controller
@@ -808,27 +814,25 @@ export function PurchaseForm({
             </div>
           </div>
         )}
-      </FieldGroup>
-      <div className="flex justify-end gap-2 border-t pt-6 mt-8">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          aria-label="Cancel and close form"
-          disabled={form.formState.isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          form={formId}
-          disabled={isSubmitDisabled}
-          aria-label={getSubmitButtonText()}
-        >
-          <ShoppingCart className="h-4 w-4 mr-2" />
-          {getSubmitButtonText()}
-        </Button>
-      </div>
-    </form>
+          </FieldGroup>
+        </form>
+      </CardContent>
+      <CardFooter className="border-t">
+        <Field orientation="horizontal" className="justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={form.formState.isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} disabled={isSubmitDisabled}>
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            {getSubmitButtonText()}
+          </Button>
+        </Field>
+      </CardFooter>
+    </Card>
   );
 }

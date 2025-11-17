@@ -26,6 +26,8 @@ export interface MaterialMasterItem {
   taxRate: number;
   createdAt?: string;
   updatedAt?: string;
+  openingBalance?: number | null;
+  siteAllocations?: Array<{ siteId: string; siteName: string; quantity: number }>;
 }
 
 export const masterMaterials: MaterialMasterItem[] = [

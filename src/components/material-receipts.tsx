@@ -22,7 +22,6 @@ import { useTableState } from '../lib/hooks/useTableState';
 import { useRouter } from 'next/navigation';
 
 import { DataTable } from './common/DataTable';
-import { FormDialog } from './common/FormDialog';
 import { MaterialReceiptForm } from './forms/MaterialReceiptForm';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -36,6 +35,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -553,14 +553,8 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                     <RotateCcw className="h-4 w-4" />
                     <span className="hidden sm:inline">Clear filters</span>
                   </Button>
-                  <FormDialog
-                    title={dialog.editingItem ? 'Edit Material Receipt' : 'Add Material Receipt'}
-                    description={
-                      dialog.editingItem
-                        ? 'Update material receipt details'
-                        : 'Record a new material receipt'
-                    }
-                    isOpen={dialog.isDialogOpen}
+                  <Dialog
+                    open={dialog.isDialogOpen}
                     onOpenChange={(open) => {
                       if (open) {
                         dialog.openDialog();
@@ -568,8 +562,8 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                         dialog.closeDialog();
                       }
                     }}
-                    maxWidth="max-w-3xl"
-                    trigger={
+                  >
+                    <DialogTrigger asChild>
                       <Button
                         onClick={() => dialog.openDialog()}
                         className="gap-2 transition-all hover:shadow-md whitespace-nowrap"
@@ -577,14 +571,25 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                         <Plus className="h-4 w-4" />
                         <span className="hidden sm:inline">Add Receipt</span>
                       </Button>
-                    }
-                  >
-                    <MaterialReceiptForm
-                      editingReceipt={dialog.editingItem}
-                      onSubmit={handleFormSubmit}
-                      onCancel={handleFormCancel}
-                    />
-                  </FormDialog>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader className="space-y-3">
+                        <DialogTitle className="text-xl">
+                          {dialog.editingItem ? 'Edit Material Receipt' : 'Add Material Receipt'}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {dialog.editingItem
+                            ? 'Update material receipt details'
+                            : 'Record a new material receipt'}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <MaterialReceiptForm
+                        editingReceipt={dialog.editingItem}
+                        onSubmit={handleFormSubmit}
+                        onCancel={handleFormCancel}
+                      />
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
 

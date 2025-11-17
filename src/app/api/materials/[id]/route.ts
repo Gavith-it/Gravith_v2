@@ -23,6 +23,17 @@ type MaterialRow = {
   is_active: boolean | null;
   hsn: string | null;
   tax_rate: number | string | null;
+  opening_balance: number | string | null;
+  organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type SiteAllocationRow = {
+  id: string;
+  material_id: string;
+  site_id: string;
+  opening_balance: number | string | null;
   organization_id: string;
   created_at: string | null;
   updated_at: string | null;
@@ -53,6 +64,7 @@ function mapRowToMaterial(row: MaterialRow): MaterialMaster & {
     updatedAt,
     createdDate: createdAt.split('T')[0] ?? createdAt,
     lastUpdated: updatedAt.split('T')[0] ?? updatedAt,
+    openingBalance: row.opening_balance ? Number(row.opening_balance) : null,
   };
 }
 
@@ -153,7 +165,43 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     const body = (await request.json()) as Partial<MaterialMasterInput> & {
       standardRate?: number;
+      openingBalance?: number | null;
+      siteAllocations?: Array<{ siteId: string; siteName: string; quantity: number }>;
     };
+
+    // Validate site allocations if provided
+    if (body.siteAllocations && body.siteAllocations.length > 0) {
+      const calculatedOB = body.siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+      
+      if (body.openingBalance !== undefined && body.openingBalance !== null && Math.abs(calculatedOB - body.openingBalance) > 0.01) {
+        return NextResponse.json(
+          { error: 'Opening balance does not match sum of site allocations.' },
+          { status: 400 },
+        );
+      }
+
+      for (const allocation of body.siteAllocations) {
+        if (!allocation.siteId || !allocation.quantity || allocation.quantity <= 0) {
+          return NextResponse.json(
+            { error: 'Each site allocation must have a valid site and quantity > 0.' },
+            { status: 400 },
+          );
+        }
+
+        // Validate site belongs to organization
+        const siteRes = await resolveSiteSelection(
+          supabase,
+          allocation.siteId,
+          ctx.organizationId,
+        );
+        if (!siteRes.ok) {
+          return NextResponse.json(
+            { error: `Invalid site in allocation: ${siteRes.message}` },
+            { status: siteRes.status },
+          );
+        }
+      }
+    }
 
     const updatePayload: Record<string, unknown> = {
       updated_by: ctx.userId,
@@ -162,16 +210,41 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (body.name) updatePayload['name'] = body.name;
     if (body.category) updatePayload['category'] = body.category;
     if (body.unit) updatePayload['unit'] = body.unit;
-    if (typeof body.quantity === 'number') updatePayload['quantity'] = body.quantity;
     if (typeof body.consumedQuantity === 'number') {
       const normalizedConsumed = Math.max(0, body.consumedQuantity);
       updatePayload['consumed_quantity'] = normalizedConsumed;
     }
-    if (typeof body.quantity === 'number') updatePayload['quantity'] = body.quantity;
     if (typeof body.standardRate === 'number') updatePayload['standard_rate'] = body.standardRate;
     if (typeof body.isActive === 'boolean') updatePayload['is_active'] = body.isActive;
     if (typeof body.hsn === 'string') updatePayload['hsn'] = body.hsn;
     if (typeof body.taxRate === 'number') updatePayload['tax_rate'] = body.taxRate;
+
+    // Handle opening balance and site allocations
+    if (body.siteAllocations !== undefined) {
+      // Calculate opening balance from site allocations if provided
+      const calculatedOpeningBalance =
+        body.siteAllocations && body.siteAllocations.length > 0
+          ? body.siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0)
+          : body.openingBalance ?? null;
+
+      updatePayload['opening_balance'] = calculatedOpeningBalance;
+
+      // Update quantity if OB is provided
+      if (calculatedOpeningBalance !== null) {
+        updatePayload['quantity'] = calculatedOpeningBalance;
+      } else if (typeof body.quantity === 'number') {
+        updatePayload['quantity'] = body.quantity;
+      }
+    } else if (body.openingBalance !== undefined) {
+      updatePayload['opening_balance'] = body.openingBalance;
+      if (body.openingBalance !== null && typeof body.quantity !== 'number') {
+        updatePayload['quantity'] = body.openingBalance;
+      }
+    }
+
+    if (typeof body.quantity === 'number' && body.siteAllocations === undefined) {
+      updatePayload['quantity'] = body.quantity;
+    }
 
     if ('siteId' in body) {
       const siteResolution = await resolveSiteSelection(supabase, body.siteId ?? null, ctx.organizationId);
@@ -187,7 +260,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       .update(updatePayload)
       .eq('id', id)
       .select(
-        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, organization_id, created_at, updated_at',
+        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, opening_balance, organization_id, created_at, updated_at',
       )
       .single();
 
@@ -196,7 +269,83 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update material.' }, { status: 500 });
     }
 
-    return NextResponse.json({ material: mapRowToMaterial(updated as MaterialRow) });
+    // Handle site allocations update if provided
+    if (body.siteAllocations !== undefined) {
+      // Delete existing allocations
+      const { error: deleteError } = await supabase
+        .from('material_site_allocations')
+        .delete()
+        .eq('material_id', id)
+        .eq('organization_id', ctx.organizationId);
+
+      if (deleteError) {
+        console.error('Error deleting existing site allocations', deleteError);
+        return NextResponse.json(
+          { error: 'Failed to update site allocations.' },
+          { status: 500 },
+        );
+      }
+
+      // Insert new allocations if provided
+      if (body.siteAllocations.length > 0) {
+        const allocationPayloads = body.siteAllocations.map((allocation) => ({
+          material_id: id,
+          site_id: allocation.siteId,
+          opening_balance: allocation.quantity,
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          updated_by: ctx.userId,
+        }));
+
+        const { error: allocationsError } = await supabase
+          .from('material_site_allocations')
+          .insert(allocationPayloads);
+
+        if (allocationsError) {
+          console.error('Error creating site allocations', allocationsError);
+          return NextResponse.json(
+            { error: 'Failed to create site allocations.' },
+            { status: 500 },
+          );
+        }
+      }
+    }
+
+    // Fetch site allocations for response
+    const { data: allocationsData } = await supabase
+      .from('material_site_allocations')
+      .select('material_id, site_id, opening_balance')
+      .eq('material_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    let siteAllocationsResponse: Array<{ siteId: string; siteName: string; quantity: number }> = [];
+    if (allocationsData && allocationsData.length > 0) {
+      const siteIds = [...new Set((allocationsData as SiteAllocationRow[]).map((a) => a.site_id))];
+      const { data: sitesData } = await supabase
+        .from('sites')
+        .select('id, name')
+        .in('id', siteIds)
+        .eq('organization_id', ctx.organizationId);
+
+      const siteNameMap = new Map<string, string>();
+      ((sitesData || []) as Array<{ id: string; name: string }>).forEach((site) => {
+        siteNameMap.set(site.id, site.name);
+      });
+
+      siteAllocationsResponse = (allocationsData as SiteAllocationRow[]).map((allocation) => ({
+        siteId: allocation.site_id,
+        siteName: siteNameMap.get(allocation.site_id) || '',
+        quantity: Number(allocation.opening_balance ?? 0),
+      }));
+    }
+
+    const material = mapRowToMaterial(updated as MaterialRow);
+    return NextResponse.json({
+      material: {
+        ...material,
+        siteAllocations: siteAllocationsResponse.length > 0 ? siteAllocationsResponse : undefined,
+      },
+    });
   } catch (error) {
     console.error('Unexpected error updating material', error);
     return NextResponse.json({ error: 'Unexpected error updating material.' }, { status: 500 });
@@ -278,6 +427,18 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
         },
         { status: 400 },
       );
+    }
+
+    // Delete site allocations first (they have FK cascade, but explicit delete is cleaner)
+    const { error: allocationsDeleteError } = await supabase
+      .from('material_site_allocations')
+      .delete()
+      .eq('material_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (allocationsDeleteError) {
+      console.error('Error deleting site allocations before material delete', allocationsDeleteError);
+      // Continue with material delete even if allocations delete fails (FK cascade will handle it)
     }
 
     const { error: deleteError } = await supabase.from('material_masters').delete().eq('id', id);

@@ -18,13 +18,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getExpenseColumns } from './expenses-columns';
 
 import { DataTable } from '@/components/common/DataTable';
-import { FormDialog } from '@/components/common/FormDialog';
 import type { ExpenseFormData } from '@/components/forms/ExpenseForm';
 import { ExpenseForm } from '@/components/forms/ExpenseForm';
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
@@ -630,102 +637,112 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
         </div>
 
         {/* Add Expense Dialog */}
-        <FormDialog
-          title={dialogState.isEditing ? 'Edit Expense' : 'Add New Expense'}
-          description={
-            dialogState.isEditing
-              ? 'Update the expense details'
-              : 'Create a new expense entry for your project'
-          }
-          isOpen={dialogState.isDialogOpen}
+        <Dialog
+          open={dialogState.isDialogOpen}
           onOpenChange={(open) =>
             open ? dialogState.openDialog(dialogState.editingItem) : dialogState.closeDialog()
           }
-          maxWidth="max-w-2xl"
         >
-          <ExpenseForm
-            onSubmit={handleExpenseSubmit}
-            onCancel={dialogState.closeDialog}
-            isLoading={isSaving}
-            lockedSite={filterBySite}
-            submitLabel={dialogState.isEditing ? 'Update Expense' : 'Add Expense'}
-            loadingLabel={dialogState.isEditing ? 'Updating...' : 'Adding...'}
-            defaultValues={
-              dialogState.editingItem
-                ? {
-                    category: dialogState.editingItem.category as ExpenseFormData['category'],
-                    subcategory: dialogState.editingItem.subcategory || '',
-                    description: dialogState.editingItem.description,
-                    amount: dialogState.editingItem.amount,
-                    date: new Date(dialogState.editingItem.date),
-                    vendor: dialogState.editingItem.vendor || '',
-                    siteId: dialogState.editingItem.siteId || '',
-                    siteName: dialogState.editingItem.siteName || '',
-                    receipt: dialogState.editingItem.receipt || '',
-                    approvedBy: dialogState.editingItem.approvedBy || '',
-                  }
-                : undefined
-            }
-          />
-        </FormDialog>
-
-        <FormDialog
-          title="Expense Details"
-          description="Review the expense information"
-          isOpen={Boolean(viewingExpense)}
-          onOpenChange={(open) => (!open ? setViewingExpense(null) : null)}
-          maxWidth="max-w-xl"
-        >
-          {viewingExpense && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Category</p>
-                  <p className="font-medium">{viewingExpense.category}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Subcategory</p>
-                  <p className="font-medium">{viewingExpense.subcategory || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Amount</p>
-                  <p className="font-medium">₹{viewingExpense.amount.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Date</p>
-                  <p className="font-medium">{formatDate(viewingExpense.date)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Vendor</p>
-                  <p className="font-medium">{viewingExpense.vendor || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Site</p>
-                  <p className="font-medium">{viewingExpense.siteName || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Receipt</p>
-                  <p className="font-medium">{viewingExpense.receipt || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Approved By</p>
-                  <p className="font-medium">{viewingExpense.approvedBy || 'N/A'}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-muted-foreground mb-1">Description</p>
-                <p className="text-sm leading-relaxed">
-                  {viewingExpense.description || 'No description provided.'}
-                </p>
-              </div>
-              <div className="flex justify-end">
-                <Button variant="outline" onClick={() => setViewingExpense(null)}>
-                  Close
-                </Button>
-              </div>
+          <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
+              <DialogTitle className="text-xl">
+                {dialogState.isEditing ? 'Edit Expense' : 'Add New Expense'}
+              </DialogTitle>
+              <DialogDescription>
+                {dialogState.isEditing
+                  ? 'Update the expense details'
+                  : 'Create a new expense entry for your project'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 min-h-0 overflow-y-auto px-6">
+              <ExpenseForm
+                onSubmit={handleExpenseSubmit}
+                onCancel={dialogState.closeDialog}
+                isLoading={isSaving}
+                lockedSite={filterBySite}
+                submitLabel={dialogState.isEditing ? 'Update Expense' : 'Add Expense'}
+                loadingLabel={dialogState.isEditing ? 'Updating...' : 'Adding...'}
+                defaultValues={
+                  dialogState.editingItem
+                    ? {
+                        category: dialogState.editingItem.category as ExpenseFormData['category'],
+                        subcategory: dialogState.editingItem.subcategory || '',
+                        description: dialogState.editingItem.description,
+                        amount: dialogState.editingItem.amount,
+                        date: new Date(dialogState.editingItem.date),
+                        vendor: dialogState.editingItem.vendor || '',
+                        siteId: dialogState.editingItem.siteId || '',
+                        siteName: dialogState.editingItem.siteName || '',
+                        receipt: dialogState.editingItem.receipt || '',
+                        approvedBy: dialogState.editingItem.approvedBy || '',
+                      }
+                    : undefined
+                }
+              />
             </div>
-          )}
-        </FormDialog>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(viewingExpense)}
+          onOpenChange={(open) => (!open ? setViewingExpense(null) : null)}
+        >
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Expense Details</DialogTitle>
+              <DialogDescription>Review the expense information</DialogDescription>
+            </DialogHeader>
+            {viewingExpense && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Category</p>
+                    <p className="font-medium">{viewingExpense.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Subcategory</p>
+                    <p className="font-medium">{viewingExpense.subcategory || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Amount</p>
+                    <p className="font-medium">₹{viewingExpense.amount.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Date</p>
+                    <p className="font-medium">{formatDate(viewingExpense.date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Vendor</p>
+                    <p className="font-medium">{viewingExpense.vendor || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Site</p>
+                    <p className="font-medium">{viewingExpense.siteName || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Receipt</p>
+                    <p className="font-medium">{viewingExpense.receipt || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Approved By</p>
+                    <p className="font-medium">{viewingExpense.approvedBy || 'N/A'}</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-muted-foreground mb-1">Description</p>
+                  <p className="text-sm leading-relaxed">
+                    {viewingExpense.description || 'No description provided.'}
+                  </p>
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={() => setViewingExpense(null)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <FilterSheet
           open={isFilterSheetOpen}

@@ -20,7 +20,6 @@ import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
 
 import { DataTable } from './common/DataTable';
-import { FormDialog } from './common/FormDialog';
 import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 import { PurchaseForm } from './shared/PurchaseForm';
@@ -29,6 +28,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -488,10 +495,8 @@ return (
                     <RotateCcw className="h-4 w-4" />
                     <span className="hidden sm:inline">Clear filters</span>
                   </Button>
-                  <FormDialog
-                    title="Add Material Purchase"
-                    description="Record a new material purchase"
-                    isOpen={dialog.isDialogOpen}
+                  <Dialog
+                    open={dialog.isDialogOpen}
                     onOpenChange={(open) => {
                       if (open) {
                         dialog.openDialog();
@@ -499,8 +504,8 @@ return (
                         dialog.closeDialog();
                       }
                     }}
-                    maxWidth="max-w-4xl"
-                    trigger={
+                  >
+                    <DialogTrigger asChild>
                       <Button
                         onClick={() => dialog.openDialog()}
                         className="gap-2 transition-all hover:shadow-md whitespace-nowrap"
@@ -508,19 +513,26 @@ return (
                         <Plus className="h-4 w-4" />
                         <span className="hidden sm:inline">Add Purchase</span>
                       </Button>
-                    }
-                  >
-                    <ScrollArea className="h-[60vh] md:h-[65vh] pr-6">
-                      <div className="pr-1 pb-4">
-                        <PurchaseForm
-                          selectedSite={filterBySite}
-                          editingMaterial={dialog.editingItem}
-                          onSubmit={handleFormSubmit}
-                          onCancel={handleFormCancel}
-                        />
-                      </div>
-                    </ScrollArea>
-                  </FormDialog>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader className="space-y-3">
+                        <DialogTitle className="text-xl">
+                          {dialog.editingItem ? 'Edit Material Purchase' : 'Add Material Purchase'}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {dialog.editingItem
+                            ? 'Update material purchase details'
+                            : 'Record a new material purchase'}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <PurchaseForm
+                        selectedSite={filterBySite}
+                        editingMaterial={dialog.editingItem}
+                        onSubmit={handleFormSubmit}
+                        onCancel={handleFormCancel}
+                      />
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
 

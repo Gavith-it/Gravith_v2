@@ -20,11 +20,22 @@ type MaterialRow = {
   is_active: boolean | null;
   hsn: string | null;
   tax_rate: number | string | null;
+  opening_balance: number | string | null;
   organization_id: string;
   created_at: string | null;
   updated_at: string | null;
   created_by?: string | null;
   updated_by?: string | null;
+};
+
+type SiteAllocationRow = {
+  id: string;
+  material_id: string;
+  site_id: string;
+  opening_balance: number | string | null;
+  organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 function mapRowToMaterial(
@@ -60,6 +71,7 @@ function mapRowToMaterial(
     updatedAt,
     createdDate: createdAt.split('T')[0] ?? createdAt,
     lastUpdated: updatedAt.split('T')[0] ?? updatedAt,
+    openingBalance: row.opening_balance ? Number(row.opening_balance) : null,
   };
 }
 
@@ -143,7 +155,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('material_masters')
       .select(
-        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, organization_id, created_at, updated_at',
+        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, opening_balance, organization_id, created_at, updated_at',
       )
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: true });
@@ -207,9 +219,55 @@ export async function GET() {
       materialAggregates.set(masterId, current);
     });
 
-    const materials = (data ?? []).map((row) =>
-      mapRowToMaterial(row as MaterialRow, materialAggregates),
-    );
+    // Fetch site allocations for all materials
+    const materialIds = (data ?? []).map((row) => row.id);
+    const siteAllocationsMap = new Map<string, Array<{ siteId: string; siteName: string; quantity: number }>>();
+
+    if (materialIds.length > 0) {
+      const { data: allocationsData, error: allocationsError } = await supabase
+        .from('material_site_allocations')
+        .select('material_id, site_id, opening_balance')
+        .in('material_id', materialIds)
+        .eq('organization_id', organizationId);
+
+      if (!allocationsError && allocationsData) {
+        // Fetch site names for allocations
+        const siteIds = [...new Set((allocationsData as SiteAllocationRow[]).map((a) => a.site_id))];
+        const { data: sitesData } = await supabase
+          .from('sites')
+          .select('id, name')
+          .in('id', siteIds)
+          .eq('organization_id', organizationId);
+
+        const siteNameMap = new Map<string, string>();
+        ((sitesData || []) as Array<{ id: string; name: string }>).forEach((site) => {
+          siteNameMap.set(site.id, site.name);
+        });
+
+        // Build allocations map
+        (allocationsData as SiteAllocationRow[]).forEach((allocation) => {
+          const materialId = allocation.material_id;
+          const siteId = allocation.site_id;
+          const quantity = Number(allocation.opening_balance ?? 0);
+          const siteName = siteNameMap.get(siteId) || '';
+
+          if (!siteAllocationsMap.has(materialId)) {
+            siteAllocationsMap.set(materialId, []);
+          }
+          siteAllocationsMap.get(materialId)!.push({ siteId, siteName, quantity });
+        });
+      }
+    }
+
+    const materials = (data ?? []).map((row) => {
+      const material = mapRowToMaterial(row as MaterialRow, materialAggregates);
+      const allocations = siteAllocationsMap.get((row as MaterialRow).id) || [];
+      return {
+        ...material,
+        openingBalance: row.opening_balance ? Number(row.opening_balance) : null,
+        siteAllocations: allocations.length > 0 ? allocations : undefined,
+      };
+    });
     return NextResponse.json({ materials });
   } catch (error) {
     console.error('Unexpected error fetching materials', error);
@@ -242,6 +300,8 @@ export async function POST(request: Request) {
       isActive,
       hsn,
       taxRate,
+      openingBalance,
+      siteAllocations,
     } = body;
 
     if (
@@ -254,6 +314,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required material fields.' }, { status: 400 });
     }
 
+    // Validate site allocations if provided
+    if (siteAllocations && siteAllocations.length > 0) {
+      const calculatedOB = siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+      
+      if (openingBalance !== undefined && openingBalance !== null && Math.abs(calculatedOB - openingBalance) > 0.01) {
+        return NextResponse.json(
+          { error: 'Opening balance does not match sum of site allocations.' },
+          { status: 400 },
+        );
+      }
+
+      for (const allocation of siteAllocations) {
+        if (!allocation.siteId || !allocation.quantity || allocation.quantity <= 0) {
+          return NextResponse.json(
+            { error: 'Each site allocation must have a valid site and quantity > 0.' },
+            { status: 400 },
+          );
+        }
+
+        // Validate site belongs to organization
+        const siteRes = await resolveSiteSelection(
+          supabase,
+          allocation.siteId,
+          ctx.organizationId,
+        );
+        if (!siteRes.ok) {
+          return NextResponse.json(
+            { error: `Invalid site in allocation: ${siteRes.message}` },
+            { status: siteRes.status },
+          );
+        }
+      }
+    }
+
     const normalizedConsumed =
       typeof consumedQuantity === 'number' && !Number.isNaN(consumedQuantity)
         ? Math.max(0, consumedQuantity)
@@ -264,18 +358,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: siteResolution.message }, { status: siteResolution.status });
     }
 
+    // Calculate opening balance from site allocations if provided
+    const calculatedOpeningBalance =
+      siteAllocations && siteAllocations.length > 0
+        ? siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0)
+        : openingBalance ?? null;
+
+    // Use OB-based quantity if available, otherwise use provided quantity
+    const finalQuantity = calculatedOpeningBalance ?? quantity;
+
     const payload = {
       name,
       category,
       unit,
       site_id: siteResolution.siteId,
       site_name: siteResolution.siteName,
-      quantity,
+      quantity: finalQuantity,
       consumed_quantity: normalizedConsumed,
       standard_rate: standardRate,
       is_active: isActive ?? true,
       hsn: hsn ?? '',
       tax_rate: taxRate ?? 0,
+      opening_balance: calculatedOpeningBalance,
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       updated_by: ctx.userId,
@@ -285,7 +389,7 @@ export async function POST(request: Request) {
       .from('material_masters')
       .insert(payload)
       .select(
-        'id, name, category, unit, site_id, site_name, quantity, standard_rate, is_active, hsn, tax_rate, organization_id, created_at, updated_at',
+        'id, name, category, unit, site_id, site_name, quantity, standard_rate, is_active, hsn, tax_rate, opening_balance, organization_id, created_at, updated_at',
       )
       .single();
 
@@ -298,7 +402,85 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    return NextResponse.json({ material: mapRowToMaterial(data as MaterialRow) }, { status: 201 });
+    const materialId = data.id;
+
+    // Insert site allocations if provided
+    if (siteAllocations && siteAllocations.length > 0) {
+      const allocationPayloads = siteAllocations.map((allocation) => ({
+        material_id: materialId,
+        site_id: allocation.siteId,
+        opening_balance: allocation.quantity,
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+        updated_by: ctx.userId,
+      }));
+
+      const { error: allocationsError } = await supabase
+        .from('material_site_allocations')
+        .insert(allocationPayloads);
+
+      if (allocationsError) {
+        console.error('Error creating site allocations', allocationsError);
+        // Clean up material if allocations fail
+        await supabase.from('material_masters').delete().eq('id', materialId as string);
+        return NextResponse.json(
+          { error: 'Failed to create site allocations.' },
+          { status: 500 },
+        );
+      }
+    }
+
+    // Fetch material with allocations
+    const { data: materialData, error: fetchError } = await supabase
+      .from('material_masters')
+      .select(
+        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, opening_balance, organization_id, created_at, updated_at',
+      )
+      .eq('id', materialId as string)
+      .single();
+
+    if (fetchError || !materialData) {
+      return NextResponse.json({ error: 'Failed to fetch created material.' }, { status: 500 });
+    }
+
+    // Fetch site allocations
+    const { data: allocationsData } = await supabase
+      .from('material_site_allocations')
+      .select('material_id, site_id, opening_balance')
+      .eq('material_id', materialId as string)
+      .eq('organization_id', ctx.organizationId);
+
+    let siteAllocationsResponse: Array<{ siteId: string; siteName: string; quantity: number }> = [];
+    if (allocationsData && allocationsData.length > 0) {
+      const siteIds = [...new Set((allocationsData as SiteAllocationRow[]).map((a) => a.site_id))];
+      const { data: sitesData } = await supabase
+        .from('sites')
+        .select('id, name')
+        .in('id', siteIds)
+        .eq('organization_id', ctx.organizationId);
+
+      const siteNameMap = new Map<string, string>();
+      ((sitesData || []) as Array<{ id: string; name: string }>).forEach((site) => {
+        siteNameMap.set(site.id, site.name);
+      });
+
+      siteAllocationsResponse = (allocationsData as SiteAllocationRow[]).map((allocation) => ({
+        siteId: allocation.site_id,
+        siteName: siteNameMap.get(allocation.site_id) || '',
+        quantity: Number(allocation.opening_balance ?? 0),
+      }));
+    }
+
+    const material = mapRowToMaterial(materialData as MaterialRow);
+    return NextResponse.json(
+      {
+        material: {
+          ...material,
+          siteAllocations: siteAllocationsResponse.length > 0 ? siteAllocationsResponse : undefined,
+        },
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.error('Unexpected error creating material', error);
     return NextResponse.json({ error: 'Unexpected error creating material.' }, { status: 500 });

@@ -11,5 +11,7 @@ export type MaterialMasterInput = {
   isActive: MaterialMaster['isActive'];
   hsn: MaterialMaster['hsn'];
   taxRate: MaterialMaster['taxRate'];
+  openingBalance?: MaterialMaster['openingBalance'];
+  siteAllocations?: MaterialMaster['siteAllocations'];
 };
 

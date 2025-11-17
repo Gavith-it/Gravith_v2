@@ -165,22 +165,32 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
       }
 
       const materials = payload.materials ?? [];
-      const normalized: MaterialMasterItem[] = materials.map((material) => ({
-        id: material.id,
-        name: material.name,
-        category: material.category,
-        unit: material.unit,
-        siteId: material.siteId ?? null,
-        siteName: material.siteName ?? null,
-        quantity: material.quantity,
-        consumedQuantity: material.consumedQuantity,
-        standardRate: material.standardRate,
-        isActive: material.isActive,
-        hsn: material.hsn,
-        taxRate: material.taxRate,
-        createdDate: material.createdDate ?? material.createdAt?.split('T')[0] ?? '',
-        lastUpdated: material.lastUpdated ?? material.updatedAt?.split('T')[0] ?? '',
-      }));
+      const normalized: MaterialMasterItem[] = materials.map((material) => {
+        const base = {
+          id: material.id,
+          name: material.name,
+          category: material.category,
+          unit: material.unit,
+          siteId: material.siteId ?? null,
+          siteName: material.siteName ?? null,
+          quantity: material.quantity,
+          consumedQuantity: material.consumedQuantity,
+          standardRate: material.standardRate,
+          isActive: material.isActive,
+          hsn: material.hsn,
+          taxRate: material.taxRate,
+          createdDate: material.createdDate ?? material.createdAt?.split('T')[0] ?? '',
+          lastUpdated: material.lastUpdated ?? material.updatedAt?.split('T')[0] ?? '',
+        };
+        // Add optional fields if they exist
+        if (material.openingBalance !== undefined && material.openingBalance !== null) {
+          (base as any).openingBalance = material.openingBalance;
+        }
+        if (material.siteAllocations) {
+          (base as any).siteAllocations = material.siteAllocations;
+        }
+        return base;
+      });
       setMaterialMasterData(normalized);
     } catch (error) {
       console.error('Error fetching materials', error);
@@ -331,6 +341,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
               hsn: formData.hsn,
               taxRate: formData.taxRate,
               siteId: formData.siteId ?? null,
+              openingBalance: formData.openingBalance,
+              siteAllocations: formData.siteAllocations,
             }),
           },
         );
@@ -662,8 +674,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                         <span className="hidden sm:inline">New Material</span>
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                      <DialogHeader className="space-y-3 flex-shrink-0">
+                    <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                      <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
                         <DialogTitle className="text-xl">
                           {editingMaterial ? 'Edit Material' : 'Add New Material'}
                         </DialogTitle>
@@ -673,9 +685,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                             : 'Create a new material entry in the master database'}
                         </DialogDescription>
                       </DialogHeader>
-                      <Separator className="flex-shrink-0" />
-                      <ScrollArea className="flex-1 -mx-6 px-6">
-                        <div className="pr-4">
+                      <ScrollArea className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+                        <div className="px-6 py-6">
                           <MaterialMasterForm
                             onSubmit={handleMaterialSubmit}
                             onCancel={() => setIsMaterialDialogOpen(false)}
@@ -687,10 +698,13 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                                     unit: editingMaterial.unit,
                                     siteId: editingMaterial.siteId ?? undefined,
                                     quantity: editingMaterial.quantity,
+                                    consumedQuantity: editingMaterial.consumedQuantity,
                                     standardRate: editingMaterial.standardRate,
                                     isActive: editingMaterial.isActive,
                                     hsn: editingMaterial.hsn,
                                     taxRate: editingMaterial.taxRate,
+                                    openingBalance: (editingMaterial as any).openingBalance,
+                                    siteAllocations: (editingMaterial as any).siteAllocations,
                                   }
                                 : undefined
                             }

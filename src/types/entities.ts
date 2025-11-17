@@ -104,6 +104,8 @@ export interface MaterialMaster {
   updatedAt: string;
   createdDate: string;
   lastUpdated: string;
+  openingBalance?: number | null;
+  siteAllocations?: Array<{ siteId: string; siteName: string; quantity: number }>;
 }
 
 /**

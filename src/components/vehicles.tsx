@@ -24,12 +24,11 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { FormDialog } from '@/components/common/FormDialog';
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,6 +51,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import {
@@ -2232,527 +2232,570 @@ export function VehiclesPage({
       />
 
       {/* New Vehicle Dialog */}
-      <FormDialog
-        title="Add Vehicle"
-        description="Create a vehicle record so you can log refueling and usage against it."
-        isOpen={isVehicleDialogOpen}
+      <Dialog
+        open={isVehicleDialogOpen}
         onOpenChange={(open) => {
           setIsVehicleDialogOpen(open);
           if (!open) {
             resetVehicleForm();
           }
         }}
-        maxWidth="max-w-xl"
       >
-        <form onSubmit={handleVehicleSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="vehicle-number">Vehicle Number *</Label>
-              <Input
-                id="vehicle-number"
-                value={vehicleForm.vehicleNumber}
-                onChange={(event) =>
-                  setVehicleForm((prev) => ({ ...prev, vehicleNumber: event.target.value }))
-                }
-                placeholder="MH-14-TC-9087"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="vehicle-type">Vehicle Type *</Label>
-              <Select
-                value={vehicleForm.type}
-                onValueChange={(value) => setVehicleForm((prev) => ({ ...prev, type: value }))}
-              >
-                <SelectTrigger id="vehicle-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {VEHICLE_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option.charAt(0).toUpperCase() + option.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="text-xl">Add Vehicle</DialogTitle>
+            <DialogDescription>
+              Create a vehicle record so you can log refueling and usage against it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <Card className="w-full border-0 shadow-none">
+              <CardContent className="pt-6 px-6">
+                <form id="vehicle-form" onSubmit={handleVehicleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="vehicle-number">Vehicle Number <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="vehicle-number"
+                        value={vehicleForm.vehicleNumber}
+                        onChange={(event) =>
+                          setVehicleForm((prev) => ({ ...prev, vehicleNumber: event.target.value }))
+                        }
+                        placeholder="MH-14-TC-9087"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="vehicle-type">Vehicle Type <span className="text-destructive">*</span></Label>
+                      <Select
+                        value={vehicleForm.type}
+                        onValueChange={(value) => setVehicleForm((prev) => ({ ...prev, type: value }))}
+                      >
+                        <SelectTrigger id="vehicle-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VEHICLE_TYPE_OPTIONS.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option.charAt(0).toUpperCase() + option.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="vehicle-status">Status <span className="text-destructive">*</span></Label>
+                    <Select
+                      value={vehicleForm.status}
+                      onValueChange={(value: Vehicle['status']) =>
+                        setVehicleForm((prev) => ({ ...prev, status: value }))
+                      }
+                    >
+                      <SelectTrigger id="vehicle-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VEHICLE_STATUS_OPTIONS.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status.replace('_', ' ')}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="vehicle-make">Make</Label>
+                      <Input
+                        id="vehicle-make"
+                        value={vehicleForm.make}
+                        onChange={(event) =>
+                          setVehicleForm((prev) => ({ ...prev, make: event.target.value }))
+                        }
+                        placeholder="Volvo"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="vehicle-model">Model</Label>
+                      <Input
+                        id="vehicle-model"
+                        value={vehicleForm.model}
+                        onChange={(event) =>
+                          setVehicleForm((prev) => ({ ...prev, model: event.target.value }))
+                        }
+                        placeholder="FMX 460"
+                      />
+                    </div>
+                  </div>
+                </form>
+              </CardContent>
+              <CardFooter className="border-t px-6">
+                <div className="flex justify-end gap-2 w-full">
+                  <Button type="button" variant="outline" onClick={() => setIsVehicleDialogOpen(false)} disabled={isSavingVehicle}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" form="vehicle-form" disabled={isSavingVehicle}>
+                    {isSavingVehicle ? 'Saving…' : 'Create Vehicle'}
+                  </Button>
+                </div>
+              </CardFooter>
+            </Card>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="vehicle-status">Status *</Label>
-            <Select
-              value={vehicleForm.status}
-              onValueChange={(value: Vehicle['status']) =>
-                setVehicleForm((prev) => ({ ...prev, status: value }))
-              }
-            >
-              <SelectTrigger id="vehicle-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {VEHICLE_STATUS_OPTIONS.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status.replace('_', ' ')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="vehicle-make">Make</Label>
-              <Input
-                id="vehicle-make"
-                value={vehicleForm.make}
-                onChange={(event) =>
-                  setVehicleForm((prev) => ({ ...prev, make: event.target.value }))
-                }
-                placeholder="Volvo"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="vehicle-model">Model</Label>
-              <Input
-                id="vehicle-model"
-                value={vehicleForm.model}
-                onChange={(event) =>
-                  setVehicleForm((prev) => ({ ...prev, model: event.target.value }))
-                }
-                placeholder="FMX 460"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => setIsVehicleDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSavingVehicle}>
-              {isSavingVehicle ? 'Saving…' : 'Create Vehicle'}
-            </Button>
-          </div>
-        </form>
-      </FormDialog>
+        </DialogContent>
+      </Dialog>
 
       {/* Refueling Dialog */}
-      <FormDialog
-        title={refuelingDialog.isEditing ? 'Edit Refueling Record' : 'Add Refueling Record'}
-        description="Record vehicle refueling details"
-        isOpen={refuelingDialog.isDialogOpen}
+      <Dialog
+        open={refuelingDialog.isDialogOpen}
         onOpenChange={(open) =>
           open
             ? refuelingDialog.openDialog(refuelingDialog.editingItem)
             : refuelingDialog.closeDialog()
         }
-        maxWidth="max-w-2xl"
       >
-        <form onSubmit={handleRefuelingSubmit} className="space-y-4">
-          <ScrollArea className="max-h-[72vh] pr-2">
-            <div className="space-y-4 pr-2 pb-16">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="vehicle">Vehicle *</Label>
-                  <Select
-                    value={refuelingForm.vehicleId}
-                    disabled={vehicles.length === 0}
-                    onValueChange={(value) =>
-                      setRefuelingForm((prev) => ({ ...prev, vehicleId: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select vehicle" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vehicles.map((vehicle) => (
-                        <SelectItem key={vehicle.id} value={vehicle.id}>
-                          {vehicle.vehicleNumber} - {vehicle.type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date *</Label>
-                  <DatePicker
-                    date={parseDateOnly(refuelingForm.date) ?? undefined}
-                    onSelect={(date) =>
-                      setRefuelingForm((prev) => ({
-                        ...prev,
-                        date: date ? formatDateOnly(date) : '',
-                      }))
-                    }
-                    placeholder="Select refueling date"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fuelType">Fuel Type *</Label>
-                  <Select
-                    value={refuelingForm.fuelType}
-                    onValueChange={(value: VehicleRefueling['fuelType']) =>
-                      setRefuelingForm((prev) => ({ ...prev, fuelType: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Diesel">Diesel</SelectItem>
-                      <SelectItem value="Petrol">Petrol</SelectItem>
-                      <SelectItem value="CNG">CNG</SelectItem>
-                      <SelectItem value="Electric">Electric</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="quantity">Quantity *</Label>
-                  <Input
-                    type="number"
-                    value={refuelingForm.quantity}
-                    onChange={(e) =>
-                      setRefuelingForm((prev) => ({ ...prev, quantity: e.target.value }))
-                    }
-                    placeholder="50"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cost">Cost *</Label>
-                  <Input
-                    type="number"
-                    value={refuelingForm.cost}
-                    onChange={(e) =>
-                      setRefuelingForm((prev) => ({ ...prev, cost: e.target.value }))
-                    }
-                    placeholder="4250"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="odometer">Odometer Reading *</Label>
-                  <Input
-                    type="number"
-                    value={refuelingForm.odometerReading}
-                    onChange={(e) =>
-                      setRefuelingForm((prev) => ({ ...prev, odometerReading: e.target.value }))
-                    }
-                    placeholder="2480"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location">Location *</Label>
-                  <Input
-                    value={refuelingForm.location}
-                    onChange={(e) =>
-                      setRefuelingForm((prev) => ({ ...prev, location: e.target.value }))
-                    }
-                    placeholder="Site Fuel Station"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="vendor">Vendor *</Label>
-                  <Select
-                    value={
-                      vendorOptions.includes(refuelingForm.vendor)
-                        ? refuelingForm.vendor
-                        : refuelingForm.vendor
-                        ? '__custom__'
-                        : ''
-                    }
-                    onValueChange={(value) => {
-                      if (value === '__custom__') {
-                        setRefuelingForm((prev) => ({ ...prev, vendor: '' }));
-                      } else {
-                        setRefuelingForm((prev) => ({ ...prev, vendor: value }));
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder="Select vendor"
-                        aria-label="Vendor selection"
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="text-xl">
+              {refuelingDialog.isEditing ? 'Edit Refueling Record' : 'Add Refueling Record'}
+            </DialogTitle>
+            <DialogDescription>Record vehicle refueling details</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <Card className="w-full border-0 shadow-none">
+              <CardContent className="pt-6 px-6">
+                <form id="refueling-form" onSubmit={handleRefuelingSubmit} className="space-y-4">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="vehicle">Vehicle <span className="text-destructive">*</span></Label>
+                        <Select
+                          value={refuelingForm.vehicleId}
+                          disabled={vehicles.length === 0}
+                          onValueChange={(value) =>
+                            setRefuelingForm((prev) => ({ ...prev, vehicleId: value }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select vehicle" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vehicles.map((vehicle) => (
+                              <SelectItem key={vehicle.id} value={vehicle.id}>
+                                {vehicle.vehicleNumber} - {vehicle.type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="date">Date <span className="text-destructive">*</span></Label>
+                        <DatePicker
+                          date={parseDateOnly(refuelingForm.date) ?? undefined}
+                          onSelect={(date) =>
+                            setRefuelingForm((prev) => ({
+                              ...prev,
+                              date: date ? formatDateOnly(date) : '',
+                            }))
+                          }
+                          placeholder="Select refueling date"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="fuelType">Fuel Type <span className="text-destructive">*</span></Label>
+                        <Select
+                          value={refuelingForm.fuelType}
+                          onValueChange={(value: VehicleRefueling['fuelType']) =>
+                            setRefuelingForm((prev) => ({ ...prev, fuelType: value }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Diesel">Diesel</SelectItem>
+                            <SelectItem value="Petrol">Petrol</SelectItem>
+                            <SelectItem value="CNG">CNG</SelectItem>
+                            <SelectItem value="Electric">Electric</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="quantity">Quantity <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          value={refuelingForm.quantity}
+                          onChange={(e) =>
+                            setRefuelingForm((prev) => ({ ...prev, quantity: e.target.value }))
+                          }
+                          placeholder="50"
+                          required
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cost">Cost <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          value={refuelingForm.cost}
+                          onChange={(e) =>
+                            setRefuelingForm((prev) => ({ ...prev, cost: e.target.value }))
+                          }
+                          placeholder="4250"
+                          required
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="odometer">Odometer Reading <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          value={refuelingForm.odometerReading}
+                          onChange={(e) =>
+                            setRefuelingForm((prev) => ({ ...prev, odometerReading: e.target.value }))
+                          }
+                          placeholder="2480"
+                          required
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="location">Location <span className="text-destructive">*</span></Label>
+                        <Input
+                          value={refuelingForm.location}
+                          onChange={(e) =>
+                            setRefuelingForm((prev) => ({ ...prev, location: e.target.value }))
+                          }
+                          placeholder="Site Fuel Station"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="vendor">Vendor <span className="text-destructive">*</span></Label>
+                        <Select
+                          value={
+                            vendorOptions.includes(refuelingForm.vendor)
+                              ? refuelingForm.vendor
+                              : refuelingForm.vendor
+                              ? '__custom__'
+                              : ''
+                          }
+                          onValueChange={(value) => {
+                            if (value === '__custom__') {
+                              setRefuelingForm((prev) => ({ ...prev, vendor: '' }));
+                            } else {
+                              setRefuelingForm((prev) => ({ ...prev, vendor: value }));
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder="Select vendor"
+                              aria-label="Vendor selection"
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vendorOptions.map((name) => (
+                              <SelectItem key={name} value={name}>
+                                {name}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="__custom__">Other (enter manually)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {(refuelingForm.vendor && !vendorOptions.includes(refuelingForm.vendor)) && (
+                          <Input
+                            className="mt-2"
+                            value={refuelingForm.vendor}
+                            onChange={(e) =>
+                              setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
+                            }
+                            placeholder="Enter vendor name"
+                            aria-label="Vendor name"
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="invoice">Invoice Number <span className="text-destructive">*</span></Label>
+                        <Input
+                          value={refuelingForm.invoiceNumber}
+                          onChange={(e) =>
+                            setRefuelingForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))
+                          }
+                          placeholder="BP-001234"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="notes">Notes</Label>
+                      <Textarea
+                        value={refuelingForm.notes}
+                        onChange={(e) => setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Additional notes..."
                       />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vendorOptions.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="__custom__">Other (enter manually)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {(refuelingForm.vendor && !vendorOptions.includes(refuelingForm.vendor)) && (
-                    <Input
-                      className="mt-2"
-                      value={refuelingForm.vendor}
-                      onChange={(e) =>
-                        setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
-                      }
-                      placeholder="Enter vendor name"
-                      aria-label="Vendor name"
-                    />
-                  )}
+                    </div>
+                  </div>
+                </form>
+              </CardContent>
+              <CardFooter className="border-t px-6">
+                <div className="flex justify-end gap-2 w-full">
+                  <Button type="button" variant="outline" onClick={() => refuelingDialog.closeDialog()} disabled={isSavingRefueling}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" form="refueling-form" className="gap-2" disabled={isSavingRefueling}>
+                    {isSavingRefueling ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Fuel className="h-4 w-4" />
+                        {refuelingDialog.isEditing ? 'Update Refueling' : 'Add Refueling'}
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="invoice">Invoice Number *</Label>
-                  <Input
-                    value={refuelingForm.invoiceNumber}
-                    onChange={(e) =>
-                      setRefuelingForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))
-                    }
-                    placeholder="BP-001234"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  value={refuelingForm.notes}
-                  onChange={(e) => setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Additional notes..."
-                />
-              </div>
-            </div>
-          </ScrollArea>
-          <div className="flex justify-end gap-2 pt-4 border-t mt-2">
-            <Button type="button" variant="outline" onClick={() => refuelingDialog.closeDialog()}>
-              Cancel
-            </Button>
-            <Button type="submit" className="gap-2" disabled={isSavingRefueling}>
-              {isSavingRefueling ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Fuel className="h-4 w-4" />
-                  {refuelingDialog.isEditing ? 'Update Refueling' : 'Add Refueling'}
-                </>
-              )}
-            </Button>
+              </CardFooter>
+            </Card>
           </div>
-        </form>
-      </FormDialog>
+        </DialogContent>
+      </Dialog>
 
       {/* Usage Dialog */}
-      <FormDialog
-        title={usageDialog.isEditing ? 'Edit Usage Record' : 'Add Usage Record'}
-        description="Record vehicle usage details"
-        isOpen={usageDialog.isDialogOpen}
+      <Dialog
+        open={usageDialog.isDialogOpen}
         onOpenChange={(open) =>
           open ? usageDialog.openDialog(usageDialog.editingItem) : usageDialog.closeDialog()
         }
-        maxWidth="max-w-2xl"
       >
-        <form onSubmit={handleUsageSubmit} className="flex flex-col gap-4">
-          <ScrollArea className="max-h-[72vh] pr-2">
-            <div className="space-y-4 pr-2 pb-16">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="vehicle">Vehicle *</Label>
-                  <Select
-                    value={usageForm.vehicleId}
-                    disabled={vehicles.length === 0}
-                    onValueChange={(value) =>
-                      setUsageForm((prev) => ({ ...prev, vehicleId: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select vehicle" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vehicles.map((vehicle) => (
-                        <SelectItem key={vehicle.id} value={vehicle.id}>
-                          {vehicle.vehicleNumber} - {vehicle.type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date *</Label>
-                  <DatePicker
-                    date={parseDateOnly(usageForm.date) ?? undefined}
-                    onSelect={(date) =>
-                      setUsageForm((prev) => ({
-                        ...prev,
-                        date: date ? formatDateOnly(date) : '',
-                      }))
-                    }
-                    placeholder="Select usage date"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="startTime">Start Time *</Label>
-                  <Input
-                    type="time"
-                    value={usageForm.startTime}
-                    onChange={(e) =>
-                      setUsageForm((prev) => ({ ...prev, startTime: e.target.value }))
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endTime">End Time *</Label>
-                  <Input
-                    type="time"
-                    value={usageForm.endTime}
-                    onChange={(e) => setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="startOdometer">Start Odometer *</Label>
-                  <Input
-                    type="number"
-                    value={usageForm.startOdometer}
-                    onChange={(e) =>
-                      setUsageForm((prev) => ({ ...prev, startOdometer: e.target.value }))
-                    }
-                    placeholder="2480"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endOdometer">End Odometer *</Label>
-                  <Input
-                    type="number"
-                    value={usageForm.endOdometer}
-                    onChange={(e) =>
-                      setUsageForm((prev) => ({ ...prev, endOdometer: e.target.value }))
-                    }
-                    placeholder="2490"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="workDescription">Work Description *</Label>
-                <Textarea
-                  value={usageForm.workDescription}
-                  onChange={(e) =>
-                    setUsageForm((prev) => ({ ...prev, workDescription: e.target.value }))
-                  }
-                  placeholder="Describe the work performed..."
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="usage-driver">Driver / Operator</Label>
-                <Input
-                  id="usage-driver"
-                  value={usageForm.operator}
-                  onChange={(e) =>
-                    setUsageForm((prev) => ({ ...prev, operator: e.target.value }))
-                  }
-                  placeholder="Enter driver name"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="workCategory">Work Category *</Label>
-                  <Select
-                    value={usageForm.workCategory}
-                    onValueChange={(value: VehicleUsage['workCategory']) =>
-                      setUsageForm((prev) => ({ ...prev, workCategory: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="construction">Construction</SelectItem>
-                      <SelectItem value="transport">Transport</SelectItem>
-                      <SelectItem value="delivery">Delivery</SelectItem>
-                      <SelectItem value="maintenance">Maintenance</SelectItem>
-                      <SelectItem value="inspection">Inspection</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="site">Site *</Label>
-                  <Select
-                    value={usageForm.siteId}
-                    disabled={isSitesLoading || vehicleSiteOptions.length === 0}
-                    onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          isSitesLoading
-                            ? 'Loading sites...'
-                            : vehicleSiteOptions.length === 0
-                              ? 'No sites found'
-                              : 'Select site'
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="text-xl">
+              {usageDialog.isEditing ? 'Edit Usage Record' : 'Add Usage Record'}
+            </DialogTitle>
+            <DialogDescription>Record vehicle usage details</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <Card className="w-full border-0 shadow-none">
+              <CardContent className="pt-6 px-6">
+                <form id="usage-form" onSubmit={handleUsageSubmit} className="space-y-4">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="vehicle">Vehicle <span className="text-destructive">*</span></Label>
+                        <Select
+                          value={usageForm.vehicleId}
+                          disabled={vehicles.length === 0}
+                          onValueChange={(value) =>
+                            setUsageForm((prev) => ({ ...prev, vehicleId: value }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select vehicle" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vehicles.map((vehicle) => (
+                              <SelectItem key={vehicle.id} value={vehicle.id}>
+                                {vehicle.vehicleNumber} - {vehicle.type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="date">Date <span className="text-destructive">*</span></Label>
+                        <DatePicker
+                          date={parseDateOnly(usageForm.date) ?? undefined}
+                          onSelect={(date) =>
+                            setUsageForm((prev) => ({
+                              ...prev,
+                              date: date ? formatDateOnly(date) : '',
+                            }))
+                          }
+                          placeholder="Select usage date"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="startTime">Start Time <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="time"
+                          value={usageForm.startTime}
+                          onChange={(e) =>
+                            setUsageForm((prev) => ({ ...prev, startTime: e.target.value }))
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="endTime">End Time <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="time"
+                          value={usageForm.endTime}
+                          onChange={(e) => setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="startOdometer">Start Odometer <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          value={usageForm.startOdometer}
+                          onChange={(e) =>
+                            setUsageForm((prev) => ({ ...prev, startOdometer: e.target.value }))
+                          }
+                          placeholder="2480"
+                          required
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="endOdometer">End Odometer <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          value={usageForm.endOdometer}
+                          onChange={(e) =>
+                            setUsageForm((prev) => ({ ...prev, endOdometer: e.target.value }))
+                          }
+                          placeholder="2490"
+                          required
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workDescription">Work Description <span className="text-destructive">*</span></Label>
+                      <Textarea
+                        value={usageForm.workDescription}
+                        onChange={(e) =>
+                          setUsageForm((prev) => ({ ...prev, workDescription: e.target.value }))
                         }
+                        placeholder="Describe the work performed..."
+                        required
                       />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vehicleSiteOptions.map((site) => (
-                        <SelectItem key={site.id} value={site.id}>
-                          {site.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="usage-driver">Driver / Operator</Label>
+                      <Input
+                        id="usage-driver"
+                        value={usageForm.operator}
+                        onChange={(e) =>
+                          setUsageForm((prev) => ({ ...prev, operator: e.target.value }))
+                        }
+                        placeholder="Enter driver name"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="workCategory">Work Category <span className="text-destructive">*</span></Label>
+                        <Select
+                          value={usageForm.workCategory}
+                          onValueChange={(value: VehicleUsage['workCategory']) =>
+                            setUsageForm((prev) => ({ ...prev, workCategory: value }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="construction">Construction</SelectItem>
+                            <SelectItem value="transport">Transport</SelectItem>
+                            <SelectItem value="delivery">Delivery</SelectItem>
+                            <SelectItem value="maintenance">Maintenance</SelectItem>
+                            <SelectItem value="inspection">Inspection</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="site">Site <span className="text-destructive">*</span></Label>
+                        <Select
+                          value={usageForm.siteId}
+                          disabled={isSitesLoading || vehicleSiteOptions.length === 0}
+                          onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isSitesLoading
+                                  ? 'Loading sites...'
+                                  : vehicleSiteOptions.length === 0
+                                    ? 'No sites found'
+                                    : 'Select site'
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vehicleSiteOptions.map((site) => (
+                              <SelectItem key={site.id} value={site.id}>
+                                {site.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          value={usageForm.fuelConsumed}
+                          onChange={(e) =>
+                            setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))
+                          }
+                          placeholder="40"
+                          required
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="notes">Notes</Label>
+                        <Textarea
+                          value={usageForm.notes}
+                          onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Additional notes..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </CardContent>
+              <CardFooter className="border-t px-6">
+                <div className="flex justify-end gap-2 w-full">
+                  <Button type="button" variant="outline" onClick={() => usageDialog.closeDialog()} disabled={isSavingUsage}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" form="usage-form" className="gap-2" disabled={isSavingUsage}>
+                    {isSavingUsage ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="h-4 w-4" />
+                        {usageDialog.isEditing ? 'Update Usage Record' : 'Add Usage Record'}
+                      </>
+                    )}
+                  </Button>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) *</Label>
-                <Input
-                  type="number"
-                  value={usageForm.fuelConsumed}
-                  onChange={(e) =>
-                    setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))
-                  }
-                  placeholder="40"
-                  required
-                />
-              </div>
-            </div>
-          </ScrollArea>
-          <div className="space-y-2 pt-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              value={usageForm.notes}
-              onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Additional notes..."
-            />
+              </CardFooter>
+            </Card>
           </div>
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={() => usageDialog.closeDialog()}>
-              Cancel
-            </Button>
-            <Button type="submit" className="gap-2" disabled={isSavingUsage}>
-              {isSavingUsage ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Activity className="h-4 w-4" />
-                  {usageDialog.isEditing ? 'Update Usage Record' : 'Add Usage Record'}
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-      </FormDialog>
+        </DialogContent>
+      </Dialog>
 
       {/* Vehicle Details Dialog */}
       <Dialog open={isVehicleDetailsDialogOpen} onOpenChange={setIsVehicleDetailsDialogOpen}>

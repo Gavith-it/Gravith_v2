@@ -6,6 +6,7 @@ import { Controller, useForm } from 'react-hook-form';
 import * as z from 'zod';
 
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import {
   Field,
   FieldDescription,
@@ -16,7 +17,6 @@ import {
   FieldLegend,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -161,15 +161,15 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
   };
 
   return (
-    <form
-      id="vendor-form"
-      onSubmit={form.handleSubmit(handleFormSubmit)}
-      className="flex flex-col gap-6"
-    >
-      {/* Scrollable form fields container */}
-      <ScrollArea className="h-[500px] -mx-6 px-6">
-        <div className="pr-4">
-          <FieldGroup className="space-y-6 py-1">
+    <Card className="w-full border-0 shadow-none">
+      <CardContent className="pt-6">
+        <form
+          id="vendor-form"
+          onSubmit={form.handleSubmit(handleFormSubmit)}
+          className="space-y-4"
+        >
+          <div className="space-y-4">
+            <FieldGroup className="space-y-6">
             {/* Basic Information */}
             <FieldSet>
               <FieldLegend>Basic Information</FieldLegend>
@@ -219,7 +219,7 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
                   )}
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Controller
                     name="contactPerson"
                     control={form.control}
@@ -312,7 +312,7 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
             <FieldSet>
               <FieldLegend>Tax Information</FieldLegend>
               <FieldGroup className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Controller
                     name="gstNumber"
                     control={form.control}
@@ -358,7 +358,7 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
             <FieldSet>
               <FieldLegend>Bank Details</FieldLegend>
               <FieldGroup className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Controller
                     name="bankName"
                     control={form.control}
@@ -411,7 +411,7 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
                   )}
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Controller
                     name="bankAccountNumber"
                     control={form.control}
@@ -499,24 +499,25 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
                 />
               </FieldGroup>
             </FieldSet>
-          </FieldGroup>
+            </FieldGroup>
+          </div>
+        </form>
+      </CardContent>
+      <CardFooter className="border-t">
+        <div className="flex justify-end gap-2 w-full">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={form.formState.isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" form="vendor-form" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? 'Saving...' : initialData ? 'Update Vendor' : 'Add Vendor'}
+          </Button>
         </div>
-      </ScrollArea>
-
-      {/* Action buttons */}
-      <div className="flex justify-end gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={form.formState.isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" form="vendor-form" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? 'Saving...' : initialData ? 'Update Vendor' : 'Add Vendor'}
-        </Button>
-      </div>
-    </form>
+      </CardFooter>
+    </Card>
   );
 }

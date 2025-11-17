@@ -412,6 +412,7 @@ export function MaterialReceiptForm({
                         field.onChange(value === '' ? undefined : Number(value));
                       }}
                       value={field.value ?? ''}
+                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                     />
                     <FieldDescription>Weight of the vehicle with material.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -439,6 +440,7 @@ export function MaterialReceiptForm({
                         field.onChange(value === '' ? undefined : Number(value));
                       }}
                       value={field.value ?? ''}
+                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                     />
                     <FieldDescription>Weight of the empty vehicle.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}

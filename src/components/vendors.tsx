@@ -61,7 +61,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import {
   Table,
   TableBody,
@@ -606,8 +605,8 @@ export function VendorsPage() {
                         <span className="hidden sm:inline">New Vendor</span>
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                      <DialogHeader className="space-y-3 flex-shrink-0">
+                    <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                      <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
                         <DialogTitle className="text-xl">
                           {editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
                         </DialogTitle>
@@ -617,8 +616,7 @@ export function VendorsPage() {
                             : 'Create a new vendor entry in the system'}
                         </DialogDescription>
                       </DialogHeader>
-                      <Separator className="flex-shrink-0" />
-                      <div className="flex-1 px-6">
+                      <div className="flex-1 min-h-0 overflow-y-auto px-6">
                         <VendorNewForm
                           onSubmit={handleVendorFormSubmit}
                           onCancel={handleVendorFormCancel}

@@ -29,11 +29,18 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { DataTable } from '@/components/common/DataTable';
-import { FormDialog } from '@/components/common/FormDialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1044,15 +1051,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                     <RotateCcw className="h-4 w-4" />
                     <span className="hidden sm:inline">Clear filters</span>
                   </Button>
-                  <FormDialog
-                    title={dialog.editingItem ? 'Edit Work Entry' : 'Add New Work Entry'}
-                    description={
-                      dialog.editingItem
-                        ? 'Update work progress details'
-                        : 'Record new work progress and material usage'
-                    }
-                    isOpen={dialog.isDialogOpen}
-                    maxWidth="max-w-2xl"
+                  <Dialog
+                    open={dialog.isDialogOpen}
                     onOpenChange={(open) => {
                       if (open) {
                         dialog.openDialog();
@@ -1060,7 +1060,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                         dialog.closeDialog();
                       }
                     }}
-                    trigger={
+                  >
+                    <DialogTrigger asChild>
                       <Button
                         onClick={() => {
                           dialog.openDialog();
@@ -1074,11 +1075,23 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                         <Plus className="h-4 w-4" />
                         <span className="hidden sm:inline">New Entry</span>
                       </Button>
-                    }
-                  >
-                    <form onSubmit={handleFormSubmit} className="space-y-4">
-                      <ScrollArea className="h-[55vh] md:h-[60vh] pr-6">
-                        <div className="space-y-4 pr-1 pb-6">
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                      <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
+                        <DialogTitle className="text-xl">
+                          {dialog.editingItem ? 'Edit Work Entry' : 'Add New Work Entry'}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {dialog.editingItem
+                            ? 'Update work progress details'
+                            : 'Record new work progress and material usage'}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex-1 min-h-0 overflow-y-auto">
+                        <Card className="w-full border-0 shadow-none">
+                          <CardContent className="pt-6 px-6">
+                            <form id="work-progress-form" onSubmit={handleFormSubmit} className="space-y-4">
+                              <div className="space-y-4">
                           {/* Basic Information */}
                           <div className="space-y-4">
                             <h3 className="text-sm font-semibold text-foreground">
@@ -1241,6 +1254,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                     }))
                                   }
                                   required
+                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                               </div>
                             </div>
@@ -1348,6 +1362,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                       onChange={(e) =>
                                         setMaterialQuantity(parseFloat(e.target.value) || 0)
                                       }
+                                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                     />
                                   </div>
                                   <div className="flex items-end">
@@ -1440,6 +1455,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                       laborHours: parseFloat(e.target.value) || 0,
                                     }))
                                   }
+                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                               </div>
                               <div className="space-y-2">
@@ -1456,6 +1472,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                       progressPercentage: parseFloat(e.target.value) || 0,
                                     }))
                                   }
+                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                               </div>
                             </div>
@@ -1561,35 +1578,39 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               rows={3}
                             />
                           </div>
-                        </div>
-                      </ScrollArea>
-
-                      <div className="flex justify-end gap-2 pt-4 border-t bg-background">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => dialog.closeDialog()}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="submit"
-                          disabled={isSaving}
-                          aria-busy={isSaving}
-                          className="gap-2 transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-60"
-                        >
-                          {isSaving ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              {dialog.editingItem ? 'Saving...' : 'Adding...'}
-                            </>
-                          ) : (
-                            dialog.editingItem ? 'Update Entry' : 'Add Entry'
-                          )}
-                        </Button>
+                              </div>
+                            </form>
+                          </CardContent>
+                          <CardFooter className="border-t px-6">
+                            <div className="flex justify-end gap-2 w-full">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => dialog.closeDialog()}
+                                disabled={isSaving}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="submit"
+                                form="work-progress-form"
+                                disabled={isSaving}
+                              >
+                                {isSaving ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    {dialog.editingItem ? 'Saving...' : 'Adding...'}
+                                  </>
+                                ) : (
+                                  dialog.editingItem ? 'Update Entry' : 'Add Entry'
+                                )}
+                              </Button>
+                            </div>
+                          </CardFooter>
+                        </Card>
                       </div>
-                    </form>
-                  </FormDialog>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
 
