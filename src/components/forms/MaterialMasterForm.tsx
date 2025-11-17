@@ -604,7 +604,7 @@ export default function MaterialMasterForm({
                     </div>
                   ) : siteAllocations.length === 0 ? (
                     <div className="py-4 text-center text-sm text-muted-foreground">
-                      Click "Add Site" to create an allocation.
+                      Click &quot;Add Site&quot; to create an allocation.
                     </div>
                   ) : (
                     <div className="space-y-3">

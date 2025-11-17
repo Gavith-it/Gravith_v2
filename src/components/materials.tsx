@@ -184,10 +184,10 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         };
         // Add optional fields if they exist
         if (material.openingBalance !== undefined && material.openingBalance !== null) {
-          (base as any).openingBalance = material.openingBalance;
+          (base as MaterialMasterItem).openingBalance = material.openingBalance;
         }
         if (material.siteAllocations) {
-          (base as any).siteAllocations = material.siteAllocations;
+          (base as MaterialMasterItem).siteAllocations = material.siteAllocations;
         }
         return base;
       });
@@ -703,8 +703,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                                     isActive: editingMaterial.isActive,
                                     hsn: editingMaterial.hsn,
                                     taxRate: editingMaterial.taxRate,
-                                    openingBalance: (editingMaterial as any).openingBalance,
-                                    siteAllocations: (editingMaterial as any).siteAllocations,
+                                    openingBalance: editingMaterial.openingBalance,
+                                    siteAllocations: editingMaterial.siteAllocations,
                                   }
                                 : undefined
                             }
