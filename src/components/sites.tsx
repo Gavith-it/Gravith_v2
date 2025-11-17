@@ -85,6 +85,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [scrollPosition, setScrollPosition] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   type SiteAdvancedFilterState = {
     locations: string[];
@@ -532,8 +533,8 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         </Card>
 
         {/* Sites List */}
-        <ScrollArea className="flex-1">
-          <div className="p-6 pr-0">
+        <div className="flex-1 overflow-hidden">
+          <div className="p-6 h-full overflow-y-auto">
             {/* Navigation Controls */}
             {filteredSites.length > 4 && (
               <div className="flex items-center justify-between mb-4">
@@ -544,27 +545,30 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                     if (scrollContainerRef.current) {
                       const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
                       const scrollAmount = cardWidth * 4; // Scroll by 4 cards
-                      const newPosition = Math.max(0, scrollPosition - scrollAmount);
+                      const currentScroll = scrollContainerRef.current.scrollLeft;
+                      const newPosition = Math.max(0, currentScroll - scrollAmount);
                       scrollContainerRef.current.scrollTo({
                         left: newPosition,
                         behavior: 'smooth',
                       });
-                      // Update position after scroll animation
+                      // Update position after animation completes
                       setTimeout(() => {
                         if (scrollContainerRef.current) {
                           setScrollPosition(scrollContainerRef.current.scrollLeft);
                         }
-                      }, 300);
+                      }, 500);
                     }
                   }}
-                  disabled={scrollPosition <= 0}
+                  disabled={!scrollContainerRef.current || scrollContainerRef.current.scrollLeft <= 0}
                   className="h-8 w-8"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">
-                    {Math.min(Math.round(scrollPosition / ((320 + 16) * 4)) + 1, Math.ceil(filteredSites.length / 4))} / {Math.ceil(filteredSites.length / 4)}
+                    {scrollContainerRef.current && scrollContainerRef.current.scrollWidth > scrollContainerRef.current.clientWidth
+                      ? `${Math.min(Math.max(1, Math.round(scrollContainerRef.current.scrollLeft / ((320 + 16) * 4)) + 1), Math.ceil(filteredSites.length / 4))} / ${Math.ceil(filteredSites.length / 4)}`
+                      : `1 / ${Math.ceil(filteredSites.length / 4)}`}
                   </span>
                 </div>
                 <Button
@@ -574,24 +578,24 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                     if (scrollContainerRef.current) {
                       const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
                       const scrollAmount = cardWidth * 4; // Scroll by 4 cards
-                      const maxScroll = Math.max(0, (filteredSites.length - 4) * cardWidth);
-                      const newPosition = Math.min(maxScroll, scrollPosition + scrollAmount);
+                      const currentScroll = scrollContainerRef.current.scrollLeft;
+                      const maxScroll = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth;
+                      const newPosition = Math.min(maxScroll, currentScroll + scrollAmount);
                       scrollContainerRef.current.scrollTo({
                         left: newPosition,
                         behavior: 'smooth',
                       });
-                      // Update position after scroll animation
+                      // Update position after animation completes
                       setTimeout(() => {
                         if (scrollContainerRef.current) {
                           setScrollPosition(scrollContainerRef.current.scrollLeft);
                         }
-                      }, 300);
+                      }, 500);
                     }
                   }}
                   disabled={
-                    scrollContainerRef.current
-                      ? scrollPosition >= Math.max(0, (filteredSites.length - 4) * (320 + 16))
-                      : false
+                    !scrollContainerRef.current ||
+                    scrollContainerRef.current.scrollLeft >= (scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth - 1)
                   }
                   className="h-8 w-8"
                 >
@@ -599,18 +603,26 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                 </Button>
               </div>
             )}
-            <div className="relative w-full overflow-hidden pr-6">
+            <div className="relative w-full">
               <div
                 ref={scrollContainerRef}
-                className="flex gap-4 overflow-x-auto pb-4 scroll-smooth"
+                className="flex gap-4 overflow-x-auto pb-4 scroll-smooth pr-6"
                 style={{ 
                   width: '100%',
-                  maxWidth: 'calc(4 * (320px + 16px))', // Exactly 4 cards: 4 * (card width + gap)
                   scrollbarWidth: 'thin',
                   scrollbarGutter: 'stable',
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
                 }}
                 onScroll={(e) => {
-                  setScrollPosition(e.currentTarget.scrollLeft);
+                  // Debounce scroll position updates to prevent blinking
+                  if (scrollTimeoutRef.current) {
+                    clearTimeout(scrollTimeoutRef.current);
+                  }
+                  scrollTimeoutRef.current = setTimeout(() => {
+                    const newPosition = e.currentTarget.scrollLeft;
+                    setScrollPosition(newPosition);
+                  }, 50);
                 }}
               >
               {!isSitesLoading && filteredSites.length === 0 ? (
@@ -682,7 +694,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   return (
                     <Card
                       key={site.id}
-                      className={`group relative cursor-pointer transition-all duration-300 overflow-hidden flex-shrink-0 w-80 ${
+                      className={`group relative cursor-pointer transition-all duration-300 overflow-visible flex-shrink-0 w-80 ${
                         selectedSite === site.id
                           ? 'border-primary border-2 shadow-lg ring-2 ring-primary/30'
                           : 'border border-border hover:border-primary/40 hover:shadow-md'
@@ -828,15 +840,15 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                             left: newPosition,
                             behavior: 'smooth',
                           });
-                          // Update position after scroll animation
+                          // Update position after animation
                           setTimeout(() => {
                             if (scrollContainerRef.current) {
                               setScrollPosition(scrollContainerRef.current.scrollLeft);
                             }
-                          }, 300);
+                          }, 500);
                         }
                       }}
-                      className={`h-2 rounded-full transition-all ${
+                      className={`h-2 rounded-full transition-all cursor-pointer ${
                         isActive
                           ? 'w-8 bg-primary'
                           : 'w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50'
@@ -849,7 +861,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
             )}
             </div>
           </div>
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Bottom Section - Site Details */}
