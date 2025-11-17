@@ -63,12 +63,42 @@ const units = [
   { value: 'cft', label: 'Cubic Feet' },
 ];
 
+// Material categories matching MaterialMaster type
+const materialCategories = [
+  'Cement',
+  'Steel',
+  'Concrete',
+  'Bricks',
+  'Sand',
+  'Aggregate',
+  'Timber',
+  'Electrical',
+  'Plumbing',
+  'Paint',
+  'Other',
+] as const;
+
+type MaterialCategory = (typeof materialCategories)[number];
+
 // Form schema with Zod validation
 const purchaseFormSchema = z.object({
   materialId: z.string().optional(),
   vendor: z.string().min(1, 'Please select a vendor.'),
   site: z.string().min(1, 'Please select a site.'),
-  materialName: z.string().min(1, 'Please select a material.'),
+  materialName: z.string().min(1, 'Please enter a material name.'),
+  category: z.enum([
+    'Cement',
+    'Steel',
+    'Concrete',
+    'Bricks',
+    'Sand',
+    'Aggregate',
+    'Timber',
+    'Electrical',
+    'Plumbing',
+    'Paint',
+    'Other',
+  ]),
   quantity: z.number().positive('Quantity must be greater than zero.'),
   unit: z.string().min(1, 'Please select a unit.'),
   unitRate: z.number().positive('Unit rate must be greater than zero.'),
@@ -108,6 +138,7 @@ export function PurchaseForm({
       vendor: editingMaterial?.vendor || '',
       site: selectedSite || editingMaterial?.site || '',
       materialName: editingMaterial?.materialName || '',
+      category: (editingMaterial?.category as MaterialCategory) || 'Other',
       quantity: editingMaterial?.quantity || undefined,
       unit: editingMaterial?.unit || '',
       unitRate: editingMaterial?.unitRate || undefined,
@@ -184,33 +215,7 @@ export function PurchaseForm({
     void loadMaterials();
   }, []);
 
-  useEffect(() => {
-    if (!materialOptions.length) {
-      form.setValue('materialId', undefined);
-      form.setValue('materialName', '');
-      return;
-    }
-
-    const currentId = form.getValues('materialId');
-    const currentMaterial = currentId
-      ? materialOptions.find((material) => material.id === currentId)
-      : undefined;
-
-    if (currentMaterial) {
-      form.setValue('materialName', currentMaterial.name, { shouldValidate: true });
-      if (!editingMaterial) {
-        form.setValue('unit', currentMaterial.unit, { shouldValidate: true });
-      }
-      return;
-    }
-
-    if (!editingMaterial) {
-      const [first] = materialOptions;
-      form.setValue('materialId', first.id, { shouldValidate: true });
-      form.setValue('materialName', first.name, { shouldValidate: true });
-      form.setValue('unit', first.unit, { shouldValidate: true });
-    }
-  }, [editingMaterial, form, materialOptions]);
+  // Removed auto-fill logic - users now type material names freely
 
   // Get unlinked receipts directly from receipts array
   const unlinkedReceipts = React.useMemo(() => {
@@ -284,14 +289,14 @@ export function PurchaseForm({
   const handleFormSubmit = React.useCallback(
     async (data: PurchaseFormData) => {
       const totalAmount = data.quantity * data.unitRate;
-      const selectedMaterial = materialOptions.find((material) => material.id === data.materialId);
-
+      
+      // materialId will be set automatically by backend when creating Material Master
       const previousConsumed = editingMaterial?.consumedQuantity ?? 0;
       const quantityValue = data.quantity;
 
       const materialData: Omit<SharedMaterial, 'id'> = {
-        materialId: data.materialId,
-        materialName: selectedMaterial?.name ?? data.materialName,
+        materialId: data.materialId, // Optional - backend will create/link Material Master
+        materialName: data.materialName,
         site: data.site,
         quantity: data.quantity,
         unit: data.unit,
@@ -306,7 +311,7 @@ export function PurchaseForm({
         remainingQuantity:
           editingMaterial?.remainingQuantity ?? quantityValue - previousConsumed,
         linkedReceiptId: data.linkedReceiptIds?.[0],
-        category: selectedMaterial?.category,
+        category: data.category,
         filledWeight: data.filledWeight ? Number(data.filledWeight) : undefined,
         emptyWeight: data.emptyWeight ? Number(data.emptyWeight) : undefined,
         netWeight: data.netWeight ? Number(data.netWeight) : undefined,
@@ -366,7 +371,7 @@ export function PurchaseForm({
         );
       }
     },
-    [addMaterial, editingMaterial, linkReceiptToPurchase, materialOptions, materials, syncMaterialMaster, updateMaterial, onSubmit],
+    [addMaterial, editingMaterial, linkReceiptToPurchase, materials, syncMaterialMaster, updateMaterial, onSubmit],
   );
 
   const quantity = form.watch('quantity');
@@ -374,9 +379,7 @@ export function PurchaseForm({
   const totalAmount = quantity && unitRate ? quantity * unitRate : 0;
   const isSubmitDisabled =
     form.formState.isSubmitting ||
-    isLoadingMaterials ||
-    isLoadingSites ||
-    (materialOptions.length === 0 && !editingMaterial);
+    isLoadingSites;
 
   const getSubmitButtonText = () =>
     form.formState.isSubmitting
@@ -506,66 +509,59 @@ export function PurchaseForm({
           />
 
           <Controller
-            name="materialId"
+            name="materialName"
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor={`${formId}-material`}>
                   Material <span className="text-destructive">*</span>
                 </FieldLabel>
-                <Select
+                <Input
+                  {...field}
+                  id={`${formId}-material`}
+                  type="text"
+                  aria-invalid={fieldState.invalid}
+                  placeholder="Enter material name (e.g., Cement, Steel, Paint)"
                   value={field.value ?? ''}
-                  onValueChange={(value) => {
-                    field.onChange(value);
-                    const material = materialOptions.find((option) => option.id === value);
-                    if (material) {
-                      form.setValue('materialName', material.name, { shouldValidate: true });
-                      form.setValue('unit', material.unit, { shouldValidate: true });
-                    } else {
-                      form.setValue('materialName', '', { shouldValidate: true });
-                    }
-                  }}
-                  disabled={isLoadingMaterials || materialOptions.length === 0}
-                >
-                  <SelectTrigger id={`${formId}-material`} aria-invalid={fieldState.invalid}>
-                    <SelectValue
-                      placeholder={
-                        isLoadingMaterials
-                          ? 'Loading materials…'
-                          : materialOptions.length === 0
-                            ? 'No materials available'
-                            : 'Select material'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materialOptions.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No active materials found. Add materials first.
-                      </div>
-                    ) : (
-                      materialOptions.map((material) => (
-                        <SelectItem key={material.id} value={material.id}>
-                          {material.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                />
                 <FieldDescription>
-                  {materialOptions.length === 0
-                    ? 'Add a material in Materials before recording purchases.'
-                    : 'Choose the material being purchased.'}
+                  Enter the material name. It will be automatically added to Material Master if it doesn't exist.
                 </FieldDescription>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                {form.formState.errors.materialName && (
-                  <FieldError errors={[form.formState.errors.materialName]} />
-                )}
               </Field>
             )}
           />
-          {/* Hidden field to satisfy validation for materialName */}
-          <input type="hidden" {...form.register('materialName')} />
+
+          <Controller
+            name="category"
+            control={form.control}
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor={`${formId}-category`}>
+                  Category <span className="text-destructive">*</span>
+                </FieldLabel>
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger id={`${formId}-category`} aria-invalid={fieldState.invalid}>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {materialCategories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  Material category for organization and reporting.
+                </FieldDescription>
+                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+              </Field>
+            )}
+          />
         </div>
 
         {/* Quantity, Unit, and Unit Rate Row */}

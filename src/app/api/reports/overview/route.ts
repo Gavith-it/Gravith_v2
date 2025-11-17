@@ -161,10 +161,23 @@ export async function GET() {
 
     // Metrics
     const totalBudget = siteRows.reduce((sum, site) => sum + Number(site.budget ?? 0), 0);
-    const totalSpent = siteRows.reduce((sum, site) => sum + Number(site.spent ?? 0), 0);
+    
+    // Calculate totalSpent from actual expenses instead of sites.spent (which may not be updated)
+    const totalSpent = expenseRows.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
+    
+    // Calculate avgProgress from actual site progress values, or use timeline progress as fallback
+    const progressValues = siteRows.map((site) => {
+      const siteProgress = Number(site.progress ?? 0);
+      // If progress is 0, try to calculate from timeline
+      if (siteProgress === 0) {
+        return buildTimelineProgress(site.start_date, site.expected_end_date);
+      }
+      return siteProgress;
+    });
+    
     const avgProgress =
-      siteRows.length > 0
-        ? Math.round(siteRows.reduce((sum, site) => sum + Number(site.progress ?? 0), 0) / siteRows.length)
+      progressValues.length > 0
+        ? Math.round(progressValues.reduce((sum, p) => sum + p, 0) / progressValues.length)
         : 0;
 
     // Monthly expenses (last 6 months)

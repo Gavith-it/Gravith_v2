@@ -122,6 +122,150 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
+type SiteResolution =
+  | { ok: true; siteId: string | null; siteName: string | null }
+  | { ok: false; status: number; message: string };
+
+type SiteRow = {
+  id: string;
+  name: string;
+  organization_id: string;
+};
+
+async function resolveSiteByName(
+  supabase: SupabaseServerClient,
+  siteName: string | null | undefined,
+  organizationId: string,
+): Promise<SiteResolution> {
+  if (!siteName || siteName.trim() === '') {
+    return { ok: true, siteId: null, siteName: null };
+  }
+
+  const { data, error } = await supabase
+    .from('sites')
+    .select('id, name, organization_id')
+    .eq('name', siteName.trim())
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  const site = (data as SiteRow | null) ?? null;
+
+  if (error) {
+    console.error('Error resolving site by name', error);
+    return { ok: false, status: 500, message: 'Unable to resolve site.' };
+  }
+
+  if (!site) {
+    // Site not found by name - return null (material can exist without site)
+    return { ok: true, siteId: null, siteName: null };
+  }
+
+  return { ok: true, siteId: site.id, siteName: site.name };
+}
+
+type MaterialMasterRow = {
+  id: string;
+  name: string;
+  category: MaterialMaster['category'];
+  unit: string;
+  quantity: number | string | null;
+  consumed_quantity: number | string | null;
+  standard_rate: number | string | null;
+  site_id: string | null;
+  site_name: string | null;
+};
+
+/**
+ * Find or create Material Master from purchase data
+ * Returns the material master ID
+ */
+async function findOrCreateMaterialMaster(
+  supabase: SupabaseServerClient,
+  materialName: string,
+  unit: string,
+  unitRate: number,
+  siteId: string | null,
+  siteName: string | null,
+  purchasedQuantity: number,
+  category: MaterialMaster['category'],
+  organizationId: string,
+  userId: string,
+): Promise<{ materialId: string; created: boolean }> {
+  // First, try to find existing material by name (case-insensitive)
+  const { data: existingMaterials, error: searchError } = await supabase
+    .from('material_masters')
+    .select('id, name, quantity, unit, standard_rate, site_id, site_name')
+    .eq('organization_id', organizationId)
+    .ilike('name', materialName.trim());
+
+  if (searchError) {
+    console.error('Error searching for material master', searchError);
+    throw new Error('Failed to search for material master');
+  }
+
+  const existingMaterial = (existingMaterials ?? [] as MaterialMasterRow[]).find(
+    (m) => typeof m.name === 'string' && m.name.toLowerCase().trim() === materialName.toLowerCase().trim(),
+  ) as MaterialMasterRow | undefined;
+
+  if (existingMaterial) {
+    // Material exists - update quantity
+    const currentQuantity = Number(existingMaterial.quantity ?? 0);
+    const newQuantity = currentQuantity + purchasedQuantity;
+    
+    // Update standard_rate if the new rate is higher (or use average)
+    const currentRate = Number(existingMaterial.standard_rate ?? 0);
+    const newRate = currentRate > 0 ? Math.max(currentRate, unitRate) : unitRate;
+
+    const { error: updateError } = await supabase
+      .from('material_masters')
+      .update({
+        quantity: newQuantity,
+        standard_rate: newRate,
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existingMaterial.id);
+
+    if (updateError) {
+      console.error('Error updating material master quantity', updateError);
+      throw new Error('Failed to update material master');
+    }
+
+    return { materialId: existingMaterial.id, created: false };
+  }
+
+  // Material doesn't exist - create new one
+  const newMaterialPayload = {
+    name: materialName.trim(),
+    category: category, // Use category from purchase form
+    unit: unit.trim() || 'units',
+    quantity: purchasedQuantity,
+    consumed_quantity: 0,
+    standard_rate: unitRate,
+    is_active: true,
+    hsn: '',
+    tax_rate: 18, // Default tax rate
+    site_id: siteId,
+    site_name: siteName,
+    organization_id: organizationId,
+    created_by: userId,
+    updated_by: userId,
+  };
+
+  const { data: newMaterial, error: createError } = await supabase
+    .from('material_masters')
+    .insert(newMaterialPayload)
+    .select('id')
+    .single();
+
+  if (createError || !newMaterial) {
+    console.error('Error creating material master', createError);
+    throw new Error('Failed to create material master');
+  }
+
+  return { materialId: (newMaterial as { id: string }).id, created: true };
+}
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -229,11 +373,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
-    const body = (await request.json()) as Partial<SharedMaterial>;
+    const body = (await request.json()) as Partial<SharedMaterial> & {
+      category?: MaterialMaster['category'];
+    };
     const {
       materialId,
       materialName,
       site,
+      category,
       quantity,
       unit,
       unitRate,
@@ -253,13 +400,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required purchase fields.' }, { status: 400 });
     }
 
+    // Resolve site by name to get site_id
+    const siteResolution = await resolveSiteByName(supabase, site, ctx.organizationId);
+    if (!siteResolution.ok) {
+      return NextResponse.json({ error: siteResolution.message }, { status: siteResolution.status });
+    }
+
+    // Find or create Material Master automatically
+    let resolvedMaterialId = materialId ?? null;
+    try {
+      const { materialId: masterId } = await findOrCreateMaterialMaster(
+        supabase,
+        materialName,
+        unit ?? 'units',
+        unitRate,
+        siteResolution.siteId,
+        siteResolution.siteName,
+        quantity,
+        category ?? 'Other',
+        ctx.organizationId,
+        ctx.userId,
+      );
+      resolvedMaterialId = masterId;
+    } catch (masterError) {
+      console.error('Error in findOrCreateMaterialMaster', masterError);
+      return NextResponse.json(
+        { error: masterError instanceof Error ? masterError.message : 'Failed to process material master.' },
+        { status: 500 },
+      );
+    }
+
     const payload = {
-      material_id: materialId ?? null,
+      material_id: resolvedMaterialId,
       material_name: materialName,
-      site_id: null,
-      site_name: site,
+      site_id: siteResolution.siteId,
+      site_name: siteResolution.siteName ?? site,
       quantity,
-      unit: unit ?? '',
+      unit: unit ?? 'units',
       unit_rate: unitRate,
       total_amount: totalAmount ?? quantity * unitRate,
       vendor_invoice_number: invoiceNumber ?? '',

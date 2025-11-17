@@ -100,6 +100,7 @@ export async function GET() {
       { data: materialPurchaseRows },
       { data: materialPurchaseTotals },
       { data: monthlyExpenseRows },
+      { data: allExpenseRows },
       { count: activeVendorCount },
       { data: activityRows },
     ] = await Promise.all([
@@ -139,6 +140,10 @@ export async function GET() {
         .gte('date', startOfCurrentMonth())
         .lte('date', endOfCurrentMonth()),
       supabase
+        .from('expenses')
+        .select('amount, site_id, site_name')
+        .eq('organization_id', organizationId),
+      supabase
         .from('vendors')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', organizationId)
@@ -170,6 +175,33 @@ export async function GET() {
       })),
     );
 
+    // Calculate spent per site from actual expenses
+    const siteSpentMap = new Map<string, number>();
+    (allExpenseRows ?? []).forEach((expense) => {
+      const record = expense as Record<string, unknown>;
+      const siteId = record.site_id;
+      const siteName = record.site_name;
+      const amount = Number(record.amount ?? 0);
+      
+      // Match by site_id if available, otherwise by site_name
+      if (typeof siteId === 'string' && siteId) {
+        const current = siteSpentMap.get(siteId) ?? 0;
+        siteSpentMap.set(siteId, current + amount);
+      } else if (typeof siteName === 'string' && siteName) {
+        // Find site by name and add to its spent
+        const matchingSite = (siteRows ?? []).find(
+          (s) => (s as Record<string, unknown>).name === siteName
+        );
+        if (matchingSite) {
+          const siteIdFromMatch = (matchingSite as Record<string, unknown>).id;
+          if (typeof siteIdFromMatch === 'string') {
+            const current = siteSpentMap.get(siteIdFromMatch) ?? 0;
+            siteSpentMap.set(siteIdFromMatch, current + amount);
+          }
+        }
+      }
+    });
+
     const activeSites = (siteRows ?? []).map<ActiveSite>((site) => {
       const record = site as Record<string, unknown>;
       const idValue = record.id;
@@ -179,10 +211,14 @@ export async function GET() {
       const statusValue = record.status;
       const dueDateValue = record.expected_end_date;
       const budgetValue = record.budget;
-      const spentValue = record.spent;
+      
+      // Get spent from expenses map, fallback to sites.spent if no expenses found
+      const siteId = typeof idValue === 'string' ? idValue : String(idValue ?? '');
+      const calculatedSpent = siteSpentMap.get(siteId) ?? 0;
+      const spentValue = calculatedSpent > 0 ? calculatedSpent : record.spent;
 
       return {
-        id: typeof idValue === 'string' ? idValue : String(idValue ?? ''),
+        id: siteId,
         name: typeof nameValue === 'string' ? nameValue : 'Unnamed site',
         location: typeof locationValue === 'string' ? locationValue : '',
         progress:
@@ -206,7 +242,7 @@ export async function GET() {
               ? spentValue
               : spentValue !== null && spentValue !== undefined
                 ? Number(spentValue)
-                : 0,
+                : calculatedSpent,
         },
       };
     });
