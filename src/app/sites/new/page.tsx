@@ -4,16 +4,38 @@ import { useRouter } from 'next/navigation';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import type { SiteInput } from '@/types/sites';
+import { toast } from 'sonner';
+import type { Site, SiteInput } from '@/types/sites';
 
 export default function SiteNewPage() {
   const router = useRouter();
 
   const handleSubmit = async (data: SiteInput) => {
-    // Handle form submission logic here
-    console.log('New site data:', data);
-    // You can add API call to save the site
-    router.push('/sites');
+    try {
+      const response = await fetch('/api/sites', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        site?: Site;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.site) {
+        throw new Error(payload.error || 'Failed to create site');
+      }
+
+      toast.success('Site created successfully');
+      router.push('/sites');
+    } catch (error) {
+      console.error('Error creating site:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create site');
+      throw error; // Re-throw to let the form handle the error state
+    }
   };
 
   const handleCancel = () => {

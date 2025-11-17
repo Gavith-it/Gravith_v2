@@ -12,6 +12,14 @@ import {
   Trash2,
   Filter,
   RotateCcw,
+  Eye,
+  MapPin,
+  User,
+  Clock,
+  Shield,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -38,6 +46,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import {
   useVehicleRefueling,
@@ -164,11 +179,16 @@ export function VehiclesPage({
   const [selectedVehicle, setSelectedVehicle] = useState<string>(propSelectedVehicle || '');
   const [activeTab, setActiveTab] = useState('refueling');
   const [isVehicleDialogOpen, setIsVehicleDialogOpen] = useState(false);
+  const [isVehicleDetailsDialogOpen, setIsVehicleDetailsDialogOpen] = useState(false);
+  const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
   const [isSavingVehicle, setIsSavingVehicle] = useState(false);
   const [isSavingRefueling, setIsSavingRefueling] = useState(false);
   const [isSavingUsage, setIsSavingUsage] = useState(false);
   const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [isSitesLoading, setIsSitesLoading] = useState(false);
+  const [scrollContainerRef, setScrollContainerRef] = useState<HTMLDivElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   useEffect(() => {
     let isMounted = true;
     const fetchSites = async () => {
@@ -640,6 +660,83 @@ export function VehiclesPage({
 
   const vehicleSiteOptions = siteOptions;
 
+  const handleViewVehicleDetails = useCallback((vehicle: Vehicle) => {
+    setViewingVehicle(vehicle);
+    setIsVehicleDetailsDialogOpen(true);
+  }, []);
+
+  const getStatusColor = (status: Vehicle['status']) => {
+    switch (status) {
+      case 'available':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      case 'in_use':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'maintenance':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
+      case 'idle':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+      case 'returned':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    }
+  };
+
+  const formatStatus = (status: Vehicle['status']) => {
+    return status.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
+  // Handle scroll position checks
+  const checkScrollButtons = useCallback(() => {
+    if (!scrollContainerRef) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
+  }, [scrollContainerRef]);
+
+  useEffect(() => {
+    if (!scrollContainerRef) return;
+    checkScrollButtons();
+    const container = scrollContainerRef;
+    container.addEventListener('scroll', checkScrollButtons);
+    window.addEventListener('resize', checkScrollButtons);
+    return () => {
+      container.removeEventListener('scroll', checkScrollButtons);
+      window.removeEventListener('resize', checkScrollButtons);
+    };
+  }, [scrollContainerRef, checkScrollButtons]);
+
+  // Scroll to selected vehicle
+  useEffect(() => {
+    if (!scrollContainerRef || !selectedVehicle) return;
+    const selectedCard = scrollContainerRef.querySelector(
+      `[data-vehicle-id="${selectedVehicle}"]`,
+    ) as HTMLElement;
+    if (selectedCard) {
+      selectedCard.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+  }, [selectedVehicle, scrollContainerRef]);
+
+  const scrollLeft = useCallback(() => {
+    if (!scrollContainerRef) return;
+    scrollContainerRef.scrollBy({
+      left: -320,
+      behavior: 'smooth',
+    });
+  }, [scrollContainerRef]);
+
+  const scrollRight = useCallback(() => {
+    if (!scrollContainerRef) return;
+    scrollContainerRef.scrollBy({
+      left: 320,
+      behavior: 'smooth',
+    });
+  }, [scrollContainerRef]);
+
   const resetVehicleForm = useCallback(() => {
     setVehicleForm({
       vehicleNumber: '',
@@ -911,6 +1008,149 @@ export function VehiclesPage({
             Add Vehicle
           </Button>
         </div>
+
+        {/* Vehicle List Section */}
+        {vehicles.length > 0 && (
+          <div className="px-6 py-4 border-b bg-muted/30">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-1">Tracked Vehicles</h3>
+                <p className="text-xs text-muted-foreground">
+                  Click on a vehicle to view details and manage operations
+                </p>
+              </div>
+              {vehicles.length > 4 && (
+                <div className="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={scrollLeft}
+                          disabled={!canScrollLeft}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Scroll Left</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={scrollRight}
+                          disabled={!canScrollRight}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Scroll Right</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              {/* Scrollable Container */}
+              <div
+                ref={setScrollContainerRef}
+                className="flex gap-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/30 scroll-smooth"
+                style={{
+                  scrollbarWidth: 'thin',
+                  msOverflowStyle: 'auto',
+                }}
+              >
+                {vehicles.map((vehicle) => (
+                  <Card
+                    key={vehicle.id}
+                    data-vehicle-id={vehicle.id}
+                    className={`flex-shrink-0 w-[280px] cursor-pointer transition-all hover:shadow-md hover:border-primary/50 ${
+                      selectedVehicle === vehicle.id
+                        ? 'border-primary shadow-md ring-2 ring-primary/20'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      setSelectedVehicle(vehicle.id);
+                      onVehicleSelect?.(vehicle.id);
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <Avatar className="h-10 w-10 bg-primary/10 flex-shrink-0">
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              <Truck className="h-5 w-5" />
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm truncate">
+                              {vehicle.vehicleNumber}
+                            </p>
+                            <p className="text-xs text-muted-foreground capitalize truncate">
+                              {vehicle.type}
+                            </p>
+                          </div>
+                        </div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 flex-shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewVehicleDetails(vehicle);
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View Details</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge
+                            className={`${getStatusColor(vehicle.status)} text-xs`}
+                            variant="secondary"
+                          >
+                            {formatStatus(vehicle.status)}
+                          </Badge>
+                          {vehicle.isRental && (
+                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                              Rental
+                            </Badge>
+                          )}
+                        </div>
+                        {vehicle.siteName && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{vehicle.siteName}</span>
+                          </div>
+                        )}
+                        {vehicle.operator && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <User className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{vehicle.operator}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {currentVehicle ? (
           <Tabs
             value={activeTab}
@@ -2037,42 +2277,25 @@ export function VehiclesPage({
               </Select>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="vehicle-status">Status *</Label>
-              <Select
-                value={vehicleForm.status}
-                onValueChange={(value: Vehicle['status']) =>
-                  setVehicleForm((prev) => ({ ...prev, status: value }))
-                }
-              >
-                <SelectTrigger id="vehicle-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {VEHICLE_STATUS_OPTIONS.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {status.replace('_', ' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Ownership</Label>
-              <div className="flex items-center gap-3 rounded-md border px-4 py-2">
-                <Switch
-                  id="vehicle-owned"
-                  checked={vehicleForm.isRental}
-                  onCheckedChange={(checked) =>
-                    setVehicleForm((prev) => ({ ...prev, isRental: checked }))
-                  }
-                />
-                <span className="text-sm text-muted-foreground">
-                  {vehicleForm.isRental ? 'Rental vehicle' : 'Owned vehicle'}
-                </span>
-              </div>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="vehicle-status">Status *</Label>
+            <Select
+              value={vehicleForm.status}
+              onValueChange={(value: Vehicle['status']) =>
+                setVehicleForm((prev) => ({ ...prev, status: value }))
+              }
+            >
+              <SelectTrigger id="vehicle-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VEHICLE_STATUS_OPTIONS.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status.replace('_', ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -2098,19 +2321,6 @@ export function VehiclesPage({
               />
             </div>
           </div>
-          {vehicleForm.isRental && (
-            <div className="space-y-2">
-              <Label htmlFor="vehicle-vendor">Vendor</Label>
-              <Input
-                id="vehicle-vendor"
-                value={vehicleForm.vendor}
-                onChange={(event) =>
-                  setVehicleForm((prev) => ({ ...prev, vendor: event.target.value }))
-                }
-                placeholder="Shivam Equip Rentals"
-              />
-            </div>
-          )}
           <div className="flex justify-end gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={() => setIsVehicleDialogOpen(false)}>
               Cancel
@@ -2543,6 +2753,308 @@ export function VehiclesPage({
           </div>
         </form>
       </FormDialog>
+
+      {/* Vehicle Details Dialog */}
+      <Dialog open={isVehicleDetailsDialogOpen} onOpenChange={setIsVehicleDetailsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Vehicle Details
+            </DialogTitle>
+            <DialogDescription>
+              Comprehensive information about {viewingVehicle?.vehicleNumber}
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingVehicle && (
+            <div className="space-y-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Basic Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Vehicle Number</p>
+                    <p className="font-medium">{viewingVehicle.vehicleNumber}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Type</p>
+                    <p className="font-medium capitalize">{viewingVehicle.type}</p>
+                  </div>
+                  {viewingVehicle.make && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Make</p>
+                      <p className="font-medium">{viewingVehicle.make}</p>
+                    </div>
+                  )}
+                  {viewingVehicle.model && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Model</p>
+                      <p className="font-medium">{viewingVehicle.model}</p>
+                    </div>
+                  )}
+                  {viewingVehicle.year && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Year</p>
+                      <p className="font-medium">{viewingVehicle.year}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <Badge className={getStatusColor(viewingVehicle.status)} variant="secondary">
+                      {formatStatus(viewingVehicle.status)}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Ownership</p>
+                    <p className="font-medium">
+                      {viewingVehicle.isRental ? 'Rental Vehicle' : 'Owned Vehicle'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Location & Assignment */}
+              {(viewingVehicle.siteName || viewingVehicle.operator) && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    Assignment
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {viewingVehicle.siteName && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          Site
+                        </p>
+                        <p className="font-medium">{viewingVehicle.siteName}</p>
+                      </div>
+                    )}
+                    {viewingVehicle.operator && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Operator
+                        </p>
+                        <p className="font-medium">{viewingVehicle.operator}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Rental Information */}
+              {viewingVehicle.isRental && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    Rental Information
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {viewingVehicle.vendor && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Vendor</p>
+                        <p className="font-medium">{viewingVehicle.vendor}</p>
+                      </div>
+                    )}
+                    {viewingVehicle.rentalCostPerDay && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Daily Rental Cost</p>
+                        <p className="font-medium">₹{viewingVehicle.rentalCostPerDay.toLocaleString()}</p>
+                      </div>
+                    )}
+                    {viewingVehicle.rentalStartDate && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Rental Start Date
+                        </p>
+                        <p className="font-medium">
+                          {formatDateShort(viewingVehicle.rentalStartDate)}
+                        </p>
+                      </div>
+                    )}
+                    {viewingVehicle.rentalEndDate && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Rental End Date
+                        </p>
+                        <p className="font-medium">
+                          {formatDateShort(viewingVehicle.rentalEndDate)}
+                        </p>
+                      </div>
+                    )}
+                    {viewingVehicle.totalRentalDays && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Total Rental Days</p>
+                        <p className="font-medium">{viewingVehicle.totalRentalDays} days</p>
+                      </div>
+                    )}
+                    {viewingVehicle.totalRentalCost && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Total Rental Cost</p>
+                        <p className="font-medium">₹{viewingVehicle.totalRentalCost.toLocaleString()}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Fuel Information */}
+              {(viewingVehicle.fuelCapacity ||
+                viewingVehicle.currentFuelLevel !== null ||
+                viewingVehicle.mileage) && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    Fuel & Mileage
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {viewingVehicle.fuelCapacity && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Fuel className="h-3 w-3" />
+                          Fuel Capacity
+                        </p>
+                        <p className="font-medium">{viewingVehicle.fuelCapacity} L</p>
+                      </div>
+                    )}
+                    {viewingVehicle.currentFuelLevel !== null && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Current Fuel Level</p>
+                        <p className="font-medium">{viewingVehicle.currentFuelLevel} L</p>
+                      </div>
+                    )}
+                    {viewingVehicle.mileage && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Mileage</p>
+                        <p className="font-medium">{viewingVehicle.mileage.toLocaleString()} km</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Maintenance & Insurance */}
+              {(viewingVehicle.lastMaintenanceDate ||
+                viewingVehicle.nextMaintenanceDate ||
+                viewingVehicle.insuranceExpiry ||
+                viewingVehicle.registrationExpiry) && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    Maintenance & Compliance
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {viewingVehicle.lastMaintenanceDate && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Last Maintenance
+                        </p>
+                        <p className="font-medium">
+                          {formatDateShort(viewingVehicle.lastMaintenanceDate)}
+                        </p>
+                      </div>
+                    )}
+                    {viewingVehicle.nextMaintenanceDate && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Next Maintenance
+                        </p>
+                        <p className="font-medium">
+                          {formatDateShort(viewingVehicle.nextMaintenanceDate)}
+                        </p>
+                      </div>
+                    )}
+                    {viewingVehicle.insuranceExpiry && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Shield className="h-3 w-3" />
+                          Insurance Expiry
+                        </p>
+                        <p className="font-medium">
+                          {formatDateShort(viewingVehicle.insuranceExpiry)}
+                        </p>
+                      </div>
+                    )}
+                    {viewingVehicle.registrationExpiry && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <FileText className="h-3 w-3" />
+                          Registration Expiry
+                        </p>
+                        <p className="font-medium">
+                          {formatDateShort(viewingVehicle.registrationExpiry)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Statistics */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Statistics
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/10">
+                    <CardContent className="p-4">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Refueling Records</p>
+                        <p className="text-2xl font-bold text-blue-600">
+                          {refuelingRecords.filter((r) => r.vehicleId === viewingVehicle.id).length}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/10">
+                    <CardContent className="p-4">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Usage Records</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          {usageRecords.filter((r) => r.vehicleId === viewingVehicle.id).length}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/10 to-primary/5">
+                    <CardContent className="p-4">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Total Distance</p>
+                        <p className="text-2xl font-bold text-primary">
+                          {usageRecords
+                            .filter((r) => r.vehicleId === viewingVehicle.id)
+                            .reduce((sum, r) => sum + r.totalDistance, 0)
+                            .toLocaleString()}{' '}
+                          km
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsVehicleDetailsDialogOpen(false);
+                    setSelectedVehicle(viewingVehicle.id);
+                    onVehicleSelect?.(viewingVehicle.id);
+                  }}
+                >
+                  View Operations
+                </Button>
+                <Button onClick={() => setIsVehicleDetailsDialogOpen(false)}>Close</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

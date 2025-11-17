@@ -4,15 +4,58 @@ import { useRouter } from 'next/navigation';
 
 import VendorNewForm, { type VendorFormData } from '@/components/forms/VendorForm';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { toast } from 'sonner';
+import type { Vendor } from '@/types';
+import { formatDateOnly } from '@/lib/utils/date';
 
 export default function VendorNewPage() {
   const router = useRouter();
 
   const handleSubmit = async (data: VendorFormData) => {
-    // Handle form submission logic here
-    console.log('New vendor data:', data);
-    // You can add API call to save the vendor
-    router.push('/vendors');
+    try {
+      const response = await fetch('/api/vendors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name,
+          category: data.category,
+          contactPerson: data.contactPerson,
+          phone: data.phone,
+          email: data.email || '',
+          address: data.address,
+          gstNumber: data.gstNumber || '',
+          panNumber: data.panNumber || '',
+          bankAccount: data.bankAccountNumber || '',
+          ifscCode: data.ifscCode || '',
+          paymentTerms: data.paymentTerms || '',
+          notes: data.notes || '',
+          status: 'active',
+          totalPaid: 0,
+          pendingAmount: 0,
+          rating: 0,
+          lastPayment: '',
+          registrationDate: formatDateOnly(new Date()),
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        vendor?: Vendor;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.vendor) {
+        throw new Error(payload.error || 'Failed to create vendor');
+      }
+
+      toast.success('Vendor created successfully');
+      router.push('/vendors');
+    } catch (error) {
+      console.error('Error creating vendor:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create vendor');
+      throw error; // Re-throw to let the form handle the error state
+    }
   };
 
   const handleCancel = () => {

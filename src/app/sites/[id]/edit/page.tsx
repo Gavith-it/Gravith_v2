@@ -5,6 +5,7 @@ import { use, useEffect, useState } from 'react';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { toast } from 'sonner';
 import type { Site, SiteInput } from '@/types/sites';
 
 interface SiteEditPageProps {
@@ -20,30 +21,64 @@ export default function SiteEditPage({ params }: SiteEditPageProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch site data based on resolvedParams.id
-    // This is a mock implementation - replace with actual API call
-    const mockSiteData: Site = {
-      id: resolvedParams.id,
-      name: 'Residential Complex A',
-      location: 'Sector 15, Navi Mumbai',
-      startDate: '2024-01-01',
-      expectedEndDate: '2024-12-31',
-      budget: 50000000,
-      spent: 25000000,
-      description: 'Premium residential complex with 200 units',
-      progress: 50,
-      status: 'Active' as const,
+    const fetchSiteData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/sites/${resolvedParams.id}`, {
+          cache: 'no-store',
+        });
+        const payload = (await response.json().catch(() => ({}))) as {
+          site?: Site;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load site');
+        }
+
+        if (payload.site) {
+          setSiteData(payload.site);
+        } else {
+          throw new Error('Site not found');
+        }
+      } catch (error) {
+        console.error('Error fetching site:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to load site');
+        setSiteData(null);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    setSiteData(mockSiteData);
-    setLoading(false);
+    void fetchSiteData();
   }, [resolvedParams.id]);
 
   const handleSubmit = async (data: SiteInput) => {
-    // Handle form submission logic here
-    console.log('Updated site data:', data);
-    // You can add API call to update the site
-    router.push('/sites');
+    try {
+      const response = await fetch(`/api/sites/${resolvedParams.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        site?: Site;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.site) {
+        throw new Error(payload.error || 'Failed to update site');
+      }
+
+      toast.success('Site updated successfully');
+      router.push('/sites');
+    } catch (error) {
+      console.error('Error updating site:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update site');
+      throw error; // Re-throw to let the form handle the error state
+    }
   };
 
   const handleCancel = () => {
