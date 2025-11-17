@@ -23,6 +23,7 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -358,6 +359,65 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
     setIsSiteDialogOpen(true);
   };
 
+  const handleDeleteSite = useCallback(
+    async (site: Site) => {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete "${site.name}"? This action cannot be undone.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/sites/${site.id}`, {
+          method: 'DELETE',
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+          dependencies?: string;
+          counts?: {
+            purchases?: number;
+            expenses?: number;
+            payments?: number;
+            vehicleUsage?: number;
+            workProgress?: number;
+            materials?: number;
+          };
+        };
+
+        if (!response.ok || !payload.success) {
+          if (payload.dependencies) {
+            toast.error(
+              `Cannot delete site. It has ${payload.dependencies}. Please delete or unlink these transactions first.`,
+              {
+                duration: 6000,
+              },
+            );
+          } else {
+            throw new Error(payload.error || 'Failed to delete site.');
+          }
+          return;
+        }
+
+        // Remove from local state
+        setSites((prev) => prev.filter((s) => s.id !== site.id));
+        
+        // Clear selection if deleted site was selected
+        if (selectedSite === site.id) {
+          setSelectedSite(null);
+        }
+
+        toast.success('Site deleted successfully.');
+      } catch (error) {
+        console.error('Failed to delete site', error);
+        toast.error(error instanceof Error ? error.message : 'Unable to delete site.');
+      }
+    },
+    [selectedSite],
+  );
+
   return (
     <div className="h-full w-full bg-background flex flex-col">
       {/* Top Section - Sites List */}
@@ -542,61 +602,77 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   variant="outline"
                   size="icon"
                   onClick={() => {
-                    if (scrollContainerRef.current) {
-                      const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
-                      const scrollAmount = cardWidth * 4; // Scroll by 4 cards
-                      const currentScroll = scrollContainerRef.current.scrollLeft;
-                      const newPosition = Math.max(0, currentScroll - scrollAmount);
-                      scrollContainerRef.current.scrollTo({
-                        left: newPosition,
-                        behavior: 'smooth',
-                      });
-                      // Update position after animation completes
-                      setTimeout(() => {
-                        if (scrollContainerRef.current) {
-                          setScrollPosition(scrollContainerRef.current.scrollLeft);
-                        }
-                      }, 500);
-                    }
+                    const container = scrollContainerRef.current;
+                    if (!container) return;
+                    
+                    const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
+                    const scrollAmount = cardWidth * 4; // Scroll by 4 cards
+                    const currentScroll = container.scrollLeft;
+                    const newPosition = Math.max(0, currentScroll - scrollAmount);
+                    container.scrollTo({
+                      left: newPosition,
+                      behavior: 'smooth',
+                    });
+                    // Update position after animation completes
+                    setTimeout(() => {
+                      const containerAfterScroll = scrollContainerRef.current;
+                      if (containerAfterScroll) {
+                        setScrollPosition(containerAfterScroll.scrollLeft);
+                      }
+                    }, 500);
                   }}
-                  disabled={!scrollContainerRef.current || scrollContainerRef.current.scrollLeft <= 0}
+                  disabled={(() => {
+                    const container = scrollContainerRef.current;
+                    return !container || container.scrollLeft <= 0;
+                  })()}
                   className="h-8 w-8"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">
-                    {scrollContainerRef.current && scrollContainerRef.current.scrollWidth > scrollContainerRef.current.clientWidth
-                      ? `${Math.min(Math.max(1, Math.round(scrollContainerRef.current.scrollLeft / ((320 + 16) * 4)) + 1), Math.ceil(filteredSites.length / 4))} / ${Math.ceil(filteredSites.length / 4)}`
-                      : `1 / ${Math.ceil(filteredSites.length / 4)}`}
+                    {(() => {
+                      const container = scrollContainerRef.current;
+                      if (!container || container.scrollWidth <= container.clientWidth) {
+                        return `1 / ${Math.ceil(filteredSites.length / 4)}`;
+                      }
+                      const currentPage = Math.min(
+                        Math.max(1, Math.round(container.scrollLeft / ((320 + 16) * 4)) + 1),
+                        Math.ceil(filteredSites.length / 4),
+                      );
+                      return `${currentPage} / ${Math.ceil(filteredSites.length / 4)}`;
+                    })()}
                   </span>
                 </div>
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={() => {
-                    if (scrollContainerRef.current) {
-                      const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
-                      const scrollAmount = cardWidth * 4; // Scroll by 4 cards
-                      const currentScroll = scrollContainerRef.current.scrollLeft;
-                      const maxScroll = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth;
-                      const newPosition = Math.min(maxScroll, currentScroll + scrollAmount);
-                      scrollContainerRef.current.scrollTo({
-                        left: newPosition,
-                        behavior: 'smooth',
-                      });
-                      // Update position after animation completes
-                      setTimeout(() => {
-                        if (scrollContainerRef.current) {
-                          setScrollPosition(scrollContainerRef.current.scrollLeft);
-                        }
-                      }, 500);
-                    }
+                    const container = scrollContainerRef.current;
+                    if (!container) return;
+                    
+                    const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
+                    const scrollAmount = cardWidth * 4; // Scroll by 4 cards
+                    const currentScroll = container.scrollLeft;
+                    const maxScroll = container.scrollWidth - container.clientWidth;
+                    const newPosition = Math.min(maxScroll, currentScroll + scrollAmount);
+                    container.scrollTo({
+                      left: newPosition,
+                      behavior: 'smooth',
+                    });
+                    // Update position after animation completes
+                    setTimeout(() => {
+                      const containerAfterScroll = scrollContainerRef.current;
+                      if (containerAfterScroll) {
+                        setScrollPosition(containerAfterScroll.scrollLeft);
+                      }
+                    }, 500);
                   }}
-                  disabled={
-                    !scrollContainerRef.current ||
-                    scrollContainerRef.current.scrollLeft >= (scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth - 1)
-                  }
+                  disabled={(() => {
+                    const container = scrollContainerRef.current;
+                    if (!container) return true;
+                    return container.scrollLeft >= (container.scrollWidth - container.clientWidth - 1);
+                  })()}
                   className="h-8 w-8"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -727,30 +803,56 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                               <StatusIcon className="h-3 w-3" />
                               <span className="font-medium">{site.status}</span>
                             </Badge>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      e.preventDefault();
-                                      handleEditSite(site);
-                                    }}
-                                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
-                                    aria-label="Edit site"
-                                  >
-                                    <span>
-                                      <Edit className="h-4 w-4" />
-                                    </span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Edit site details</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <div className="flex items-center gap-1">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        handleEditSite(site);
+                                      }}
+                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
+                                      aria-label="Edit site"
+                                    >
+                                      <span>
+                                        <Edit className="h-4 w-4" />
+                                      </span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Edit site details</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        handleDeleteSite(site);
+                                      }}
+                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                      aria-label="Delete site"
+                                    >
+                                      <span>
+                                        <Trash2 className="h-4 w-4" />
+                                      </span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Delete site</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
                           </div>
                         </div>
 

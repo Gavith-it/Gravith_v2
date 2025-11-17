@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,16 +13,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { toast } from 'sonner';
 import type { MaterialMasterInput } from '@/types/materials';
-
-const UNASSIGNED_SITE_VALUE = '__unassigned_site__';
+import { getActiveUOMs, type UOMItem } from '@/components/shared/masterData';
 
 type MaterialMasterFormState = {
   name: string;
   category: MaterialMasterInput['category'];
   unit: string;
-  siteId: string | null;
   quantity: string;
   consumedQuantity: string;
   standardRate: string;
@@ -38,11 +35,6 @@ interface MaterialMasterFormProps {
   isEdit?: boolean;
 }
 
-type SiteOption = {
-  id: string;
-  name: string;
-};
-
 export default function MaterialMasterForm({
   onSubmit,
   onCancel,
@@ -53,7 +45,6 @@ export default function MaterialMasterForm({
     name: defaultValues?.name || '',
     category: defaultValues?.category || 'Cement',
     unit: defaultValues?.unit || '',
-    siteId: (defaultValues?.siteId as string | null | undefined) ?? null,
     quantity:
       defaultValues?.quantity !== undefined ? String(defaultValues.quantity) : '',
     consumedQuantity:
@@ -66,40 +57,7 @@ export default function MaterialMasterForm({
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
-
-  useEffect(() => {
-    const loadSites = async () => {
-      try {
-        setIsLoadingSites(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Array<{ id: string; name: string }>;
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load sites.');
-        }
-
-        setSiteOptions(
-          (payload.sites ?? []).map((site) => ({
-            id: site.id,
-            name: site.name,
-          })),
-        );
-      } catch (error) {
-        console.error('Failed to load sites for material master form', error);
-        toast.error('Unable to load sites. Please try again.');
-        setSiteOptions([]);
-      } finally {
-        setIsLoadingSites(false);
-      }
-    };
-
-    void loadSites();
-  }, []);
+  const [uomOptions] = useState<UOMItem[]>(getActiveUOMs());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +76,6 @@ export default function MaterialMasterForm({
         name: formData.name,
         category: formData.category,
         unit: formData.unit,
-        siteId: formData.siteId || undefined,
         quantity: quantityValue,
         consumedQuantity: consumedValue,
         standardRate: standardRateValue,
@@ -183,54 +140,36 @@ export default function MaterialMasterForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="site" className="text-sm font-medium">
-          Site (optional)
-        </Label>
-        <Select
-          value={formData.siteId ?? UNASSIGNED_SITE_VALUE}
-          onValueChange={(value) =>
-            setFormData((prev) => ({
-              ...prev,
-              siteId: value === UNASSIGNED_SITE_VALUE ? null : value,
-            }))
-          }
-          disabled={isLoadingSites}
-        >
-          <SelectTrigger className="transition-all focus:ring-2 focus:ring-primary/20">
-            <SelectValue
-              placeholder={
-                isLoadingSites ? 'Loading sites…' : siteOptions.length === 0 ? 'No sites available' : 'Select site'
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={UNASSIGNED_SITE_VALUE}>Unassigned</SelectItem>
-            {siteOptions.map((site) => (
-              <SelectItem key={site.id} value={site.id}>
-                {site.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          Choosing a site helps track which project this material inventory belongs to.
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-2">
           <Label htmlFor="unit" className="text-sm font-medium">
-            Unit
+            Unit <span className="text-destructive">*</span>
           </Label>
-          <Input
-            id="unit"
-            value={formData.unit}
-            onChange={(e) => setFormData((prev) => ({ ...prev, unit: e.target.value }))}
-            placeholder="e.g., bags, kg, cubic meters"
+          <Select
+            value={formData.unit || ''}
+            onValueChange={(value) => setFormData((prev) => ({ ...prev, unit: value }))}
             required
-            className="transition-all focus:ring-2 focus:ring-primary/20"
-          />
+          >
+            <SelectTrigger id="unit" className="transition-all focus:ring-2 focus:ring-primary/20">
+              <SelectValue placeholder="Select unit from UOM master" />
+            </SelectTrigger>
+            <SelectContent>
+              {uomOptions.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-muted-foreground">
+                  No active UOMs found. Add UOMs from Masters page.
+                </div>
+              ) : (
+                uomOptions.map((uom) => (
+                  <SelectItem key={uom.id} value={uom.code}>
+                    {uom.code} - {uom.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Select unit from UOM master for validation.
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="quantity" className="text-sm font-medium">

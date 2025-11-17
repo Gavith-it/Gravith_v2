@@ -173,3 +173,173 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unexpected error updating site.' }, { status: 500 });
   }
 }
+
+export async function DELETE(_: NextRequest, { params }: Params) {
+  try {
+    const { id } = await params;
+    const supabase = await createClient();
+    const ctx = await resolveContext(supabase);
+
+    if ('error' in ctx) {
+      return NextResponse.json({ error: ctx.error }, { status: 401 });
+    }
+
+    if (!['owner', 'admin', 'manager', 'user'].includes(ctx.role)) {
+      return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
+    }
+
+    // Check if site exists
+    const { data: site, error: fetchError } = await supabase
+      .from('sites')
+      .select('id, name, organization_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error fetching site before delete', fetchError);
+      return NextResponse.json({ error: 'Unable to verify site.' }, { status: 500 });
+    }
+
+    if (!site || site.organization_id !== ctx.organizationId) {
+      return NextResponse.json({ error: 'Site not found.' }, { status: 404 });
+    }
+
+    // Check for transactions linked to this site
+    // 1. Check material purchases
+    const { count: purchaseCount, error: purchaseCheckError } = await supabase
+      .from('material_purchases')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (purchaseCheckError) {
+      console.error('Error checking purchase dependencies', purchaseCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify site dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    // 2. Check expenses
+    const { count: expenseCount, error: expenseCheckError } = await supabase
+      .from('expenses')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (expenseCheckError) {
+      console.error('Error checking expense dependencies', expenseCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify site dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    // 3. Check payments
+    const { count: paymentCount, error: paymentCheckError } = await supabase
+      .from('payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (paymentCheckError) {
+      console.error('Error checking payment dependencies', paymentCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify site dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    // 4. Check vehicle usage
+    const { count: vehicleUsageCount, error: vehicleUsageCheckError } = await supabase
+      .from('vehicle_usage')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (vehicleUsageCheckError) {
+      console.error('Error checking vehicle usage dependencies', vehicleUsageCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify site dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    // 5. Check work progress
+    const { count: workProgressCount, error: workProgressCheckError } = await supabase
+      .from('work_progress_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (workProgressCheckError) {
+      console.error('Error checking work progress dependencies', workProgressCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify site dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    // 6. Check material masters (optional - sites can be null)
+    const { count: materialCount, error: materialCheckError } = await supabase
+      .from('material_masters')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (materialCheckError) {
+      console.error('Error checking material master dependencies', materialCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify site dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    const totalTransactions =
+      (purchaseCount ?? 0) +
+      (expenseCount ?? 0) +
+      (paymentCount ?? 0) +
+      (vehicleUsageCount ?? 0) +
+      (workProgressCount ?? 0) +
+      (materialCount ?? 0);
+
+    if (totalTransactions > 0) {
+      const dependencies: string[] = [];
+      if ((purchaseCount ?? 0) > 0) dependencies.push(`${purchaseCount} purchase(s)`);
+      if ((expenseCount ?? 0) > 0) dependencies.push(`${expenseCount} expense(s)`);
+      if ((paymentCount ?? 0) > 0) dependencies.push(`${paymentCount} payment(s)`);
+      if ((vehicleUsageCount ?? 0) > 0) dependencies.push(`${vehicleUsageCount} vehicle usage record(s)`);
+      if ((workProgressCount ?? 0) > 0) dependencies.push(`${workProgressCount} work progress entry/entries`);
+      if ((materialCount ?? 0) > 0) dependencies.push(`${materialCount} material(s)`);
+
+      return NextResponse.json(
+        {
+          error: 'Cannot delete site with existing transactions.',
+          dependencies: dependencies.join(', '),
+          counts: {
+            purchases: purchaseCount ?? 0,
+            expenses: expenseCount ?? 0,
+            payments: paymentCount ?? 0,
+            vehicleUsage: vehicleUsageCount ?? 0,
+            workProgress: workProgressCount ?? 0,
+            materials: materialCount ?? 0,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    // All checks passed - delete the site
+    const { error: deleteError } = await supabase.from('sites').delete().eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting site', deleteError);
+      return NextResponse.json({ error: 'Failed to delete site.' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Unexpected error deleting site', error);
+    return NextResponse.json({ error: 'Unexpected error deleting site.' }, { status: 500 });
+  }
+}
