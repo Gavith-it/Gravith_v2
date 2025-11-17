@@ -128,7 +128,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -210,7 +210,7 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 

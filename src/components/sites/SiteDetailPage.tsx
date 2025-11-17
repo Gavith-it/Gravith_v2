@@ -22,7 +22,11 @@ import {
   Layers,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
+import type { Site } from '@/types/sites';
+import type { MaterialPurchase } from '@/types/entities';
+import type { WorkProgressEntry } from '@/types/entities';
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
@@ -348,17 +352,270 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const expenseDialog = useDialogState();
   const [isLoading, setIsLoading] = useState(false);
+  const [site, setSite] = useState<Site | null>(null);
+  const [sitePurchases, setSitePurchases] = useState<SitePurchase[]>([]);
+  const [siteExpenses, setSiteExpenses] = useState<Expense[]>([]);
+  const [siteWorkProgress, setSiteWorkProgress] = useState<SiteWorkProgress[]>([]);
+  const [siteMaterialMasters, setSiteMaterialMasters] = useState<SiteMaterialMaster[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
-  // Get site data
-  const site = mockSiteData[siteId];
+  // Fetch site data
+  useEffect(() => {
+    const fetchSiteData = async () => {
+      try {
+        setIsDataLoading(true);
+        const response = await fetch(`/api/sites/${siteId}`, { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          site?: Site;
+          error?: string;
+        };
 
-  // Filter data by site
-  const sitePurchases = mockPurchases;
-  const siteExpenses = mockExpenses.filter((exp) => exp.siteId === siteId);
+        if (!response.ok || !payload.site) {
+          throw new Error(payload.error || 'Failed to load site');
+        }
+
+        setSite(payload.site);
+      } catch (error) {
+        console.error('Error fetching site:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to load site');
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+
+    void fetchSiteData();
+  }, [siteId]);
+
+  // Fetch purchases for the site
+  useEffect(() => {
+    const fetchPurchases = async () => {
+      try {
+        const response = await fetch('/api/purchases', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          materials?: MaterialPurchase[];
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load purchases');
+        }
+
+        const purchases = (payload.materials ?? []).filter((p) => p.siteId === siteId);
+        const mappedPurchases: SitePurchase[] = purchases.map((p) => ({
+          id: p.id,
+          materialName: p.materialName,
+          quantity: p.quantity,
+          unit: p.unit,
+          unitRate: p.unitRate,
+          totalAmount: p.totalAmount,
+          vendor: p.vendorName || '',
+          purchaseDate: p.purchaseDate,
+          invoiceNumber: p.vendorInvoiceNumber,
+        }));
+        setSitePurchases(mappedPurchases);
+      } catch (error) {
+        console.error('Error fetching purchases:', error);
+      }
+    };
+
+    if (siteId) {
+      void fetchPurchases();
+    }
+  }, [siteId]);
+
+  // Fetch expenses for the site
+  useEffect(() => {
+    const fetchExpenses = async () => {
+      try {
+        const response = await fetch('/api/expenses', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          expenses?: Expense[];
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load expenses');
+        }
+
+        const expenses = (payload.expenses ?? []).filter((e) => e.siteId === siteId);
+        setSiteExpenses(expenses);
+      } catch (error) {
+        console.error('Error fetching expenses:', error);
+      }
+    };
+
+    if (siteId) {
+      void fetchExpenses();
+    }
+  }, [siteId]);
+
+  // Memoize site name to prevent infinite loops
+  const siteName = useMemo(() => site?.name || '', [site?.name]);
+
+  // Fetch work progress for the site
+  useEffect(() => {
+    // Only fetch if we have both siteId and site name
+    if (!siteId || !siteName) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const fetchWorkProgress = async () => {
+      try {
+        const response = await fetch('/api/work-progress', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          entries?: WorkProgressEntry[];
+          error?: string;
+        };
+
+        if (isCancelled) return;
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load work progress');
+        }
+
+        // Filter by siteId OR siteName (case-insensitive, trimmed)
+        // Some work progress entries might have siteId as null, so we match by name
+        const siteNameNormalized = siteName.trim().toLowerCase();
+        const allEntries = payload.entries ?? [];
+        
+        const entries = allEntries.filter((e) => {
+          const matchesSiteId = e.siteId === siteId;
+          const entrySiteNameNormalized = e.siteName?.trim().toLowerCase() || '';
+          const matchesSiteName = entrySiteNameNormalized === siteNameNormalized;
+          return matchesSiteId || matchesSiteName;
+        });
+
+        // ALWAYS log for debugging (remove condition)
+        if (typeof window !== 'undefined') {
+          window.console.group('🔍 Work Progress Filtering');
+          window.console.log('Looking for site:', {
+            siteId,
+            siteName: siteName,
+            siteNameNormalized,
+          });
+          window.console.log('Total entries from API:', allEntries.length);
+          window.console.log('Matched entries:', entries.length);
+          
+          // Show why each entry matched or didn't match
+          allEntries.forEach((e) => {
+            const entrySiteNameNorm = e.siteName?.trim().toLowerCase() || '';
+            const matchesId = e.siteId === siteId;
+            const matchesName = entrySiteNameNorm === siteNameNormalized;
+            const matches = matchesId || matchesName;
+            
+            if (!matches) {
+              window.console.warn('❌ Entry NOT matched:', {
+                id: e.id,
+                entrySiteId: e.siteId,
+                entrySiteName: e.siteName,
+                entrySiteNameNormalized: entrySiteNameNorm,
+                matchesId,
+                matchesName,
+                reason: !matchesId && !matchesName ? 'Neither ID nor name matches' : 'No match',
+              });
+            } else {
+              window.console.log('✅ Entry matched:', {
+                id: e.id,
+                entrySiteId: e.siteId,
+                entrySiteName: e.siteName,
+                matchedBy: matchesId ? 'siteId' : 'siteName',
+                progressPercentage: e.progressPercentage,
+              });
+            }
+          });
+          window.console.groupEnd();
+        }
+
+        const mappedProgress: SiteWorkProgress[] = entries.map((e) => {
+          const statusMap: Record<string, SiteWorkProgress['status']> = {
+            completed: 'completed',
+            on_hold: 'on-hold',
+            in_progress: 'in-progress',
+          };
+          const mappedStatus: SiteWorkProgress['status'] =
+            statusMap[e.status] || 'in-progress';
+          
+          const mapped: SiteWorkProgress = {
+            id: e.id,
+            activityName: e.workType,
+            category: e.workType,
+            description: e.description || '',
+            startDate: e.workDate,
+            endDate: e.workDate,
+            status: mappedStatus,
+            progress: e.progressPercentage || 0,
+            assignedTo: '',
+          };
+          return mapped;
+        });
+        
+        if (!isCancelled) {
+          setSiteWorkProgress(mappedProgress);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Error fetching work progress:', error);
+        }
+      }
+    };
+
+    void fetchWorkProgress();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [siteId, siteName]); // Depend on siteId and memoized site name
+
+  // Fetch material masters for the site
+  useEffect(() => {
+    const fetchMaterials = async () => {
+      try {
+        const response = await fetch('/api/materials', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          materials?: Array<{
+            id: string;
+            name: string;
+            category: string;
+            unit: string;
+            siteId?: string | null;
+            quantity: number;
+            consumedQuantity: number;
+          }>;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load materials');
+        }
+
+        const materials = (payload.materials ?? []).filter((m) => m.siteId === siteId);
+        const mappedMaterials: SiteMaterialMaster[] = materials.map((m) => ({
+          id: m.id,
+          siteId: m.siteId || '',
+          materialName: m.name,
+          category: m.category,
+          unit: m.unit,
+          siteStock: m.quantity - m.consumedQuantity,
+          allocated: m.quantity,
+          reserved: 0,
+          status: m.quantity - m.consumedQuantity > 0 ? 'available' : 'critical',
+        }));
+        setSiteMaterialMasters(mappedMaterials);
+      } catch (error) {
+        console.error('Error fetching materials:', error);
+      }
+    };
+
+    if (siteId) {
+      void fetchMaterials();
+    }
+  }, [siteId]);
+
+  // Use mock data for vehicles and labour (not yet implemented in API)
   const siteVehicles = mockVehicles;
   const siteLabour = mockLabour;
-  const siteWorkProgress = mockWorkProgress;
-  const siteMaterialMasters = mockMaterialMasters.filter((material) => material.siteId === siteId);
 
   // Table states
   const purchaseTableState = useTableState({ initialItemsPerPage: 5 });
@@ -371,12 +628,54 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   // Calculate statistics
   const totalPurchaseValue = sitePurchases.reduce((sum, p) => sum + p.totalAmount, 0);
   const totalExpenses = siteExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalSpent = totalPurchaseValue + totalExpenses;
   const totalVehicleCost = siteVehicles.reduce(
     (sum, v) => sum + (v.rentalCostPerDay + v.fuelCostPerDay) * v.totalDays,
     0,
   );
   const totalLabourCost = siteLabour.reduce((sum, l) => sum + l.dailyWage * l.daysWorked, 0);
   const totalMaterialStock = siteMaterialMasters.reduce((sum, m) => sum + m.siteStock, 0);
+
+  // Calculate progress from work progress entries
+  // IMPORTANT: This calculates progress from work progress entries, NOT from the database progress field
+  // Strategy:
+  // 1. If work progress entries exist, calculate weighted average based on status
+  //    - Completed entries count as 100%
+  //    - In-progress entries use their progressPercentage
+  //    - On-hold entries use their progressPercentage
+  // 2. If no work progress entries, use site's own progress field (from database)
+  // 3. If neither exists, show 0
+  // Calculate progress from work progress entries
+  // IMPORTANT: This calculates progress from work progress entries, NOT from the database progress field
+  const averageProgress = useMemo(() => {
+    if (siteWorkProgress.length === 0) {
+      // No work progress entries, use site's progress field from database
+      return site?.progress || 0;
+    }
+
+    // Calculate weighted progress from work progress entries
+    const totalProgress = siteWorkProgress.reduce((sum, wp) => {
+      // If status is completed, count as 100%
+      if (wp.status === 'completed') {
+        return sum + 100;
+      }
+      // Otherwise use the progressPercentage (or 0 if not set)
+      return sum + (wp.progress || 0);
+    }, 0);
+
+    return Math.round(totalProgress / siteWorkProgress.length);
+  }, [siteWorkProgress, site?.progress]);
+
+  if (isDataLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-background p-6">
+        <div className="space-y-3 text-center">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+          <p className="text-sm text-muted-foreground">Loading site data...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!site) {
     return (
@@ -510,7 +809,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
               <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">Total Budget</p>
                 <p className="text-2xl font-bold text-primary">
-                  ₹{(site.budget / 10000000).toFixed(1)}Cr
+                  ₹{site.budget > 0 ? (site.budget / 10000000).toFixed(1) : '0.0'}Cr
                 </p>
               </div>
               <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
@@ -525,7 +824,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
               <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">Amount Spent</p>
                 <p className="text-2xl font-bold text-green-600">
-                  ₹{(site.spent / 10000000).toFixed(1)}Cr
+                  ₹{totalSpent > 0 ? (totalSpent / 10000000).toFixed(1) : '0.0'}Cr
                 </p>
               </div>
               <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
@@ -539,7 +838,19 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
             <div className="flex items-center justify-between">
               <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">Progress</p>
-                <p className="text-2xl font-bold text-blue-600">{site.progress}%</p>
+                <div className="space-y-1">
+                  <p className="text-2xl font-bold text-blue-600">{averageProgress}%</p>
+                  {siteWorkProgress.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      (No work progress entries)
+                    </p>
+                  )}
+                  {siteWorkProgress.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      (From {siteWorkProgress.length} entries)
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
                 <BarChart3 className="h-6 w-6 text-blue-600" />
@@ -568,9 +879,9 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium text-muted-foreground">Project Progress</span>
-              <span className="text-sm font-bold text-foreground">{site.progress}%</span>
+              <span className="text-sm font-bold text-foreground">{averageProgress}%</span>
             </div>
-            <Progress value={site.progress} className="h-3" />
+            <Progress value={averageProgress} className="h-3" />
             <div className="flex justify-between items-center text-xs text-muted-foreground">
               <span>Started: {formatDateShort(site.startDate)}</span>
               <span>Target: {formatDateShort(site.expectedEndDate)}</span>

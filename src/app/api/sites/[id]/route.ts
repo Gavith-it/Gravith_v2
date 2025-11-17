@@ -115,7 +115,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager'].includes(ctx.role)) {
+    if (!['owner', 'admin', 'manager', 'user'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 

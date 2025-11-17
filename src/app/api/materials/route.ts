@@ -226,7 +226,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager'].includes(ctx.role)) {
+    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 

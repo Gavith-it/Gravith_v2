@@ -164,10 +164,46 @@ export const ROLE_PERMISSIONS: Record<OrganizationRole, Permission[]> = {
     Permission.REPORT_VIEW,
   ],
   [OrganizationRole.USER]: [
+    // Organization - view only (no edit/delete/billing)
+    Permission.ORG_VIEW,
+    // User management - view only (no create/edit/delete/invite)
+    Permission.USER_VIEW,
+    // Site permissions - full access
     Permission.SITE_VIEW,
+    Permission.SITE_CREATE,
+    Permission.SITE_EDIT,
+    Permission.SITE_DELETE,
+    // Material permissions - full access
     Permission.MATERIAL_VIEW,
-    Permission.EXPENSE_VIEW,
+    Permission.MATERIAL_CREATE,
+    Permission.MATERIAL_EDIT,
+    Permission.MATERIAL_DELETE,
+    Permission.MATERIAL_RECEIVE,
+    // Vendor permissions - full access
+    Permission.VENDOR_VIEW,
+    Permission.VENDOR_CREATE,
+    Permission.VENDOR_EDIT,
+    Permission.VENDOR_DELETE,
+    // Vehicle permissions - full access
     Permission.VEHICLE_VIEW,
+    Permission.VEHICLE_CREATE,
+    Permission.VEHICLE_EDIT,
+    Permission.VEHICLE_DELETE,
+    Permission.VEHICLE_TRACK,
+    // Expense permissions - create/edit/delete but not approve
+    Permission.EXPENSE_VIEW,
+    Permission.EXPENSE_CREATE,
+    Permission.EXPENSE_EDIT,
+    Permission.EXPENSE_DELETE,
+    // Payment permissions - create/edit/delete but not approve
+    Permission.PAYMENT_VIEW,
+    Permission.PAYMENT_CREATE,
+    Permission.PAYMENT_EDIT,
+    Permission.PAYMENT_DELETE,
+    // Report permissions - full access
+    Permission.REPORT_VIEW,
+    Permission.REPORT_EXPORT,
+    Permission.REPORT_FINANCIAL,
   ],
 };
 
