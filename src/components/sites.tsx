@@ -87,6 +87,9 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
   const [scrollPosition, setScrollPosition] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [sitesWithTransactions, setSitesWithTransactions] = useState<Set<string>>(new Set());
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletedSiteName, setDeletedSiteName] = useState<string | null>(null);
 
   type SiteAdvancedFilterState = {
     locations: string[];
@@ -147,6 +150,29 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
     createDefaultSiteAdvancedFilters(),
   );
 
+  // Check if a site has linked transactions
+  const checkSiteHasTransactions = useCallback(async (siteId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/sites/${siteId}/check-dependencies`);
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        hasTransactions?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        // On error, assume site has transactions to be safe (hide delete button)
+        return true;
+      }
+
+      return payload.hasTransactions ?? false;
+    } catch (error) {
+      // On error, assume site has transactions to be safe (hide delete button)
+      console.error('Error checking site transactions', error);
+      return true;
+    }
+  }, []);
+
   const fetchSites = useCallback(
     async (focusId?: string) => {
       try {
@@ -163,6 +189,25 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
 
         const fetchedSites = payload.sites ?? [];
         setSites(fetchedSites);
+
+        // Check which sites have transactions (in batches to avoid overwhelming server)
+        const sitesWithTx = new Set<string>();
+        const batchSize = 5;
+        for (let i = 0; i < fetchedSites.length; i += batchSize) {
+          const batch = fetchedSites.slice(i, i + batchSize);
+          const transactionChecks = await Promise.all(
+            batch.map(async (site) => ({
+              siteId: site.id,
+              hasTransactions: await checkSiteHasTransactions(site.id),
+            })),
+          );
+          transactionChecks.forEach(({ siteId, hasTransactions }) => {
+            if (hasTransactions) {
+              sitesWithTx.add(siteId);
+            }
+          });
+        }
+        setSitesWithTransactions(sitesWithTx);
 
         const nextSelection =
           (focusId && fetchedSites.some((site) => site.id === focusId) && focusId) ||
@@ -184,7 +229,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         setIsSitesLoading(false);
       }
     },
-    [propSelectedSite, selectedSite],
+    [propSelectedSite, selectedSite, checkSiteHasTransactions],
   );
 
   useEffect(() => {
@@ -404,12 +449,21 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         // Remove from local state
         setSites((prev) => prev.filter((s) => s.id !== site.id));
         
+        // Remove from sites with transactions
+        setSitesWithTransactions((prev) => {
+          const next = new Set(prev);
+          next.delete(site.id);
+          return next;
+        });
+        
         // Clear selection if deleted site was selected
         if (selectedSite === site.id) {
           setSelectedSite(null);
         }
 
-        toast.success('Site deleted successfully.');
+        // Show success dialog
+        setDeletedSiteName(site.name);
+        setIsDeleteDialogOpen(true);
       } catch (error) {
         console.error('Failed to delete site', error);
         toast.error(error instanceof Error ? error.message : 'Unable to delete site.');
@@ -828,30 +882,32 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        handleDeleteSite(site);
-                                      }}
-                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
-                                      aria-label="Delete site"
-                                    >
-                                      <span>
-                                        <Trash2 className="h-4 w-4" />
-                                      </span>
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Delete site</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                              {!sitesWithTransactions.has(site.id) && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          e.preventDefault();
+                                          handleDeleteSite(site);
+                                        }}
+                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                        aria-label="Delete site"
+                                      >
+                                        <span>
+                                          <Trash2 className="h-4 w-4" />
+                                        </span>
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Delete site</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -965,6 +1021,24 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
           </div>
         </div>
       </div>
+
+      {/* Delete Success Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Site Deleted Successfully
+            </DialogTitle>
+            <DialogDescription>
+              The site &quot;{deletedSiteName}&quot; has been permanently deleted from the system.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setIsDeleteDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bottom Section - Site Details */}
       <div className="flex-1 flex flex-col">
