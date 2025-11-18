@@ -99,9 +99,9 @@ export function MaterialReceiptForm({
               materialName: '',
               siteId: '',
               siteName: '',
-              filledWeight: undefined as any,
-              emptyWeight: undefined as any,
-              quantity: undefined as any,
+              filledWeight: undefined as number | undefined,
+              emptyWeight: undefined as number | undefined,
+              quantity: undefined as number | undefined,
             },
           ],
     },
@@ -392,9 +392,9 @@ export function MaterialReceiptForm({
       materialName: materialOptions.length > 0 ? materialOptions[0].name : '',
       siteId: sites.length > 0 ? sites[0].id : '',
       siteName: sites.length > 0 ? sites[0].name : '',
-      filledWeight: undefined as any,
-      emptyWeight: undefined as any,
-      quantity: undefined as any,
+      filledWeight: undefined as number | undefined,
+      emptyWeight: undefined as number | undefined,
+      quantity: undefined as number | undefined,
     });
   };
 
