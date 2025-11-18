@@ -16,14 +16,15 @@ export interface MaterialMasterItem {
   unit: string;
   siteId?: string | null;
   siteName?: string | null;
-  quantity: number;
-  consumedQuantity: number;
+  quantity: number; // Represents OB/available quantity for display
+  consumedQuantity: number; // Kept for work progress tracking
   standardRate: number;
   isActive: boolean;
   createdDate: string;
   lastUpdated: string;
   hsn: string;
-  taxRate: number;
+  taxRate: number; // Kept for backward compatibility
+  taxRateId?: string | null; // Tax rate code/ID from masters
   createdAt?: string;
   updatedAt?: string;
   openingBalance?: number | null;

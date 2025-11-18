@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Scale, Truck } from 'lucide-react';
+import { Scale, Truck, Building2, ExternalLink } from 'lucide-react';
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { useMaterialReceipts, useVendors } from '@/lib/contexts';
 import type { MaterialMaster, MaterialReceipt } from '@/types/entities';
+import type { Site } from '@/types/sites';
 import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface MaterialReceiptFormProps {
@@ -40,6 +41,8 @@ const receiptFormSchema = z.object({
     .regex(/^[A-Z]{2}-\d{2}-[A-Z]{2}-\d{4}$/, 'Vehicle number must be in format: KA-01-AB-1234'),
   materialId: z.string().min(1, 'Please select a material.'),
   materialName: z.string().min(1, 'Material name is required.'),
+  siteId: z.string().min(1, 'Please select a site.'),
+  siteName: z.string().min(1, 'Site name is required.'),
   vendorId: z.string().optional(),
   vendorName: z.string().optional(),
   filledWeight: z.number().positive('Filled weight must be greater than zero.'),
@@ -60,6 +63,9 @@ export function MaterialReceiptForm({
   const [isClient, setIsClient] = useState(false);
   const [materialOptions, setMaterialOptions] = useState<MaterialMaster[]>([]);
   const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(true);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
+  const [currentOB, setCurrentOB] = useState<number | null>(null);
 
   const form = useForm<ReceiptFormData>({
     resolver: zodResolver(receiptFormSchema),
@@ -68,6 +74,8 @@ export function MaterialReceiptForm({
       vehicleNumber: editingReceipt?.vehicleNumber ?? '',
       materialId: editingReceipt?.materialId ?? '',
       materialName: editingReceipt?.materialName ?? '',
+      siteId: editingReceipt?.siteId ?? '',
+      siteName: editingReceipt?.siteName ?? '',
       vendorId: editingReceipt?.vendorId ?? undefined,
       vendorName: editingReceipt?.vendorName ?? undefined,
       filledWeight: editingReceipt?.filledWeight ?? undefined,
@@ -109,6 +117,70 @@ export function MaterialReceiptForm({
   }, []);
 
   useEffect(() => {
+    const loadSites = async () => {
+      try {
+        setIsLoadingSites(true);
+        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sites?: Site[];
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load sites.');
+        }
+
+        setSites(payload.sites ?? []);
+      } catch (error) {
+        console.error('Failed to load sites list', error);
+        toast.error('Unable to load sites. Add sites first.', {
+          description: 'Please create sites in the Sites page before recording receipts.',
+        });
+        setSites([]);
+      } finally {
+        setIsLoadingSites(false);
+      }
+    };
+
+    void loadSites();
+  }, []);
+
+  // Fetch current OB when material and site are selected
+  useEffect(() => {
+    const materialId = form.watch('materialId');
+    const siteId = form.watch('siteId');
+
+    if (materialId && siteId) {
+      const fetchOB = async () => {
+        try {
+          const response = await fetch('/api/materials', { cache: 'no-store' });
+          const payload = (await response.json().catch(() => ({}))) as {
+            materials?: MaterialMaster[];
+            error?: string;
+          };
+
+          if (response.ok && payload.materials) {
+            const material = payload.materials.find((m) => m.id === materialId);
+            if (material?.siteAllocations) {
+              const allocation = material.siteAllocations.find((a) => a.siteId === siteId);
+              setCurrentOB(allocation?.quantity ?? null);
+            } else {
+              setCurrentOB(null);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch OB', error);
+          setCurrentOB(null);
+        }
+      };
+
+      void fetchOB();
+    } else {
+      setCurrentOB(null);
+    }
+  }, [form.watch('materialId'), form.watch('siteId')]);
+
+  useEffect(() => {
     if (!materialOptions.length) {
       form.setValue('materialId', '');
       form.setValue('materialName', '');
@@ -127,10 +199,23 @@ export function MaterialReceiptForm({
 
     if (!isEditMode) {
       const [first] = materialOptions;
-      form.setValue('materialId', first.id, { shouldValidate: true });
-      form.setValue('materialName', first.name, { shouldValidate: true });
+      if (first) {
+        form.setValue('materialId', first.id, { shouldValidate: true });
+        form.setValue('materialName', first.name, { shouldValidate: true });
+      }
     }
   }, [form, isEditMode, materialOptions]);
+
+  // Set default site if available and not in edit mode
+  useEffect(() => {
+    if (!isEditMode && sites.length > 0 && !form.getValues('siteId')) {
+      const [first] = sites;
+      if (first) {
+        form.setValue('siteId', first.id, { shouldValidate: true });
+        form.setValue('siteName', first.name, { shouldValidate: true });
+      }
+    }
+  }, [form, isEditMode, sites]);
 
   const handleFormSubmit = React.useCallback(
     async (data: ReceiptFormData) => {
@@ -155,8 +240,8 @@ export function MaterialReceiptForm({
         vendorId: data.vendorId ?? null,
         vendorName: data.vendorName ?? null,
         linkedPurchaseId: editingReceipt?.linkedPurchaseId ?? null,
-        siteId: editingReceipt?.siteId,
-        siteName: editingReceipt?.siteName ?? null,
+        siteId: data.siteId,
+        siteName: data.siteName,
       };
 
       try {
@@ -218,7 +303,9 @@ export function MaterialReceiptForm({
   const isSubmitDisabled =
     form.formState.isSubmitting ||
     isLoadingMaterials ||
-    (materialOptions.length === 0 && !isEditMode);
+    isLoadingSites ||
+    (materialOptions.length === 0 && !isEditMode) ||
+    (sites.length === 0 && !isEditMode);
 
   const getSubmitButtonText = () =>
     form.formState.isSubmitting
@@ -332,9 +419,26 @@ export function MaterialReceiptForm({
                       </SelectContent>
                     </Select>
                     <FieldDescription>
-                      {materialOptions.length === 0
-                        ? 'Add a material in Materials before recording receipts.'
-                        : 'Choose the material received.'}
+                      {materialOptions.length === 0 ? (
+                        <span>
+                          Add a material in Materials before recording receipts.{' '}
+                          <Button
+                            type="button"
+                            variant="link"
+                            className="h-auto p-0 text-primary underline"
+                            onClick={() => {
+                              toast.info('Please navigate to Materials page to create a new material.', {
+                                description: 'You can return here after creating the material.',
+                              });
+                            }}
+                          >
+                            <ExternalLink className="mr-1 h-3 w-3 inline" />
+                            Create Material
+                          </Button>
+                        </span>
+                      ) : (
+                        'Choose the material received.'
+                      )}
                     </FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     <input type="hidden" {...form.register('materialName')} />
@@ -342,6 +446,89 @@ export function MaterialReceiptForm({
                 )}
               />
 
+              <Controller
+                name="siteId"
+                control={form.control}
+                render={({ field, fieldState }) => {
+                  const selectedSite = sites.find((s) => s.id === field.value);
+                  return (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor={`${formId}-site`}>
+                        Site <span className="text-destructive">*</span>
+                      </FieldLabel>
+                      <Select
+                        value={field.value ?? ''}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          const site = sites.find((s) => s.id === value);
+                          form.setValue('siteName', site?.name ?? '');
+                        }}
+                        disabled={isLoadingSites || sites.length === 0}
+                      >
+                        <SelectTrigger id={`${formId}-site`} aria-invalid={fieldState.invalid}>
+                          <SelectValue
+                            placeholder={
+                              isLoadingSites
+                                ? 'Loading sites...'
+                                : sites.length === 0
+                                  ? 'No sites available'
+                                  : 'Select site'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sites.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-muted-foreground">
+                              No sites found. Add sites first.
+                            </div>
+                          ) : (
+                            sites.map((site) => (
+                              <SelectItem key={site.id} value={site.id}>
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="h-4 w-4" />
+                                  <span>{site.name}</span>
+                                </div>
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FieldDescription>
+                        {sites.length === 0 ? (
+                          <span>
+                            Add a site in Sites before recording receipts.{' '}
+                            <Button
+                              type="button"
+                              variant="link"
+                              className="h-auto p-0 text-primary underline"
+                              onClick={() => {
+                                toast.info('Please navigate to Sites page to create a new site.', {
+                                  description: 'You can return here after creating the site.',
+                                });
+                              }}
+                            >
+                              <ExternalLink className="mr-1 h-3 w-3 inline" />
+                              Create Site
+                            </Button>
+                          </span>
+                        ) : (
+                          'Choose the site where material is received.'
+                        )}
+                        {currentOB !== null && field.value && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            Current OB: {currentOB.toLocaleString()}
+                          </span>
+                        )}
+                      </FieldDescription>
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                      <input type="hidden" {...form.register('siteName')} />
+                    </Field>
+                  );
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="vendorId"
                 control={form.control}

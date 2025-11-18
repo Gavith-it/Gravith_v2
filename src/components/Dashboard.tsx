@@ -42,17 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 // Form data types
-interface MaterialMasterFormData {
-  name: string;
-  category: string;
-  unit: string;
-  quantity: number;
-  consumedQuantity: number;
-  standardRate: number;
-  isActive: boolean;
-  hsn: string;
-  taxRate: number;
-}
+import type { MaterialMasterInput } from '@/types/materials';
 
 interface ActivityFormData {
   siteId: string;
@@ -219,7 +209,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     // TODO: Call API to save expense
   };
 
-  const handleMaterialMasterSubmit = async (data: MaterialMasterFormData) => {
+  const handleMaterialMasterSubmit = async (data: MaterialMasterInput) => {
     console.log('Material master submitted:', data);
     materialMasterDialog.closeDialog();
     // TODO: Call API to save material master

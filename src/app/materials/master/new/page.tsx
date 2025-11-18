@@ -22,13 +22,13 @@ export default function MaterialMasterNewPage() {
           name: data.name,
           category: data.category,
           unit: data.unit,
-          quantity: data.quantity,
-          consumedQuantity: data.consumedQuantity ?? 0,
           standardRate: data.standardRate,
           isActive: data.isActive,
           hsn: data.hsn,
-          taxRate: data.taxRate,
+          taxRateId: data.taxRateId,
           siteId: data.siteId ?? null,
+          openingBalance: data.openingBalance,
+          siteAllocations: data.siteAllocations,
         }),
       });
 

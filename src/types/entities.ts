@@ -93,12 +93,13 @@ export interface MaterialMaster {
   unit: string;
   siteId?: string | null;
   siteName?: string | null;
-  quantity: number;
-  consumedQuantity: number;
+  quantity: number; // Kept for backward compatibility, represents OB
+  consumedQuantity: number; // Kept for work progress tracking
   standardRate: number;
   isActive: boolean;
   hsn: string;
-  taxRate: number;
+  taxRate: number; // Kept for backward compatibility
+  taxRateId?: string | null; // Tax rate code/ID from masters
   organizationId: string;
   createdAt: string;
   updatedAt: string;

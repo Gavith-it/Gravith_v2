@@ -39,17 +39,28 @@ export default function MaterialMasterEditPage({ params }: MaterialMasterEditPag
 
         if (payload.material) {
           const material = payload.material;
+          // Convert taxRate to taxRateId if needed
+          const getTaxRateIdFromRate = (rate: number): string => {
+            const taxRateMap: Record<number, string> = {
+              0: 'GST0',
+              5: 'GST5',
+              12: 'GST12',
+              18: 'GST18',
+              28: 'GST28',
+            };
+            return taxRateMap[rate] || 'GST18';
+          };
           setMaterialData({
             name: material.name,
             category: material.category,
             unit: material.unit,
             siteId: material.siteId ?? undefined,
-            quantity: material.quantity,
-            consumedQuantity: material.consumedQuantity,
             standardRate: material.standardRate,
             isActive: material.isActive,
             hsn: material.hsn,
-            taxRate: material.taxRate,
+            taxRateId: material.taxRateId ?? getTaxRateIdFromRate(material.taxRate),
+            openingBalance: material.openingBalance,
+            siteAllocations: material.siteAllocations,
           });
         } else {
           throw new Error('Material not found');
@@ -77,13 +88,13 @@ export default function MaterialMasterEditPage({ params }: MaterialMasterEditPag
           name: data.name,
           category: data.category,
           unit: data.unit,
-          quantity: data.quantity,
-          consumedQuantity: data.consumedQuantity ?? 0,
           standardRate: data.standardRate,
           isActive: data.isActive,
           hsn: data.hsn,
-          taxRate: data.taxRate,
+          taxRateId: data.taxRateId,
           siteId: data.siteId ?? null,
+          openingBalance: data.openingBalance,
+          siteAllocations: data.siteAllocations,
         }),
       });
 

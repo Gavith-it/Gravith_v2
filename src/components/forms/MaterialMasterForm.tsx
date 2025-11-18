@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as React from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import * as z from 'zod';
-import { Plus, Trash2, Building2 } from 'lucide-react';
+import { Plus, Trash2, Building2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import type { MaterialMasterInput } from '@/types/materials';
-import { getActiveUOMs, type UOMItem } from '@/components/shared/masterData';
+import { getActiveUOMs, type UOMItem, getActiveTaxRates, type TaxRateItem } from '@/components/shared/masterData';
 import type { Site } from '@/types/sites';
 
 interface MaterialMasterFormProps {
@@ -53,32 +53,22 @@ const materialMasterFormSchema = z
       'Other',
     ]),
     unit: z.string().min(1, 'Unit is required.'),
-    quantity: z
-      .number()
-      .min(0, 'Quantity must be greater than or equal to zero.')
-      .max(1000000000, 'Quantity is too large.'),
-    consumedQuantity: z
-      .number()
-      .min(0, 'Consumed quantity must be greater than or equal to zero.')
-      .max(1000000000, 'Consumed quantity is too large.'),
-    standardRate: z
-      .number()
+    standardRate: z.coerce
+      .number({
+        message: 'Standard rate is required.',
+      })
       .min(0, 'Standard rate must be greater than or equal to zero.')
       .max(100000000, 'Standard rate is too large.'),
     hsn: z.string().max(50, 'HSN code must be at most 50 characters.').optional(),
-    taxRate: z
-      .number()
-      .min(0, 'Tax rate must be greater than or equal to zero.')
-      .max(100, 'Tax rate cannot exceed 100%.'),
+    taxRateId: z.string().min(1, 'Tax rate is required.'),
     isActive: z.boolean(),
     hasOpeningBalance: z.boolean(),
   })
-  .refine((data) => data.consumedQuantity <= data.quantity, {
-    message: 'Consumed quantity cannot exceed available quantity.',
-    path: ['consumedQuantity'],
-  });
+;
 
-type MaterialMasterFormData = z.infer<typeof materialMasterFormSchema>;
+type MaterialMasterFormData = z.infer<typeof materialMasterFormSchema> & {
+  standardRate: number;
+};
 
 type SiteAllocation = {
   siteId: string;
@@ -95,6 +85,7 @@ export default function MaterialMasterForm({
   const formId = isEdit ? 'material-master-edit-form' : 'material-master-new-form';
   const [isClient, setIsClient] = React.useState(false);
   const [uomOptions] = React.useState<UOMItem[]>(getActiveUOMs());
+  const [taxRateOptions] = React.useState<TaxRateItem[]>(getActiveTaxRates());
   const [sites, setSites] = React.useState<Site[]>([]);
   const [isLoadingSites, setIsLoadingSites] = React.useState(false);
   const [hasOpeningBalance, setHasOpeningBalance] = React.useState(
@@ -103,18 +94,30 @@ export default function MaterialMasterForm({
   const [siteAllocations, setSiteAllocations] = React.useState<SiteAllocation[]>(
     defaultValues?.siteAllocations || [],
   );
+  const [isSiteDialogOpen, setIsSiteDialogOpen] = React.useState(false);
+
+  // Helper function to convert tax rate number to tax rate ID
+  const getTaxRateIdFromRate = React.useCallback((rate: number): string => {
+    const taxRate = taxRateOptions.find((tr) => tr.rate === rate);
+    return taxRate?.code || 'GST18';
+  }, [taxRateOptions]);
 
   const form = useForm<MaterialMasterFormData>({
-    resolver: zodResolver(materialMasterFormSchema),
+    resolver: zodResolver(materialMasterFormSchema) as any, // Type assertion needed due to z.coerce inference
     defaultValues: {
       name: defaultValues?.name || '',
       category: defaultValues?.category || 'Cement',
       unit: defaultValues?.unit || '',
-      quantity: defaultValues?.quantity ?? 0,
-      consumedQuantity: defaultValues?.consumedQuantity ?? 0,
-      standardRate: defaultValues?.standardRate ?? 0,
+      standardRate: defaultValues?.standardRate ?? undefined,
       hsn: defaultValues?.hsn || '',
-      taxRate: defaultValues?.taxRate ?? 18,
+      taxRateId: defaultValues 
+        ? ((defaultValues as any).taxRateId || ((defaultValues as any).taxRate && typeof (defaultValues as any).taxRate === 'number' 
+          ? (() => {
+              const taxRate = taxRateOptions.find((tr) => tr.rate === (defaultValues as any).taxRate);
+              return taxRate?.code || 'GST18';
+            })()
+          : 'GST18'))
+        : 'GST18',
       isActive: defaultValues?.isActive ?? true,
       hasOpeningBalance: Boolean(
         defaultValues?.siteAllocations && defaultValues.siteAllocations.length > 0,
@@ -161,20 +164,22 @@ export default function MaterialMasterForm({
       );
       setHasOpeningBalance(hasOB);
       setSiteAllocations(defaultValues.siteAllocations || []);
+      const taxRateId = (defaultValues as any)?.taxRateId || 
+        ((defaultValues as any)?.taxRate && typeof (defaultValues as any).taxRate === 'number'
+          ? getTaxRateIdFromRate((defaultValues as any).taxRate)
+          : 'GST18');
       form.reset({
         name: defaultValues.name || '',
         category: defaultValues.category || 'Cement',
         unit: defaultValues.unit || '',
-        quantity: defaultValues.quantity ?? 0,
-        consumedQuantity: defaultValues.consumedQuantity ?? 0,
-        standardRate: defaultValues.standardRate ?? 0,
+        standardRate: defaultValues.standardRate ?? undefined,
         hsn: defaultValues.hsn || '',
-        taxRate: defaultValues.taxRate ?? 18,
+        taxRateId: taxRateId,
         isActive: defaultValues.isActive ?? true,
         hasOpeningBalance: hasOB,
       });
     }
-  }, [defaultValues, isEdit, form]);
+  }, [defaultValues, isEdit, form, getTaxRateIdFromRate]);
 
   const handleAddSiteAllocation = () => {
     setSiteAllocations([
@@ -246,12 +251,10 @@ export default function MaterialMasterForm({
       name: data.name,
       category: data.category,
       unit: data.unit,
-      quantity: data.quantity,
-      consumedQuantity: data.consumedQuantity,
       standardRate: data.standardRate,
       isActive: data.isActive,
       hsn: data.hsn || '',
-      taxRate: data.taxRate,
+      taxRateId: data.taxRateId,
     };
 
     if (hasOpeningBalance && siteAllocations.length > 0) {
@@ -346,8 +349,9 @@ export default function MaterialMasterForm({
               />
             </div>
 
-            {/* Unit and Available Quantity Row */}
+            {/* Unit and Standard Rate Row */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {/* Unit */}
               <Controller
                 name="unit"
                 control={form.control}
@@ -380,65 +384,7 @@ export default function MaterialMasterForm({
                 )}
               />
 
-              <Controller
-                name="quantity"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-quantity`}>
-                      Available Quantity <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Input
-                      {...field}
-                      id={`${formId}-quantity`}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="0"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === '' ? 0 : Number(value));
-                      }}
-                      value={field.value ?? ''}
-                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                    />
-                    <FieldDescription>Current available quantity of the material.</FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-            </div>
-
-            {/* Consumed Quantity and Standard Rate Row */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Controller
-                name="consumedQuantity"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-consumed-quantity`}>Consumed Quantity</FieldLabel>
-                    <Input
-                      {...field}
-                      id={`${formId}-consumed-quantity`}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="0"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === '' ? 0 : Number(value));
-                      }}
-                      value={field.value ?? ''}
-                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                    />
-                    <FieldDescription>Quantity already consumed from available stock.</FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-
+              {/* Standard Rate */}
               <Controller
                 name="standardRate"
                 control={form.control}
@@ -454,12 +400,12 @@ export default function MaterialMasterForm({
                       min="0"
                       step="0.01"
                       aria-invalid={fieldState.invalid}
-                      placeholder="0"
+                      placeholder="Enter rate"
                       onChange={(e) => {
                         const value = e.target.value;
-                        field.onChange(value === '' ? 0 : Number(value));
+                        field.onChange(value === '' ? undefined : Number(value));
                       }}
-                      value={field.value ?? ''}
+                      value={field.value === undefined || field.value === null ? '' : field.value}
                       style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                     />
                     <FieldDescription>Standard rate per unit for this material.</FieldDescription>
@@ -491,28 +437,32 @@ export default function MaterialMasterForm({
               />
 
               <Controller
-                name="taxRate"
+                name="taxRateId"
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-tax-rate`}>Tax Rate (%)</FieldLabel>
-                    <Input
-                      {...field}
-                      id={`${formId}-tax-rate`}
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="18"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === '' ? 0 : Number(value));
-                      }}
-                      value={field.value ?? ''}
-                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                    />
-                    <FieldDescription>Tax rate percentage applicable to this material.</FieldDescription>
+                    <FieldLabel htmlFor={`${formId}-tax-rate`}>
+                      Tax Rate <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id={`${formId}-tax-rate`} aria-invalid={fieldState.invalid}>
+                        <SelectValue placeholder="Select tax rate from masters" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {taxRateOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No active tax rates found. Add tax rates from Masters page.
+                          </div>
+                        ) : (
+                          taxRateOptions.map((taxRate) => (
+                            <SelectItem key={taxRate.id} value={taxRate.code}>
+                              {taxRate.name} ({taxRate.rate}%)
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>Select tax rate from masters for validation.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -602,12 +552,48 @@ export default function MaterialMasterForm({
                       Loading sites...
                     </div>
                   ) : sites.length === 0 ? (
-                    <div className="py-4 text-center text-sm text-muted-foreground">
-                      No sites available. Create a site first.
+                    <div className="py-4 space-y-3">
+                      <p className="text-center text-sm text-muted-foreground">
+                        No sites available. Create a site first.
+                      </p>
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            toast.info('Please navigate to Sites page to create a new site.', {
+                              description: 'You can return here after creating the site.',
+                            });
+                          }}
+                          className="gap-2"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          Create Site
+                        </Button>
+                      </div>
                     </div>
                   ) : siteAllocations.length === 0 ? (
-                    <div className="py-4 text-center text-sm text-muted-foreground">
-                      Click &quot;Add Site&quot; to create an allocation.
+                    <div className="py-4 space-y-3">
+                      <p className="text-center text-sm text-muted-foreground">
+                        Click &quot;Add Site&quot; to create an allocation.
+                      </p>
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            toast.info('Need to create a new site?', {
+                              description: 'Navigate to Sites page to add a new site.',
+                            });
+                          }}
+                          className="gap-2 text-xs"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Create Site
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">

@@ -151,6 +151,74 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create receipt.' }, { status: 500 });
     }
 
+    // Update Opening Balance in material_site_allocations if material and site are provided
+    if (materialId && siteId) {
+      try {
+        // Check if allocation exists
+        const { data: existingAllocation, error: allocationError } = await supabase
+          .from('material_site_allocations')
+          .select('id, opening_balance')
+          .eq('material_id', materialId)
+          .eq('site_id', siteId)
+          .eq('organization_id', ctx.organizationId)
+          .maybeSingle();
+
+        if (allocationError) {
+          console.error('Error checking site allocation', allocationError);
+        } else if (existingAllocation) {
+          // Update existing allocation
+          const newOB = Number(existingAllocation.opening_balance ?? 0) + netWeight;
+          const { error: updateError } = await supabase
+            .from('material_site_allocations')
+            .update({ opening_balance: newOB, updated_by: ctx.userId })
+            .eq('id', String(existingAllocation.id));
+
+          if (updateError) {
+            console.error('Error updating site allocation OB', updateError);
+          }
+        } else {
+          // Create new allocation
+          const { error: insertError } = await supabase
+            .from('material_site_allocations')
+            .insert({
+              material_id: materialId,
+              site_id: siteId,
+              opening_balance: netWeight,
+              organization_id: ctx.organizationId,
+              created_by: ctx.userId,
+              updated_by: ctx.userId,
+            });
+
+          if (insertError) {
+            console.error('Error creating site allocation', insertError);
+          }
+        }
+
+        // Recalculate total opening_balance for material_masters
+        const { data: allAllocations } = await supabase
+          .from('material_site_allocations')
+          .select('opening_balance')
+          .eq('material_id', materialId)
+          .eq('organization_id', ctx.organizationId);
+
+        if (allAllocations) {
+          const totalOB = allAllocations.reduce(
+            (sum, alloc) => sum + Number(alloc.opening_balance ?? 0),
+            0,
+          );
+
+          await supabase
+            .from('material_masters')
+            .update({ opening_balance: totalOB, updated_by: ctx.userId })
+            .eq('id', materialId)
+            .eq('organization_id', ctx.organizationId);
+        }
+      } catch (obError) {
+        console.error('Error updating opening balance', obError);
+        // Don't fail the receipt creation if OB update fails
+      }
+    }
+
     const receipt = mapRowToReceipt(data as ReceiptRow);
     return NextResponse.json({ receipt });
   } catch (error) {

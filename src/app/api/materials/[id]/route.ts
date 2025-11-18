@@ -23,6 +23,7 @@ type MaterialRow = {
   is_active: boolean | null;
   hsn: string | null;
   tax_rate: number | string | null;
+  tax_rate_id?: string | null;
   opening_balance: number | string | null;
   organization_id: string;
   created_at: string | null;
@@ -45,6 +46,8 @@ function mapRowToMaterial(row: MaterialRow): MaterialMaster & {
 } {
   const createdAt = row.created_at ?? new Date().toISOString();
   const updatedAt = row.updated_at ?? createdAt;
+  // Use opening_balance as quantity if available
+  const quantityValue = row.opening_balance ? Number(row.opening_balance) : Number(row.quantity ?? 0);
 
   return {
     id: row.id,
@@ -53,12 +56,13 @@ function mapRowToMaterial(row: MaterialRow): MaterialMaster & {
     unit: row.unit,
     siteId: row.site_id ?? null,
     siteName: row.site_name ?? null,
-    quantity: Number(row.quantity ?? 0),
+    quantity: quantityValue,
     consumedQuantity: Number(row.consumed_quantity ?? 0),
     standardRate: Number(row.standard_rate ?? 0),
     isActive: Boolean(row.is_active ?? true),
     hsn: row.hsn ?? '',
     taxRate: Number(row.tax_rate ?? 0),
+    taxRateId: row.tax_rate_id ?? null,
     organizationId: row.organization_id,
     createdAt,
     updatedAt,
@@ -210,14 +214,30 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (body.name) updatePayload['name'] = body.name;
     if (body.category) updatePayload['category'] = body.category;
     if (body.unit) updatePayload['unit'] = body.unit;
-    if (typeof body.consumedQuantity === 'number') {
-      const normalizedConsumed = Math.max(0, body.consumedQuantity);
-      updatePayload['consumed_quantity'] = normalizedConsumed;
-    }
     if (typeof body.standardRate === 'number') updatePayload['standard_rate'] = body.standardRate;
     if (typeof body.isActive === 'boolean') updatePayload['is_active'] = body.isActive;
     if (typeof body.hsn === 'string') updatePayload['hsn'] = body.hsn;
-    if (typeof body.taxRate === 'number') updatePayload['tax_rate'] = body.taxRate;
+    if (typeof body.taxRateId === 'string') {
+      // Validate tax rate ID
+      const validTaxRateIds = ['GST0', 'GST5', 'GST12', 'GST18', 'GST28', 'CGST9', 'SGST9', 'IGST18', 'TDS2'];
+      if (!validTaxRateIds.includes(body.taxRateId)) {
+        return NextResponse.json({ error: 'Invalid tax rate ID.' }, { status: 400 });
+      }
+      updatePayload['tax_rate_id'] = body.taxRateId;
+      // Also update tax_rate for backward compatibility
+      const taxRateMap: Record<string, number> = {
+        'GST0': 0,
+        'GST5': 5,
+        'GST12': 12,
+        'GST18': 18,
+        'GST28': 28,
+        'CGST9': 9,
+        'SGST9': 9,
+        'IGST18': 18,
+        'TDS2': 2,
+      };
+      updatePayload['tax_rate'] = taxRateMap[body.taxRateId] ?? 18;
+    }
 
     // Handle opening balance and site allocations
     if (body.siteAllocations !== undefined) {
@@ -229,21 +249,15 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
       updatePayload['opening_balance'] = calculatedOpeningBalance;
 
-      // Update quantity if OB is provided
+      // Update quantity from OB for backward compatibility
       if (calculatedOpeningBalance !== null) {
         updatePayload['quantity'] = calculatedOpeningBalance;
-      } else if (typeof body.quantity === 'number') {
-        updatePayload['quantity'] = body.quantity;
       }
     } else if (body.openingBalance !== undefined) {
       updatePayload['opening_balance'] = body.openingBalance;
-      if (body.openingBalance !== null && typeof body.quantity !== 'number') {
+      if (body.openingBalance !== null) {
         updatePayload['quantity'] = body.openingBalance;
       }
-    }
-
-    if (typeof body.quantity === 'number' && body.siteAllocations === undefined) {
-      updatePayload['quantity'] = body.quantity;
     }
 
     if ('siteId' in body) {
@@ -260,7 +274,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       .update(updatePayload)
       .eq('id', id)
       .select(
-        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, opening_balance, organization_id, created_at, updated_at',
+        'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, tax_rate_id, opening_balance, organization_id, created_at, updated_at',
       )
       .single();
 

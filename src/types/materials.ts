@@ -5,12 +5,10 @@ export type MaterialMasterInput = {
   category: MaterialMaster['category'];
   unit: MaterialMaster['unit'];
   siteId?: MaterialMaster['siteId'];
-  quantity: MaterialMaster['quantity'];
-  consumedQuantity: MaterialMaster['consumedQuantity'];
   standardRate: MaterialMaster['standardRate'];
   isActive: MaterialMaster['isActive'];
   hsn: MaterialMaster['hsn'];
-  taxRate: MaterialMaster['taxRate'];
+  taxRateId: string; // Tax rate code/ID from masters (e.g., 'GST18', 'GST12')
   openingBalance?: MaterialMaster['openingBalance'];
   siteAllocations?: MaterialMaster['siteAllocations'];
 };

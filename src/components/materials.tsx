@@ -24,6 +24,7 @@ import { formatDate } from '../lib/utils';
 import MaterialMasterForm from './forms/MaterialMasterForm';
 import type { MaterialMasterItem } from './shared/materialMasterData';
 import type { MaterialMasterInput } from '@/types/materials';
+import { getActiveTaxRates } from './shared/masterData';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -58,7 +59,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type MaterialAdvancedFilterState = {
@@ -181,13 +181,16 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           taxRate: material.taxRate,
           createdDate: material.createdDate ?? material.createdAt?.split('T')[0] ?? '',
           lastUpdated: material.lastUpdated ?? material.updatedAt?.split('T')[0] ?? '',
-        };
+        } as MaterialMasterItem;
         // Add optional fields if they exist
         if (material.openingBalance !== undefined && material.openingBalance !== null) {
-          (base as MaterialMasterItem).openingBalance = material.openingBalance;
+          base.openingBalance = material.openingBalance;
+        }
+        if ((material as any).taxRateId) {
+          base.taxRateId = (material as any).taxRateId;
         }
         if (material.siteAllocations) {
-          (base as MaterialMasterItem).siteAllocations = material.siteAllocations;
+          base.siteAllocations = material.siteAllocations;
         }
         return base;
       });
@@ -334,12 +337,10 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
               name: formData.name,
               category: formData.category,
               unit: formData.unit,
-              quantity: formData.quantity,
-              consumedQuantity: formData.consumedQuantity ?? 0,
               standardRate: formData.standardRate,
               isActive: formData.isActive,
               hsn: formData.hsn,
-              taxRate: formData.taxRate,
+              taxRateId: formData.taxRateId,
               siteId: formData.siteId ?? null,
               openingBalance: formData.openingBalance,
               siteAllocations: formData.siteAllocations,
@@ -484,7 +485,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
     [scopedMaterials],
   );
   const totalTrackedQuantity = useMemo(() => {
-    return scopedMaterials.reduce((sum, m) => sum + (m.quantity ?? 0), 0);
+    return scopedMaterials.reduce((sum, m) => sum + (m.openingBalance ?? m.quantity ?? 0), 0);
   }, [scopedMaterials]);
 
   const totalConsumedQuantity = useMemo(() => {
@@ -697,12 +698,15 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                                     category: editingMaterial.category,
                                     unit: editingMaterial.unit,
                                     siteId: editingMaterial.siteId ?? undefined,
-                                    quantity: editingMaterial.quantity,
-                                    consumedQuantity: editingMaterial.consumedQuantity,
                                     standardRate: editingMaterial.standardRate,
                                     isActive: editingMaterial.isActive,
                                     hsn: editingMaterial.hsn,
-                                    taxRate: editingMaterial.taxRate,
+                                    taxRateId: editingMaterial.taxRateId ?? (editingMaterial.taxRate && typeof editingMaterial.taxRate === 'number' ? 
+                                      (() => {
+                                        const taxRate = getActiveTaxRates().find((tr) => tr.rate === editingMaterial.taxRate);
+                                        return taxRate?.code || 'GST18';
+                                      })() 
+                                      : 'GST18'),
                                     openingBalance: editingMaterial.openingBalance,
                                     siteAllocations: editingMaterial.siteAllocations,
                                   }
@@ -803,11 +807,10 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                       <TableHead className="min-w-[160px]">Site</TableHead>
                       <TableHead className="min-w-[120px]">Category</TableHead>
                       <TableHead className="min-w-[80px]">Unit</TableHead>
-                      <TableHead className="min-w-[120px] text-right">Qty</TableHead>
-                      <TableHead className="min-w-[160px] text-right">Usage</TableHead>
+                      <TableHead className="min-w-[120px] text-right">Available Qty</TableHead>
                       <TableHead className="min-w-[120px] text-right">Rate (₹)</TableHead>
                       <TableHead className="min-w-[100px]">HSN Code</TableHead>
-                      <TableHead className="min-w-[80px]">Tax %</TableHead>
+                      <TableHead className="min-w-[80px]">Tax Rate</TableHead>
                       <TableHead className="min-w-[100px]">Status</TableHead>
                       <TableHead className="min-w-[120px]">Last Updated</TableHead>
                       <TableHead className="min-w-[100px] text-right">Actions</TableHead>
@@ -1060,11 +1063,15 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                         return unitMap[unit.toLowerCase()] || unit;
                       };
 
-                      const availableQuantity = material.quantity ?? 0;
-                      const consumedQuantity = material.consumedQuantity ?? 0;
-                      const totalQuantity = availableQuantity + consumedQuantity;
-                      const usagePercent =
-                        totalQuantity > 0 ? Math.min(100, (consumedQuantity / totalQuantity) * 100) : 0;
+                      const availableQuantity = material.openingBalance ?? material.quantity ?? 0;
+                      // Get tax rate info from masters
+                      const taxRateId = material.taxRateId;
+                      const taxRateInfo = taxRateId 
+                        ? getActiveTaxRates().find((tr) => tr.code === taxRateId)
+                        : null;
+                      const taxRateDisplay = taxRateInfo 
+                        ? `${taxRateInfo.name} (${taxRateInfo.rate}%)`
+                        : `${material.taxRate ?? 0}%`;
 
                       return (
                         <TableRow
@@ -1108,35 +1115,13 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                               {getShortUnit(material.unit)}
                             </span>
                           </TableCell>
-                          <TableCell className="text-right whitespace-nowrap">
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>
-                                  Used:{' '}
-                                  {consumedQuantity.toLocaleString(undefined, {
-                                    maximumFractionDigits: 2,
-                                  })}
-                                </span>
-                                <span>
-                                  Left:{' '}
-                                  {availableQuantity.toLocaleString(undefined, {
-                                    maximumFractionDigits: 2,
-                                  })}
-                                </span>
-                              </div>
-                              <Progress value={usagePercent} className="h-1.5" />
-                              <div className="text-[11px] text-muted-foreground">
-                                {usagePercent.toFixed(1)}% consumed
-                              </div>
-                            </div>
-                          </TableCell>
                           <TableCell className="font-semibold text-primary text-right whitespace-nowrap">
                             ₹{material.standardRate.toLocaleString()}
                           </TableCell>
                           <TableCell className="font-mono text-xs">
                             {material.hsn || 'N/A'}
                           </TableCell>
-                          <TableCell className="text-sm">{material.taxRate}%</TableCell>
+                          <TableCell className="text-sm">{taxRateDisplay}</TableCell>
                           <TableCell>
                             <Badge
                               variant={material.isActive ? 'default' : 'destructive'}
