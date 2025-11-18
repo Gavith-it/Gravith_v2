@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -2251,83 +2252,96 @@ export function VehiclesPage({
           <div className="flex-1 min-h-0 overflow-y-auto">
             <Card className="w-full border-0 shadow-none">
               <CardContent className="pt-6 px-6">
-                <form id="vehicle-form" onSubmit={handleVehicleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="vehicle-number">Vehicle Number <span className="text-destructive">*</span></Label>
-                      <Input
-                        id="vehicle-number"
-                        value={vehicleForm.vehicleNumber}
-                        onChange={(event) =>
-                          setVehicleForm((prev) => ({ ...prev, vehicleNumber: event.target.value }))
-                        }
-                        placeholder="MH-14-TC-9087"
-                        required
-                      />
+                <form id="vehicle-form" onSubmit={handleVehicleSubmit}>
+                  <FieldGroup>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="vehicle-number">
+                          Vehicle Number <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Input
+                          id="vehicle-number"
+                          value={vehicleForm.vehicleNumber}
+                          onChange={(event) =>
+                            setVehicleForm((prev) => ({ ...prev, vehicleNumber: event.target.value }))
+                          }
+                          placeholder="MH-14-TC-9087"
+                          required
+                        />
+                        <FieldDescription>Enter the vehicle registration number.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="vehicle-type">
+                          Vehicle Type <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Select
+                          value={vehicleForm.type}
+                          onValueChange={(value) => setVehicleForm((prev) => ({ ...prev, type: value }))}
+                        >
+                          <SelectTrigger id="vehicle-type">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {VEHICLE_TYPE_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option.charAt(0).toUpperCase() + option.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription>Select the type of vehicle.</FieldDescription>
+                      </Field>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="vehicle-type">Vehicle Type <span className="text-destructive">*</span></Label>
+                    <Field>
+                      <FieldLabel htmlFor="vehicle-status">
+                        Status <span className="text-destructive">*</span>
+                      </FieldLabel>
                       <Select
-                        value={vehicleForm.type}
-                        onValueChange={(value) => setVehicleForm((prev) => ({ ...prev, type: value }))}
+                        value={vehicleForm.status}
+                        onValueChange={(value: Vehicle['status']) =>
+                          setVehicleForm((prev) => ({ ...prev, status: value }))
+                        }
                       >
-                        <SelectTrigger id="vehicle-type">
+                        <SelectTrigger id="vehicle-status">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {VEHICLE_TYPE_OPTIONS.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option.charAt(0).toUpperCase() + option.slice(1)}
+                          {VEHICLE_STATUS_OPTIONS.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status.replace('_', ' ')}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      <FieldDescription>Current status of the vehicle.</FieldDescription>
+                    </Field>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="vehicle-make">Make</FieldLabel>
+                        <Input
+                          id="vehicle-make"
+                          value={vehicleForm.make}
+                          onChange={(event) =>
+                            setVehicleForm((prev) => ({ ...prev, make: event.target.value }))
+                          }
+                          placeholder="Volvo"
+                        />
+                        <FieldDescription>Vehicle manufacturer name (optional).</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="vehicle-model">Model</FieldLabel>
+                        <Input
+                          id="vehicle-model"
+                          value={vehicleForm.model}
+                          onChange={(event) =>
+                            setVehicleForm((prev) => ({ ...prev, model: event.target.value }))
+                          }
+                          placeholder="FMX 460"
+                        />
+                        <FieldDescription>Vehicle model name (optional).</FieldDescription>
+                      </Field>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="vehicle-status">Status <span className="text-destructive">*</span></Label>
-                    <Select
-                      value={vehicleForm.status}
-                      onValueChange={(value: Vehicle['status']) =>
-                        setVehicleForm((prev) => ({ ...prev, status: value }))
-                      }
-                    >
-                      <SelectTrigger id="vehicle-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VEHICLE_STATUS_OPTIONS.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {status.replace('_', ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="vehicle-make">Make</Label>
-                      <Input
-                        id="vehicle-make"
-                        value={vehicleForm.make}
-                        onChange={(event) =>
-                          setVehicleForm((prev) => ({ ...prev, make: event.target.value }))
-                        }
-                        placeholder="Volvo"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="vehicle-model">Model</Label>
-                      <Input
-                        id="vehicle-model"
-                        value={vehicleForm.model}
-                        onChange={(event) =>
-                          setVehicleForm((prev) => ({ ...prev, model: event.target.value }))
-                        }
-                        placeholder="FMX 460"
-                      />
-                    </div>
-                  </div>
+                  </FieldGroup>
                 </form>
               </CardContent>
               <CardFooter className="border-t px-6">
@@ -2364,11 +2378,13 @@ export function VehiclesPage({
           <div className="flex-1 min-h-0 overflow-y-auto">
             <Card className="w-full border-0 shadow-none">
               <CardContent className="pt-6 px-6">
-                <form id="refueling-form" onSubmit={handleRefuelingSubmit} className="space-y-4">
-                  <div className="space-y-4">
+                <form id="refueling-form" onSubmit={handleRefuelingSubmit}>
+                  <FieldGroup>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="vehicle">Vehicle <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="vehicle">
+                          Vehicle <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Select
                           value={refuelingForm.vehicleId}
                           disabled={vehicles.length === 0}
@@ -2376,7 +2392,7 @@ export function VehiclesPage({
                             setRefuelingForm((prev) => ({ ...prev, vehicleId: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="vehicle">
                             <SelectValue placeholder="Select vehicle" />
                           </SelectTrigger>
                           <SelectContent>
@@ -2387,9 +2403,12 @@ export function VehiclesPage({
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="date">Date <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Select the vehicle for refueling.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="date">
+                          Date <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <DatePicker
                           date={parseDateOnly(refuelingForm.date) ?? undefined}
                           onSelect={(date) =>
@@ -2400,18 +2419,21 @@ export function VehiclesPage({
                           }
                           placeholder="Select refueling date"
                         />
-                      </div>
+                        <FieldDescription>Date when refueling occurred.</FieldDescription>
+                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="fuelType">Fuel Type <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="fuelType">
+                          Fuel Type <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Select
                           value={refuelingForm.fuelType}
                           onValueChange={(value: VehicleRefueling['fuelType']) =>
                             setRefuelingForm((prev) => ({ ...prev, fuelType: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="fuelType">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2421,10 +2443,14 @@ export function VehiclesPage({
                             <SelectItem value="Electric">Electric</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="quantity">Quantity <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Type of fuel used.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="quantity">
+                          Quantity <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="quantity"
                           type="number"
                           value={refuelingForm.quantity}
                           onChange={(e) =>
@@ -2434,10 +2460,14 @@ export function VehiclesPage({
                           required
                           style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="cost">Cost <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Amount of fuel in liters or kWh.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="cost">
+                          Cost <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="cost"
                           type="number"
                           value={refuelingForm.cost}
                           onChange={(e) =>
@@ -2447,12 +2477,16 @@ export function VehiclesPage({
                           required
                           style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                         />
-                      </div>
+                        <FieldDescription>Total cost of refueling (₹).</FieldDescription>
+                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="odometer">Odometer Reading <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="odometer">
+                          Odometer Reading <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="odometer"
                           type="number"
                           value={refuelingForm.odometerReading}
                           onChange={(e) =>
@@ -2462,10 +2496,14 @@ export function VehiclesPage({
                           required
                           style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="location">Location <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Vehicle odometer reading at refueling.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="location">
+                          Location <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="location"
                           value={refuelingForm.location}
                           onChange={(e) =>
                             setRefuelingForm((prev) => ({ ...prev, location: e.target.value }))
@@ -2473,11 +2511,14 @@ export function VehiclesPage({
                           placeholder="Site Fuel Station"
                           required
                         />
-                      </div>
+                        <FieldDescription>Location where refueling took place.</FieldDescription>
+                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="vendor">Vendor <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="vendor">
+                          Vendor <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Select
                           value={
                             vendorOptions.includes(refuelingForm.vendor)
@@ -2494,7 +2535,7 @@ export function VehiclesPage({
                             }
                           }}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="vendor">
                             <SelectValue
                               placeholder="Select vendor"
                               aria-label="Vendor selection"
@@ -2520,10 +2561,14 @@ export function VehiclesPage({
                             aria-label="Vendor name"
                           />
                         )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="invoice">Invoice Number <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Fuel vendor or station name.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="invoice">
+                          Invoice Number <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="invoice"
                           value={refuelingForm.invoiceNumber}
                           onChange={(e) =>
                             setRefuelingForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))
@@ -2531,17 +2576,20 @@ export function VehiclesPage({
                           placeholder="BP-001234"
                           required
                         />
-                      </div>
+                        <FieldDescription>Invoice or receipt number from vendor.</FieldDescription>
+                      </Field>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="notes">Notes</Label>
+                    <Field>
+                      <FieldLabel htmlFor="notes">Notes</FieldLabel>
                       <Textarea
+                        id="notes"
                         value={refuelingForm.notes}
                         onChange={(e) => setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))}
                         placeholder="Additional notes..."
                       />
-                    </div>
-                  </div>
+                      <FieldDescription>Any additional notes about this refueling.</FieldDescription>
+                    </Field>
+                  </FieldGroup>
                 </form>
               </CardContent>
               <CardFooter className="border-t px-6">
@@ -2586,11 +2634,13 @@ export function VehiclesPage({
           <div className="flex-1 min-h-0 overflow-y-auto">
             <Card className="w-full border-0 shadow-none">
               <CardContent className="pt-6 px-6">
-                <form id="usage-form" onSubmit={handleUsageSubmit} className="space-y-4">
-                  <div className="space-y-4">
+                <form id="usage-form" onSubmit={handleUsageSubmit}>
+                  <FieldGroup>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="vehicle">Vehicle <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="vehicle">
+                          Vehicle <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Select
                           value={usageForm.vehicleId}
                           disabled={vehicles.length === 0}
@@ -2598,7 +2648,7 @@ export function VehiclesPage({
                             setUsageForm((prev) => ({ ...prev, vehicleId: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="vehicle">
                             <SelectValue placeholder="Select vehicle" />
                           </SelectTrigger>
                           <SelectContent>
@@ -2609,9 +2659,12 @@ export function VehiclesPage({
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="date">Date <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Select the vehicle used.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="date">
+                          Date <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <DatePicker
                           date={parseDateOnly(usageForm.date) ?? undefined}
                           onSelect={(date) =>
@@ -2622,12 +2675,16 @@ export function VehiclesPage({
                           }
                           placeholder="Select usage date"
                         />
-                      </div>
+                        <FieldDescription>Date when vehicle was used.</FieldDescription>
+                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="startTime">Start Time <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="startTime">
+                          Start Time <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="startTime"
                           type="time"
                           value={usageForm.startTime}
                           onChange={(e) =>
@@ -2635,21 +2692,29 @@ export function VehiclesPage({
                           }
                           required
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="endTime">End Time <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Time when vehicle usage started.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="endTime">
+                          End Time <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="endTime"
                           type="time"
                           value={usageForm.endTime}
                           onChange={(e) => setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))}
                           required
                         />
-                      </div>
+                        <FieldDescription>Time when vehicle usage ended.</FieldDescription>
+                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="startOdometer">Start Odometer <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="startOdometer">
+                          Start Odometer <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="startOdometer"
                           type="number"
                           value={usageForm.startOdometer}
                           onChange={(e) =>
@@ -2659,10 +2724,14 @@ export function VehiclesPage({
                           required
                           style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="endOdometer">End Odometer <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Odometer reading at start of usage.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="endOdometer">
+                          End Odometer <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="endOdometer"
                           type="number"
                           value={usageForm.endOdometer}
                           onChange={(e) =>
@@ -2672,11 +2741,15 @@ export function VehiclesPage({
                           required
                           style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                         />
-                      </div>
+                        <FieldDescription>Odometer reading at end of usage.</FieldDescription>
+                      </Field>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="workDescription">Work Description <span className="text-destructive">*</span></Label>
+                    <Field>
+                      <FieldLabel htmlFor="workDescription">
+                        Work Description <span className="text-destructive">*</span>
+                      </FieldLabel>
                       <Textarea
+                        id="workDescription"
                         value={usageForm.workDescription}
                         onChange={(e) =>
                           setUsageForm((prev) => ({ ...prev, workDescription: e.target.value }))
@@ -2684,9 +2757,10 @@ export function VehiclesPage({
                         placeholder="Describe the work performed..."
                         required
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="usage-driver">Driver / Operator</Label>
+                      <FieldDescription>Detailed description of work performed.</FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="usage-driver">Driver / Operator</FieldLabel>
                       <Input
                         id="usage-driver"
                         value={usageForm.operator}
@@ -2695,17 +2769,20 @@ export function VehiclesPage({
                         }
                         placeholder="Enter driver name"
                       />
-                    </div>
+                      <FieldDescription>Name of the driver or operator (optional).</FieldDescription>
+                    </Field>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="workCategory">Work Category <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="workCategory">
+                          Work Category <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Select
                           value={usageForm.workCategory}
                           onValueChange={(value: VehicleUsage['workCategory']) =>
                             setUsageForm((prev) => ({ ...prev, workCategory: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="workCategory">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2717,15 +2794,18 @@ export function VehiclesPage({
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="site">Site <span className="text-destructive">*</span></Label>
+                        <FieldDescription>Category of work performed.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="site">
+                          Site <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Select
                           value={usageForm.siteId}
                           disabled={isSitesLoading || vehicleSiteOptions.length === 0}
                           onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="site">
                             <SelectValue
                               placeholder={
                                 isSitesLoading
@@ -2744,12 +2824,16 @@ export function VehiclesPage({
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
+                        <FieldDescription>Site where vehicle was used.</FieldDescription>
+                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="fuelConsumed">Fuel Consumed (Liters) <span className="text-destructive">*</span></Label>
+                      <Field>
+                        <FieldLabel htmlFor="fuelConsumed">
+                          Fuel Consumed (Liters) <span className="text-destructive">*</span>
+                        </FieldLabel>
                         <Input
+                          id="fuelConsumed"
                           type="number"
                           value={usageForm.fuelConsumed}
                           onChange={(e) =>
@@ -2759,17 +2843,20 @@ export function VehiclesPage({
                           required
                           style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="notes">Notes</Label>
+                        <FieldDescription>Amount of fuel consumed during usage.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="notes">Notes</FieldLabel>
                         <Textarea
+                          id="notes"
                           value={usageForm.notes}
                           onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
                           placeholder="Additional notes..."
                         />
-                      </div>
+                        <FieldDescription>Any additional notes about this usage.</FieldDescription>
+                      </Field>
                     </div>
-                  </div>
+                  </FieldGroup>
                 </form>
               </CardContent>
               <CardFooter className="border-t px-6">

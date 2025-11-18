@@ -539,12 +539,12 @@ export default function MaterialMasterForm({
             {/* Opening Balance Section */}
             <Separator className="my-4" />
             <div className="space-y-4 pb-6">
-              <Controller
-                name="hasOpeningBalance"
-                control={form.control}
-                render={({ field }) => (
-                  <Field>
-                    <div className="flex items-center space-x-2">
+              <div className="w-full">
+                <Controller
+                  name="hasOpeningBalance"
+                  control={form.control}
+                  render={({ field }) => (
+                    <div className="flex items-start gap-3 w-full">
                       <Switch
                         checked={field.value}
                         onCheckedChange={(checked) => {
@@ -557,20 +557,23 @@ export default function MaterialMasterForm({
                           }
                         }}
                         id={`${formId}-has-opening-balance`}
+                        className="flex-shrink-0 mt-0.5 border border-border data-[state=unchecked]:bg-muted data-[state=checked]:bg-primary"
                       />
-                      <FieldLabel
-                        htmlFor={`${formId}-has-opening-balance`}
-                        className="!mb-0 cursor-pointer"
-                      >
-                        Add Opening Balance
-                      </FieldLabel>
+                      <div className="flex-1 min-w-0">
+                        <FieldLabel
+                          htmlFor={`${formId}-has-opening-balance`}
+                          className="!mb-1 cursor-pointer text-base font-medium block"
+                        >
+                          Add Opening Balance
+                        </FieldLabel>
+                        <p className="text-sm text-muted-foreground">
+                          Allocate opening balance quantity across one or multiple sites.
+                        </p>
+                      </div>
                     </div>
-                    <FieldDescription>
-                      Allocate opening balance quantity across one or multiple sites.
-                    </FieldDescription>
-                  </Field>
-                )}
-              />
+                  )}
+                />
+              </div>
 
               {hasOpeningBalance && (
                 <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
