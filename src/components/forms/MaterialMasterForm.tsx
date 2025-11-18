@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as React from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, type Resolver } from 'react-hook-form';
 import * as z from 'zod';
 import { Plus, Trash2, Building2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
@@ -70,7 +70,7 @@ const materialMasterFormSchema = z
   })
 ;
 
-type MaterialMasterFormData = z.infer<typeof materialMasterFormSchema> & {
+type MaterialMasterFormData = Omit<z.infer<typeof materialMasterFormSchema>, 'standardRate'> & {
   standardRate: number;
 };
 
@@ -107,7 +107,7 @@ export default function MaterialMasterForm({
   }, [taxRateOptions]);
 
   const form = useForm<MaterialMasterFormData>({
-    resolver: zodResolver(materialMasterFormSchema),
+    resolver: zodResolver(materialMasterFormSchema) as unknown as Resolver<MaterialMasterFormData>,
     defaultValues: {
       name: defaultValues?.name || '',
       category: defaultValues?.category || 'Cement',
