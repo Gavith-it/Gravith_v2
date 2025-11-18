@@ -150,6 +150,7 @@ export interface MaterialReceipt {
   filledWeight: number;
   emptyWeight: number;
   netWeight: number;
+  quantity: number; // Quantity in material's UOM (Unit of Measure)
   vendorId?: string | null;
   vendorName?: string | null;
   linkedPurchaseId?: string | null;

@@ -20,6 +20,9 @@ interface MaterialReceiptsContextType {
   addReceipt: (
     receipt: Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>,
   ) => Promise<MaterialReceipt | null>;
+  addReceipts: (
+    receipts: Array<Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>>,
+  ) => Promise<MaterialReceipt[]>;
   updateReceipt: (
     id: string,
     updates: Partial<MaterialReceipt>,
@@ -89,6 +92,31 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
 
       setReceipts((prev) => [payload.receipt!, ...prev]);
       return payload.receipt ?? null;
+    },
+    [],
+  );
+
+  const addReceipts = useCallback(
+    async (
+      receiptsData: Array<Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>>,
+    ): Promise<MaterialReceipt[]> => {
+      const response = await fetch('/api/receipts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receipts: receiptsData }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        receipts?: MaterialReceipt[];
+        error?: string;
+      };
+
+      if (!response.ok || !payload.receipts || payload.receipts.length === 0) {
+        throw new Error(payload.error || 'Failed to create receipts.');
+      }
+
+      setReceipts((prev) => [...payload.receipts!, ...prev]);
+      return payload.receipts;
     },
     [],
   );
@@ -202,6 +230,7 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
       isLoading,
       refresh,
       addReceipt,
+      addReceipts,
       updateReceipt,
       deleteReceipt,
       linkReceiptToPurchase,
@@ -214,6 +243,7 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
       isLoading,
       refresh,
       addReceipt,
+      addReceipts,
       updateReceipt,
       deleteReceipt,
       linkReceiptToPurchase,

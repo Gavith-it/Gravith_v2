@@ -26,6 +26,7 @@ export type ReceiptRow = {
   filled_weight: number | string | null;
   empty_weight: number | string | null;
   net_weight: number | string | null;
+  quantity: number | string | null;
   vendor_id: string | null;
   vendor_name: string | null;
   linked_purchase_id: string | null;
@@ -46,6 +47,7 @@ export function mapRowToReceipt(row: ReceiptRow): MaterialReceipt {
     filledWeight: Number(row.filled_weight ?? 0),
     emptyWeight: Number(row.empty_weight ?? 0),
     netWeight: Number(row.net_weight ?? 0),
+    quantity: Number(row.quantity ?? 0),
     vendorId: row.vendor_id,
     vendorName: row.vendor_name,
     linkedPurchaseId: row.linked_purchase_id,

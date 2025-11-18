@@ -22,6 +22,7 @@ const RECEIPT_SELECT = `
   filled_weight,
   empty_weight,
   net_weight,
+  quantity,
   vendor_id,
   vendor_name,
   linked_purchase_id,
@@ -165,12 +166,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       updates.linked_purchase_id = body.linkedPurchaseId ?? null;
     }
 
+    if ('quantity' in body && typeof body.quantity === 'number') {
+      updates.quantity = Number(body.quantity);
+    }
+
     if ('siteId' in body) {
-      updates.site_id = body.siteId ?? null;
+      updates.site_id = body.siteId === 'unallocated' ? null : body.siteId ?? null;
     }
 
     if ('siteName' in body) {
-      updates.site_name = body.siteName ?? null;
+      updates.site_name = body.siteName === 'Unallocated' ? null : body.siteName ?? null;
     }
 
     if (Object.keys(updates).length === 1) {
@@ -191,19 +196,44 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update receipt.' }, { status: 500 });
     }
 
-    // Update Opening Balance: subtract old netWeight, add new netWeight
+    // Update Opening Balance: subtract old quantity, add new quantity
     const oldMaterialId = existing.material_id;
     const oldSiteId = existing.site_id;
-    const oldNetWeight = Number(existing.net_weight ?? 0);
+    const oldQuantity = Number(existing.quantity ?? 0);
     const receiptData = data as ReceiptRow;
     const newMaterialId = receiptData.material_id ?? oldMaterialId;
     const newSiteId = receiptData.site_id ?? oldSiteId;
-    const newNetWeight = Number(receiptData.net_weight ?? oldNetWeight);
+    const newQuantity = Number(receiptData.quantity ?? oldQuantity);
 
     try {
+      // Helper function to update OB for unallocated (material_masters only)
+      const updateUnallocatedOB = async (materialId: string, delta: number) => {
+        const { data: material } = await supabase
+          .from('material_masters')
+          .select('opening_balance')
+          .eq('id', materialId)
+          .eq('organization_id', ctx.organizationId)
+          .maybeSingle();
+
+        const currentOB = Number(material?.opening_balance ?? 0);
+        const newOB = Math.max(0, currentOB + delta);
+
+        await supabase
+          .from('material_masters')
+          .update({ opening_balance: newOB, updated_by: ctx.userId })
+          .eq('id', materialId)
+          .eq('organization_id', ctx.organizationId);
+      };
+
       // Helper function to update OB for a material+site combination
       const updateOB = async (materialId: string | null, siteId: string | null, delta: number) => {
-        if (!materialId || !siteId) return;
+        if (!materialId) return;
+
+        if (!siteId) {
+          // Unallocated: update material_masters directly
+          await updateUnallocatedOB(materialId, delta);
+          return;
+        }
 
         const { data: allocation } = await supabase
           .from('material_site_allocations')
@@ -256,18 +286,18 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
       // If material or site changed, subtract from old, add to new
       if (oldMaterialId !== newMaterialId || oldSiteId !== newSiteId) {
-        // Subtract old netWeight from old material+site
-        if (oldMaterialId && oldSiteId && typeof oldMaterialId === 'string' && typeof oldSiteId === 'string') {
-          await updateOB(oldMaterialId, oldSiteId, -oldNetWeight);
+        // Subtract old quantity from old material+site
+        if (oldMaterialId && typeof oldMaterialId === 'string') {
+          await updateOB(oldMaterialId, typeof oldSiteId === 'string' ? oldSiteId : null, -oldQuantity);
         }
-        // Add new netWeight to new material+site
-        if (newMaterialId && newSiteId && typeof newMaterialId === 'string' && typeof newSiteId === 'string') {
-          await updateOB(newMaterialId, newSiteId, newNetWeight);
+        // Add new quantity to new material+site
+        if (newMaterialId && typeof newMaterialId === 'string') {
+          await updateOB(newMaterialId, typeof newSiteId === 'string' ? newSiteId : null, newQuantity);
         }
-      } else if (oldNetWeight !== newNetWeight && oldMaterialId && oldSiteId && typeof oldMaterialId === 'string' && typeof oldSiteId === 'string') {
+      } else if (oldQuantity !== newQuantity && oldMaterialId && typeof oldMaterialId === 'string') {
         // Same material+site, just adjust by the difference
-        const delta = newNetWeight - oldNetWeight;
-        await updateOB(oldMaterialId, oldSiteId, delta);
+        const delta = newQuantity - oldQuantity;
+        await updateOB(oldMaterialId, typeof oldSiteId === 'string' ? oldSiteId : null, delta);
       }
     } catch (obError) {
       console.error('Error updating opening balance', obError);
@@ -299,7 +329,7 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     // Get receipt data before deleting to update OB
     const { data: receiptData } = await supabase
       .from('material_receipts')
-      .select('material_id, site_id, net_weight')
+      .select('material_id, site_id, quantity')
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
@@ -321,46 +351,66 @@ export async function DELETE(_: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Receipt not found.' }, { status: 404 });
     }
 
-    // Update Opening Balance: subtract netWeight from material_site_allocations
-    if (receiptData && receiptData.material_id && receiptData.site_id) {
+    // Update Opening Balance: subtract quantity
+    if (receiptData && receiptData.material_id) {
       try {
         const materialId = receiptData.material_id;
         const siteId = receiptData.site_id;
-        const netWeight = Number(receiptData.net_weight ?? 0);
+        const quantity = Number(receiptData.quantity ?? 0);
 
-        const { data: allocation } = await supabase
-          .from('material_site_allocations')
-          .select('id, opening_balance')
-          .eq('material_id', materialId)
-          .eq('site_id', siteId)
-          .eq('organization_id', ctx.organizationId)
-          .maybeSingle();
-
-        if (allocation && allocation.id) {
-          const newOB = Math.max(0, Number(allocation.opening_balance ?? 0) - netWeight);
-          await supabase
-            .from('material_site_allocations')
-            .update({ opening_balance: newOB, updated_by: ctx.userId })
-            .eq('id', String(allocation.id));
-
-          // Recalculate total opening_balance for material_masters
-          const { data: allAllocations } = await supabase
-            .from('material_site_allocations')
+        if (!siteId) {
+          // Unallocated: update material_masters directly
+          const { data: material } = await supabase
+            .from('material_masters')
             .select('opening_balance')
-            .eq('material_id', materialId)
+            .eq('id', materialId)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle();
+
+          const currentOB = Number(material?.opening_balance ?? 0);
+          const newOB = Math.max(0, currentOB - quantity);
+
+          await supabase
+            .from('material_masters')
+            .update({ opening_balance: newOB, updated_by: ctx.userId })
+            .eq('id', materialId)
             .eq('organization_id', ctx.organizationId);
+        } else {
+          // Allocated site: update material_site_allocations
+          const { data: allocation } = await supabase
+            .from('material_site_allocations')
+            .select('id, opening_balance')
+            .eq('material_id', materialId)
+            .eq('site_id', siteId)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle();
 
-          if (allAllocations) {
-            const totalOB = allAllocations.reduce(
-              (sum, alloc) => sum + Number(alloc.opening_balance ?? 0),
-              0,
-            );
-
+          if (allocation && allocation.id) {
+            const newOB = Math.max(0, Number(allocation.opening_balance ?? 0) - quantity);
             await supabase
-              .from('material_masters')
-              .update({ opening_balance: totalOB, updated_by: ctx.userId })
-              .eq('id', materialId)
+              .from('material_site_allocations')
+              .update({ opening_balance: newOB, updated_by: ctx.userId })
+              .eq('id', String(allocation.id));
+
+            // Recalculate total opening_balance for material_masters
+            const { data: allAllocations } = await supabase
+              .from('material_site_allocations')
+              .select('opening_balance')
+              .eq('material_id', materialId)
               .eq('organization_id', ctx.organizationId);
+
+            if (allAllocations) {
+              const totalOB = allAllocations.reduce(
+                (sum, alloc) => sum + Number(alloc.opening_balance ?? 0),
+                0,
+              );
+
+              await supabase
+                .from('material_masters')
+                .update({ opening_balance: totalOB, updated_by: ctx.userId })
+                .eq('id', materialId)
+                .eq('organization_id', ctx.organizationId);
+            }
           }
         }
       } catch (obError) {
