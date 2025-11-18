@@ -195,9 +195,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const oldMaterialId = existing.material_id;
     const oldSiteId = existing.site_id;
     const oldNetWeight = Number(existing.net_weight ?? 0);
-    const newMaterialId = (data as any).material_id ?? oldMaterialId;
-    const newSiteId = (data as any).site_id ?? oldSiteId;
-    const newNetWeight = Number((data as any).net_weight ?? oldNetWeight);
+    const receiptData = data as ReceiptRow;
+    const newMaterialId = receiptData.material_id ?? oldMaterialId;
+    const newSiteId = receiptData.site_id ?? oldSiteId;
+    const newNetWeight = Number(receiptData.net_weight ?? oldNetWeight);
 
     try {
       // Helper function to update OB for a material+site combination

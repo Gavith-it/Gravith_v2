@@ -24,10 +24,14 @@ import type { MaterialMasterInput } from '@/types/materials';
 import { getActiveUOMs, type UOMItem, getActiveTaxRates, type TaxRateItem } from '@/components/shared/masterData';
 import type { Site } from '@/types/sites';
 
+type MaterialMasterFormDefaultValues = Partial<MaterialMasterInput> & {
+  taxRate?: number; // For backward compatibility
+};
+
 interface MaterialMasterFormProps {
   onSubmit: (data: MaterialMasterInput) => Promise<void>;
   onCancel: () => void;
-  defaultValues?: Partial<MaterialMasterInput>;
+  defaultValues?: MaterialMasterFormDefaultValues;
   isEdit?: boolean;
 }
 
@@ -103,7 +107,7 @@ export default function MaterialMasterForm({
   }, [taxRateOptions]);
 
   const form = useForm<MaterialMasterFormData>({
-    resolver: zodResolver(materialMasterFormSchema) as any, // Type assertion needed due to z.coerce inference
+    resolver: zodResolver(materialMasterFormSchema),
     defaultValues: {
       name: defaultValues?.name || '',
       category: defaultValues?.category || 'Cement',
@@ -111,9 +115,9 @@ export default function MaterialMasterForm({
       standardRate: defaultValues?.standardRate ?? undefined,
       hsn: defaultValues?.hsn || '',
       taxRateId: defaultValues 
-        ? ((defaultValues as any).taxRateId || ((defaultValues as any).taxRate && typeof (defaultValues as any).taxRate === 'number' 
+        ? (defaultValues.taxRateId || (defaultValues.taxRate && typeof defaultValues.taxRate === 'number' 
           ? (() => {
-              const taxRate = taxRateOptions.find((tr) => tr.rate === (defaultValues as any).taxRate);
+              const taxRate = taxRateOptions.find((tr) => tr.rate === defaultValues.taxRate);
               return taxRate?.code || 'GST18';
             })()
           : 'GST18'))
@@ -164,9 +168,9 @@ export default function MaterialMasterForm({
       );
       setHasOpeningBalance(hasOB);
       setSiteAllocations(defaultValues.siteAllocations || []);
-      const taxRateId = (defaultValues as any)?.taxRateId || 
-        ((defaultValues as any)?.taxRate && typeof (defaultValues as any).taxRate === 'number'
-          ? getTaxRateIdFromRate((defaultValues as any).taxRate)
+      const taxRateId = defaultValues.taxRateId || 
+        (defaultValues.taxRate && typeof defaultValues.taxRate === 'number'
+          ? getTaxRateIdFromRate(defaultValues.taxRate)
           : 'GST18');
       form.reset({
         name: defaultValues.name || '',

@@ -186,8 +186,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         if (material.openingBalance !== undefined && material.openingBalance !== null) {
           base.openingBalance = material.openingBalance;
         }
-        if ((material as any).taxRateId) {
-          base.taxRateId = (material as any).taxRateId;
+        if (material.taxRateId) {
+          base.taxRateId = material.taxRateId;
         }
         if (material.siteAllocations) {
           base.siteAllocations = material.siteAllocations;
