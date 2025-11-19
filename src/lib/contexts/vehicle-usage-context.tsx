@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { VehicleUsage } from '@/types/entities';
+import { fetchJson } from '../utils/fetch';
 
 interface VehicleUsageContextType {
   records: VehicleUsage[];
@@ -42,13 +43,15 @@ interface VehicleUsageInput {
 const VehicleUsageContext = createContext<VehicleUsageContextType | undefined>(undefined);
 
 async function fetchUsageRecords(): Promise<VehicleUsage[]> {
-  const response = await fetch('/api/vehicles/usage', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    records?: VehicleUsage[];
+    error?: string;
+  }>('/api/vehicles/usage').catch(() => ({}))) as {
     records?: VehicleUsage[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load usage records.');
   }
 

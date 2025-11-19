@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
+import { fetchJson } from '../utils/fetch';
+
 // Shared Material interface that works for both MaterialManagement and SiteManagement
 export interface SharedMaterial {
   id: string;
@@ -61,13 +63,15 @@ interface MaterialsContextType {
 const MaterialsContext = createContext<MaterialsContextType | undefined>(undefined);
 
 async function fetchPurchases(): Promise<SharedMaterial[]> {
-  const response = await fetch('/api/purchases', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    purchases?: SharedMaterial[];
+    error?: string;
+  }>('/api/purchases').catch(() => ({}))) as {
     purchases?: SharedMaterial[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load purchases.');
   }
 

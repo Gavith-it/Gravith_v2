@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { toast } from 'sonner';
 
 import type { Payment } from '@/types';
+import { fetchJson } from '../utils/fetch';
 
 interface PaymentsContextType {
   payments: Payment[];
@@ -30,13 +31,15 @@ type PaymentUpdatePayload = Partial<PaymentPayload>;
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
 
 async function fetchPayments(): Promise<Payment[]> {
-  const response = await fetch('/api/payments', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    payments?: Payment[];
+    error?: string;
+  }>('/api/payments').catch(() => ({}))) as {
     payments?: Payment[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load payments.');
   }
 

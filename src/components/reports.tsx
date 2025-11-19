@@ -26,7 +26,7 @@ import {
   Area,
   AreaChart,
   Legend,
-} from 'recharts';
+} from './charts/LazyRecharts';
 
 import { useTableState } from '../lib/hooks/useTableState';
 import { formatDate } from '../lib/utils';

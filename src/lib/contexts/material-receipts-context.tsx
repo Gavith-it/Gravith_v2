@@ -9,6 +9,8 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+
+import { fetchJson } from '../utils/fetch';
 import { toast } from 'sonner';
 
 import type { MaterialReceipt } from '@/types';
@@ -37,13 +39,15 @@ interface MaterialReceiptsContextType {
 const MaterialReceiptsContext = createContext<MaterialReceiptsContextType | undefined>(undefined);
 
 async function fetchReceipts(): Promise<MaterialReceipt[]> {
-  const response = await fetch('/api/receipts', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    receipts?: MaterialReceipt[];
+    error?: string;
+  }>('/api/receipts').catch(() => ({}))) as {
     receipts?: MaterialReceipt[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load receipts.');
   }
 

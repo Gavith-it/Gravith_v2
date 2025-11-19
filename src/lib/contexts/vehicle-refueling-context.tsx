@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { VehicleRefueling } from '@/types/entities';
+import { fetchJson } from '../utils/fetch';
 
 interface VehicleRefuelingContextType {
   records: VehicleRefueling[];
@@ -36,13 +37,15 @@ interface VehicleRefuelingInput {
 const VehicleRefuelingContext = createContext<VehicleRefuelingContextType | undefined>(undefined);
 
 async function fetchRefuelingRecords(): Promise<VehicleRefueling[]> {
-  const response = await fetch('/api/vehicles/refueling', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    records?: VehicleRefueling[];
+    error?: string;
+  }>('/api/vehicles/refueling').catch(() => ({}))) as {
     records?: VehicleRefueling[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load refueling records.');
   }
 

@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { toast } from 'sonner';
 
 import type { ProjectActivity, ProjectMilestone } from '@/types';
+import { fetchJson } from '../utils/fetch';
 
 interface SchedulingContextType {
   activities: ProjectActivity[];
@@ -53,13 +54,15 @@ type MilestonePayload = {
 type MilestoneUpdatePayload = Partial<MilestonePayload>;
 
 async function fetchActivities(): Promise<ProjectActivity[]> {
-  const response = await fetch('/api/scheduling/activities', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    activities?: ProjectActivity[];
+    error?: string;
+  }>('/api/scheduling/activities').catch(() => ({}))) as {
     activities?: ProjectActivity[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load activities.');
   }
 
@@ -67,13 +70,15 @@ async function fetchActivities(): Promise<ProjectActivity[]> {
 }
 
 async function fetchMilestones(): Promise<ProjectMilestone[]> {
-  const response = await fetch('/api/scheduling/milestones', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    milestones?: ProjectMilestone[];
+    error?: string;
+  }>('/api/scheduling/milestones').catch(() => ({}))) as {
     milestones?: ProjectMilestone[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load milestones.');
   }
 

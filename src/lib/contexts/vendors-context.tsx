@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { toast } from 'sonner';
 
 import type { Vendor } from '@/types';
+import { fetchJson } from '../utils/fetch';
 
 interface VendorsContextType {
   vendors: Vendor[];
@@ -42,13 +43,15 @@ type VendorPayload = {
 type VendorUpdatePayload = Partial<VendorPayload>;
 
 async function fetchVendors(): Promise<Vendor[]> {
-  const response = await fetch('/api/vendors', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    vendors?: Vendor[];
+    error?: string;
+  }>('/api/vendors').catch(() => ({}))) as {
     vendors?: Vendor[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load vendors.');
   }
 

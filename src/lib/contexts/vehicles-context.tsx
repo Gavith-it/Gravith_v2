@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { Vehicle } from '@/types/entities';
+import { fetchJson } from '../utils/fetch';
 
 interface VehiclesContextType {
   vehicles: Vehicle[];
@@ -44,13 +45,15 @@ interface VehicleInput {
 const VehiclesContext = createContext<VehiclesContextType | undefined>(undefined);
 
 async function fetchVehicles(): Promise<Vehicle[]> {
-  const response = await fetch('/api/vehicles', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    vehicles?: Vehicle[];
+    error?: string;
+  }>('/api/vehicles').catch(() => ({}))) as {
     vehicles?: Vehicle[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load vehicles.');
   }
 

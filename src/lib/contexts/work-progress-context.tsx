@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { WorkProgressEntry } from '@/types/entities';
+import { fetchJson } from '../utils/fetch';
 
 interface WorkProgressContextType {
   entries: WorkProgressEntry[];
@@ -48,13 +49,15 @@ interface WorkProgressInput {
 }
 
 async function fetchEntries(): Promise<WorkProgressEntry[]> {
-  const response = await fetch('/api/work-progress', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    entries?: WorkProgressEntry[];
+    error?: string;
+  }>('/api/work-progress').catch(() => ({}))) as {
     entries?: WorkProgressEntry[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load work progress entries.');
   }
 

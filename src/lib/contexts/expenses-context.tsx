@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { toast } from 'sonner';
 
 import type { Expense } from '@/types';
+import { fetchJson } from '../utils/fetch';
 
 interface ExpensesContextType {
   expenses: Expense[];
@@ -36,13 +37,15 @@ type ExpenseUpdatePayload = Partial<ExpensePayload>;
 const ExpensesContext = createContext<ExpensesContextType | undefined>(undefined);
 
 async function fetchExpenses(): Promise<Expense[]> {
-  const response = await fetch('/api/expenses', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as {
+  const payload = (await fetchJson<{
+    expenses?: Expense[];
+    error?: string;
+  }>('/api/expenses').catch(() => ({}))) as {
     expenses?: Expense[];
     error?: string;
   };
 
-  if (!response.ok) {
+  if (payload.error) {
     throw new Error(payload.error || 'Failed to load expenses.');
   }
 
