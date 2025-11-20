@@ -880,9 +880,8 @@ export function VehiclesPage({
     setIsSavingRefueling(true);
     try {
       if (refuelingDialog.editingItem) {
-        // For updates, exclude vehicleId and vehicleNumber as they shouldn't change
-        const { vehicleId, vehicleNumber, ...updatePayload } = payload;
-        await editRefuelingRecord(refuelingDialog.editingItem.id, updatePayload);
+        // Include vehicleId and vehicleNumber in updates to allow changing vehicle
+        await editRefuelingRecord(refuelingDialog.editingItem.id, payload);
         toast.success('Refueling record updated.');
       } else {
         await createRefuelingRecord(payload);

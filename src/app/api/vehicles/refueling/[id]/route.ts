@@ -20,6 +20,8 @@ interface RouteContext {
 }
 
 interface RefuelingPayload {
+  vehicleId?: string;
+  vehicleNumber?: string;
   date?: string;
   fuelType?: VehicleRefueling['fuelType'];
   quantity?: number;
@@ -138,7 +140,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const updates: Record<string, unknown> = {};
 
     // Only update fields that are provided and allowed to be updated
-    // Note: vehicleId and vehicleNumber should not be updated
+    if (body.vehicleId !== undefined) updates['vehicle_id'] = body.vehicleId;
+    if (body.vehicleNumber !== undefined) updates['vehicle_number'] = body.vehicleNumber;
     if (body.date !== undefined) updates['date'] = body.date;
     if (body.fuelType !== undefined) updates['fuel_type'] = body.fuelType;
     if (body.quantity !== undefined) updates['quantity'] = body.quantity;

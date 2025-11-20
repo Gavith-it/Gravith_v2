@@ -47,6 +47,8 @@ type VehicleUsageRow = {
 };
 
 interface UsagePayload {
+  vehicleId?: string;
+  vehicleNumber?: string;
   date?: string;
   startTime?: string;
   endTime?: string;
@@ -155,6 +157,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const body = (await request.json()) as UsagePayload;
     const updates: Record<string, unknown> = {};
 
+    if (body.vehicleId !== undefined) updates['vehicle_id'] = body.vehicleId;
+    if (body.vehicleNumber !== undefined) updates['vehicle_number'] = body.vehicleNumber;
     if (body.date !== undefined) updates['date'] = body.date;
     if (body.startTime !== undefined) updates['start_time'] = body.startTime;
     if (body.endTime !== undefined) updates['end_time'] = body.endTime;
