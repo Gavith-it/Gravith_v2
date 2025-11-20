@@ -22,6 +22,7 @@ type PurchaseRow = {
   vendor_invoice_number: string | null;
   vendor_name: string | null;
   purchase_date: string | null;
+  receipt_number: string | null;
   filled_weight: number | string | null;
   empty_weight: number | string | null;
   net_weight: number | string | null;
@@ -55,6 +56,7 @@ function mapRowToSharedMaterial(row: PurchaseRow): SharedMaterial {
     vendor: row.vendor_name ?? '',
     invoiceNumber: row.vendor_invoice_number ?? '',
     purchaseDate: row.purchase_date ?? '',
+    receiptNumber: row.receipt_number ?? undefined,
     filledWeight: row.filled_weight ? Number(row.filled_weight) : undefined,
     emptyWeight: row.empty_weight ? Number(row.empty_weight) : undefined,
     netWeight: row.net_weight ? Number(row.net_weight) : undefined,
@@ -108,6 +110,7 @@ function mapUpdatePayload(body: Partial<SharedMaterial>) {
   if (body.vendor !== undefined) payload['vendor_name'] = body.vendor;
   if (body.invoiceNumber !== undefined) payload['vendor_invoice_number'] = body.invoiceNumber;
   if (body.purchaseDate !== undefined) payload['purchase_date'] = body.purchaseDate;
+  if (body.receiptNumber !== undefined) payload['receipt_number'] = body.receiptNumber ?? null;
   if (body.filledWeight !== undefined) payload['filled_weight'] = body.filledWeight;
   if (body.emptyWeight !== undefined) payload['empty_weight'] = body.emptyWeight;
   if (body.netWeight !== undefined) payload['net_weight'] = body.netWeight;
@@ -174,6 +177,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         vendor_invoice_number,
         vendor_name,
         purchase_date,
+        receipt_number,
         filled_weight,
         empty_weight,
         net_weight,

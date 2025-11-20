@@ -660,6 +660,7 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
               <DataTable
                 columns={[
                   { key: 'date', label: 'Date', sortable: true },
+                  { key: 'receiptNumber', label: 'Receipt Number', sortable: true },
                   { key: 'vehicle', label: 'Vehicle', sortable: true },
                   { key: 'material', label: 'Material', sortable: true },
                   { key: 'vendor', label: 'Vendor', sortable: true },
@@ -676,6 +677,13 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                     date: (
                       <div className="font-medium">
                         {new Date(receipt.date).toLocaleDateString('en-IN')}
+                      </div>
+                    ),
+                    receiptNumber: (
+                      <div className="font-medium text-sm">
+                        {receipt.receiptNumber || (
+                          <span className="text-muted-foreground italic">—</span>
+                        )}
                       </div>
                     ),
                     vehicle: (

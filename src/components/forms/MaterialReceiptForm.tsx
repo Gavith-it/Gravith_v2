@@ -34,14 +34,9 @@ interface MaterialReceiptFormProps {
 }
 
 const lineItemSchema = z.object({
-  vehicleNumber: z
-    .string()
-    .min(1, 'Vehicle number is required.')
-    .regex(/^[A-Z]{2}-\d{2}-[A-Z]{2}-\d{4}$/, 'Vehicle number must be in format: KA-01-AB-1234'),
+  vehicleNumber: z.string().min(1, 'Vehicle number is required.'),
   materialId: z.string().min(1, 'Please select a material.'),
   materialName: z.string().min(1, 'Material name is required.'),
-  siteId: z.string().min(1, 'Please select a site.'),
-  siteName: z.string().min(1, 'Site name is required.'),
   filledWeight: z.number().positive('Filled weight must be greater than zero.'),
   emptyWeight: z.number().min(0, 'Empty weight cannot be negative.'),
   quantity: z.number().positive('Quantity must be greater than zero.'),
@@ -49,8 +44,11 @@ const lineItemSchema = z.object({
 
 const receiptFormSchema = z.object({
   date: z.date(),
+  receiptNumber: z.string().optional(),
   vendorId: z.string().optional(),
   vendorName: z.string().optional(),
+  siteId: z.string().min(1, 'Please select a site.'),
+  siteName: z.string().min(1, 'Site name is required.'),
   lineItems: z.array(lineItemSchema).min(1, 'At least one line item is required'),
 });
 
@@ -77,16 +75,17 @@ export function MaterialReceiptForm({
     resolver: zodResolver(receiptFormSchema),
     defaultValues: {
       date: parseDateOnly(editingReceipt?.date) || new Date(),
+      receiptNumber: editingReceipt?.receiptNumber ?? undefined,
       vendorId: editingReceipt?.vendorId ?? undefined,
       vendorName: editingReceipt?.vendorName ?? undefined,
+      siteId: editingReceipt?.siteId ?? '',
+      siteName: editingReceipt?.siteName ?? '',
       lineItems: editingReceipt
         ? [
             {
               vehicleNumber: editingReceipt.vehicleNumber,
               materialId: editingReceipt.materialId,
               materialName: editingReceipt.materialName,
-              siteId: editingReceipt.siteId ?? '',
-              siteName: editingReceipt.siteName ?? '',
               filledWeight: editingReceipt.filledWeight,
               emptyWeight: editingReceipt.emptyWeight,
               quantity: editingReceipt.quantity,
@@ -97,8 +96,6 @@ export function MaterialReceiptForm({
               vehicleNumber: '',
               materialId: '',
               materialName: '',
-              siteId: '',
-              siteName: '',
               filledWeight: 0,
               emptyWeight: 0,
               quantity: 0,
@@ -174,15 +171,17 @@ export function MaterialReceiptForm({
     void loadSites();
   }, []);
 
-  // Fetch current OB when material and site are selected for any line item
+  // Fetch current OB when material and site are selected
   const lineItems = form.watch('lineItems');
+  const topLevelSiteId = form.watch('siteId');
   useEffect(() => {
     const fetchOBs = async () => {
       const newOBs: Record<number, number | null> = {};
       
       for (let index = 0; index < lineItems.length; index++) {
         const item = lineItems[index];
-        if (item.materialId && item.siteId) {
+        const siteId = topLevelSiteId; // Use top-level site
+        if (item.materialId && siteId) {
           try {
             const response = await fetch('/api/materials', { cache: 'no-store' });
             const payload = (await response.json().catch(() => ({}))) as {
@@ -192,10 +191,10 @@ export function MaterialReceiptForm({
 
             if (response.ok && payload.materials) {
               const material = payload.materials.find((m) => m.id === item.materialId);
-              if (item.siteId === 'unallocated') {
+              if (siteId === 'unallocated') {
                 newOBs[index] = material?.openingBalance ?? null;
               } else if (material?.siteAllocations) {
-                const allocation = material.siteAllocations.find((a) => a.siteId === item.siteId);
+                const allocation = material.siteAllocations.find((a) => a.siteId === siteId);
                 newOBs[index] = allocation?.quantity ?? null;
               } else {
                 newOBs[index] = null;
@@ -214,12 +213,13 @@ export function MaterialReceiptForm({
     };
 
     void fetchOBs();
-  }, [lineItems]);
+  }, [lineItems, topLevelSiteId]);
 
-  // Set default material and site for new line items
+  // Set default material for new line items
   useEffect(() => {
-    if (!isEditMode && materialOptions.length > 0 && sites.length > 0) {
+    if (!isEditMode && materialOptions.length > 0) {
       const lineItems = form.getValues('lineItems');
+      
       lineItems.forEach((item, index) => {
         if (!item.materialId && materialOptions.length > 0) {
           const [first] = materialOptions;
@@ -228,16 +228,9 @@ export function MaterialReceiptForm({
             form.setValue(`lineItems.${index}.materialName`, first.name, { shouldValidate: true });
           }
         }
-        if (!item.siteId && sites.length > 0) {
-          const [first] = sites;
-          if (first) {
-            form.setValue(`lineItems.${index}.siteId`, first.id, { shouldValidate: true });
-            form.setValue(`lineItems.${index}.siteName`, first.name, { shouldValidate: true });
-          }
-        }
       });
     }
-  }, [form, isEditMode, materialOptions, sites]);
+  }, [form, isEditMode, materialOptions]);
 
   const handleFormSubmit = React.useCallback(
     async (data: ReceiptFormData) => {
@@ -254,29 +247,62 @@ export function MaterialReceiptForm({
 
       try {
         if (editingReceipt) {
-          // Edit mode: update single receipt (first line item only)
-          const item = data.lineItems[0];
-          const netWeight = item.filledWeight - item.emptyWeight;
+          // Edit mode: update first receipt, create new ones for additional line items
+          const firstItem = data.lineItems[0];
+          const netWeight = firstItem.filledWeight - firstItem.emptyWeight;
           const receiptData: Omit<
             MaterialReceipt,
             'id' | 'createdAt' | 'updatedAt' | 'organizationId'
           > = {
             date: formatDateOnly(data.date),
-            vehicleNumber: item.vehicleNumber,
-            materialId: item.materialId,
-            materialName: item.materialName,
-            filledWeight: item.filledWeight,
-            emptyWeight: item.emptyWeight,
+            receiptNumber: data.receiptNumber ?? null,
+            vehicleNumber: firstItem.vehicleNumber,
+            materialId: firstItem.materialId,
+            materialName: firstItem.materialName,
+            filledWeight: firstItem.filledWeight,
+            emptyWeight: firstItem.emptyWeight,
             netWeight,
-            quantity: item.quantity,
+            quantity: firstItem.quantity,
             vendorId: data.vendorId ?? null,
             vendorName: data.vendorName ?? null,
             linkedPurchaseId: editingReceipt.linkedPurchaseId ?? null,
-            siteId: item.siteId,
-            siteName: item.siteName,
+            siteId: data.siteId,
+            siteName: data.siteName,
           };
           await updateReceipt(editingReceipt.id, receiptData);
-          toast.success('Material receipt updated successfully!');
+          
+          // Create new receipts for additional line items
+          if (data.lineItems.length > 1) {
+            const additionalReceipts = data.lineItems.slice(1).map((item) => {
+              const itemNetWeight = item.filledWeight - item.emptyWeight;
+              return {
+                date: formatDateOnly(data.date),
+                receiptNumber: data.receiptNumber ?? null,
+                vehicleNumber: item.vehicleNumber,
+                materialId: item.materialId,
+                materialName: item.materialName,
+                filledWeight: item.filledWeight,
+                emptyWeight: item.emptyWeight,
+                netWeight: itemNetWeight,
+                quantity: item.quantity,
+                vendorId: data.vendorId ?? null,
+                vendorName: data.vendorName ?? null,
+                linkedPurchaseId: null,
+                siteId: data.siteId,
+                siteName: data.siteName,
+              };
+            });
+            
+            if (addReceipts) {
+              await addReceipts(additionalReceipts);
+            } else {
+              for (const receiptData of additionalReceipts) {
+                await addReceipt(receiptData);
+              }
+            }
+          }
+          
+          toast.success('Material receipt(s) updated successfully!');
           onSubmit?.(receiptData);
         } else {
           // Create mode: create multiple receipts
@@ -284,6 +310,7 @@ export function MaterialReceiptForm({
             const netWeight = item.filledWeight - item.emptyWeight;
             return {
               date: formatDateOnly(data.date),
+              receiptNumber: data.receiptNumber ?? null,
               vehicleNumber: item.vehicleNumber,
               materialId: item.materialId,
               materialName: item.materialName,
@@ -294,8 +321,8 @@ export function MaterialReceiptForm({
               vendorId: data.vendorId ?? null,
               vendorName: data.vendorName ?? null,
               linkedPurchaseId: null,
-              siteId: item.siteId,
-              siteName: item.siteName,
+              siteId: data.siteId,
+              siteName: data.siteName,
             };
           });
 
@@ -390,12 +417,11 @@ export function MaterialReceiptForm({
       vehicleNumber: '',
       materialId: materialOptions.length > 0 ? materialOptions[0].id : '',
       materialName: materialOptions.length > 0 ? materialOptions[0].name : '',
-      siteId: sites.length > 0 ? sites[0].id : '',
-      siteName: sites.length > 0 ? sites[0].name : '',
       filledWeight: 0,
       emptyWeight: 0,
       quantity: 0,
     });
+    // Site will be synced automatically via useEffect
   };
 
   const isSubmitDisabled =
@@ -434,8 +460,8 @@ export function MaterialReceiptForm({
       <CardContent className="pt-6">
         <form id={formId} onSubmit={form.handleSubmit(handleFormSubmit)}>
           <FieldGroup>
-            {/* Header Section: Date and Vendor */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Header Section: Date, Vendor, and Site */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Controller
                 name="date"
                 control={form.control}
@@ -504,18 +530,95 @@ export function MaterialReceiptForm({
                   </Field>
                 )}
               />
+
+              <Controller
+                name="siteId"
+                control={form.control}
+                render={({ field, fieldState }) => {
+                  const selectedSiteId = field.value;
+                  const selectedMaterialId = form.watch('lineItems.0.materialId');
+                  const currentOB = selectedSiteId && selectedMaterialId ? lineItemOBs[0] : null;
+                  
+                  return (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel>
+                        Site <span className="text-destructive">*</span>
+                      </FieldLabel>
+                      <Select
+                        value={field.value ?? ''}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          if (value === 'unallocated') {
+                            form.setValue('siteName', 'Unallocated');
+                          } else {
+                            const site = sites.find((s) => s.id === value);
+                            form.setValue('siteName', site?.name ?? '');
+                          }
+                        }}
+                        disabled={isLoadingSites}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select site" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unallocated">
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4" />
+                              <span>Unallocated</span>
+                            </div>
+                          </SelectItem>
+                          {sites.map((site) => (
+                            <SelectItem key={site.id} value={site.id}>
+                              <div className="flex items-center gap-2">
+                                <Building2 className="h-4 w-4" />
+                                <span>{site.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <input
+                        type="hidden"
+                        {...form.register('siteName')}
+                      />
+                      {currentOB !== null && currentOB !== undefined && (
+                        <span className="text-xs text-muted-foreground mt-1 block">
+                          Current OB: {currentOB.toLocaleString()}
+                        </span>
+                      )}
+                      <FieldDescription>Select the site for all line items.</FieldDescription>
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                    </Field>
+                  );
+                }}
+              />
             </div>
+
+            {/* Receipt Number Field - Below Site */}
+            <Controller
+              name="receiptNumber"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={`${formId}-receiptNumber`}>
+                    Receipt Number
+                  </FieldLabel>
+                  <Input
+                    {...field}
+                    id={`${formId}-receiptNumber`}
+                    placeholder="Enter receipt number (optional)"
+                    value={field.value ?? ''}
+                  />
+                  <FieldDescription>Unique receipt number for tracking.</FieldDescription>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
 
             {/* Line Items Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Line Items</h3>
-                {!isEditMode && (
-                  <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Line Item
-                  </Button>
-                )}
               </div>
 
               <div className="space-y-4">
@@ -598,57 +701,6 @@ export function MaterialReceiptForm({
                                   type="hidden"
                                   {...form.register(`lineItems.${index}.materialName`)}
                                 />
-                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                              </Field>
-                            )}
-                          />
-
-                          {/* Site */}
-                          <Controller
-                            name={`lineItems.${index}.siteId`}
-                            control={form.control}
-                            render={({ field, fieldState }) => (
-                              <Field data-invalid={fieldState.invalid}>
-                                <FieldLabel>
-                                  Site <span className="text-destructive">*</span>
-                                </FieldLabel>
-                                <Select
-                                  value={field.value ?? ''}
-                                  onValueChange={(value) => {
-                                    field.onChange(value);
-                                    if (value === 'unallocated') {
-                                      form.setValue(`lineItems.${index}.siteName`, 'Unallocated');
-                                    } else {
-                                      const site = sites.find((s) => s.id === value);
-                                      form.setValue(`lineItems.${index}.siteName`, site?.name ?? '');
-                                    }
-                                  }}
-                                  disabled={isLoadingSites}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select site" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="unallocated">
-                                      <div className="flex items-center gap-2">
-                                        <Building2 className="h-4 w-4" />
-                                        <span>Unallocated</span>
-                                      </div>
-                                    </SelectItem>
-                                    {sites.map((site) => (
-                                      <SelectItem key={site.id} value={site.id}>
-                                        <div className="flex items-center gap-2">
-                                          <Building2 className="h-4 w-4" />
-                                          <span>{site.name}</span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <input
-                                  type="hidden"
-                                  {...form.register(`lineItems.${index}.siteName`)}
-                                />
                                 {lineItemOBs[index] !== null && lineItemOBs[index] !== undefined && (
                                   <span className="text-xs text-muted-foreground mt-1 block">
                                     Current OB: {lineItemOBs[index]?.toLocaleString()}
@@ -668,7 +720,7 @@ export function MaterialReceiptForm({
                               return (
                                 <Field data-invalid={fieldState.invalid}>
                                   <FieldLabel>
-                                    Filled Weight (kg) <span className="text-destructive">*</span>
+                                    Filled Weight <span className="text-destructive">*</span>
                                   </FieldLabel>
                                   <Input
                                     {...field}
@@ -708,7 +760,7 @@ export function MaterialReceiptForm({
                               return (
                                 <Field data-invalid={fieldState.invalid}>
                                   <FieldLabel>
-                                    Empty Weight (kg) <span className="text-destructive">*</span>
+                                    Empty Weight <span className="text-destructive">*</span>
                                   </FieldLabel>
                                   <Input
                                     {...field}
@@ -746,8 +798,7 @@ export function MaterialReceiptForm({
                             render={({ field, fieldState }) => (
                               <Field data-invalid={fieldState.invalid}>
                                 <FieldLabel>
-                                  Quantity ({materialUnit || 'UOM'}){' '}
-                                  <span className="text-destructive">*</span>
+                                  Quantity <span className="text-destructive">*</span>
                                 </FieldLabel>
                                 <Input
                                   {...field}
@@ -786,6 +837,14 @@ export function MaterialReceiptForm({
                     </Card>
                   );
                 })}
+                
+                {/* Add Line Item Button - appears after each line item */}
+                <div className="flex justify-center pt-2">
+                  <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Line Item
+                  </Button>
+                </div>
               </div>
 
               {form.formState.errors.lineItems && (

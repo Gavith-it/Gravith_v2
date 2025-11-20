@@ -21,6 +21,7 @@ type PurchaseRow = {
   vendor_invoice_number: string | null;
   vendor_name: string | null;
   purchase_date: string | null;
+  receipt_number: string | null;
   filled_weight: number | string | null;
   empty_weight: number | string | null;
   net_weight: number | string | null;
@@ -73,6 +74,7 @@ function mapRowToSharedMaterial(row: PurchaseRow, usageOverrides?: Map<string, n
     vendor: row.vendor_name ?? '',
     invoiceNumber: row.vendor_invoice_number ?? '',
     purchaseDate: row.purchase_date ?? '',
+    receiptNumber: row.receipt_number ?? undefined,
     addedBy: '',
     filledWeight:
       row.filled_weight !== null && row.filled_weight !== undefined
@@ -433,6 +435,7 @@ export async function POST(request: Request) {
       vendor,
       invoiceNumber,
       purchaseDate,
+      receiptNumber,
       filledWeight,
       emptyWeight,
       netWeight,
@@ -487,6 +490,7 @@ export async function POST(request: Request) {
       vendor_invoice_number: invoiceNumber ?? '',
       vendor_name: vendor ?? '',
       purchase_date: purchaseDate ?? formatDateOnly(new Date()),
+      receipt_number: receiptNumber ?? null,
       filled_weight: filledWeight ?? null,
       empty_weight: emptyWeight ?? null,
       net_weight: netWeight ?? null,

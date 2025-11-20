@@ -144,6 +144,7 @@ export interface MaterialPurchase {
 export interface MaterialReceipt {
   id: string;
   date: string;
+  receiptNumber?: string | null;
   vehicleNumber: string;
   materialId: string;
   materialName: string;

@@ -20,6 +20,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient
 export type ReceiptRow = {
   id: string;
   date: string | null;
+  receipt_number: string | null;
   vehicle_number: string | null;
   material_id: string | null;
   material_name: string | null;
@@ -41,6 +42,7 @@ export function mapRowToReceipt(row: ReceiptRow): MaterialReceipt {
   return {
     id: row.id,
     date: row.date ?? '',
+    receiptNumber: row.receipt_number,
     vehicleNumber: row.vehicle_number ?? '',
     materialId: row.material_id ?? '',
     materialName: row.material_name ?? '',

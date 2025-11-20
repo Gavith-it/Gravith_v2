@@ -49,6 +49,7 @@ export async function GET(request: Request) {
         `
         id,
         date,
+        receipt_number,
         vehicle_number,
         material_id,
         material_name,
@@ -223,6 +224,7 @@ export async function POST(request: Request) {
     const payloads = receiptsData.map((receipt) => {
       const {
         date,
+        receiptNumber,
         vehicleNumber,
         materialId,
         materialName,
@@ -256,6 +258,7 @@ export async function POST(request: Request) {
 
       return {
         date,
+        receipt_number: receiptNumber ?? null,
         vehicle_number: vehicleNumber,
         material_id: materialId,
         material_name: materialName,
@@ -282,6 +285,7 @@ export async function POST(request: Request) {
         `
         id,
         date,
+        receipt_number,
         vehicle_number,
         material_id,
         material_name,

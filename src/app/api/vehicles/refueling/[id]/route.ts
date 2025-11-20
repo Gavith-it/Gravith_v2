@@ -135,8 +135,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     const body = (await request.json()) as RefuelingPayload;
-    const updates: Record<string, unknown> = { updated_by: ctx.userId };
+    const updates: Record<string, unknown> = {};
 
+    // Only update fields that are provided and allowed to be updated
+    // Note: vehicleId and vehicleNumber should not be updated
     if (body.date !== undefined) updates['date'] = body.date;
     if (body.fuelType !== undefined) updates['fuel_type'] = body.fuelType;
     if (body.quantity !== undefined) updates['quantity'] = body.quantity;
@@ -146,8 +148,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (body.location !== undefined) updates['location'] = body.location;
     if (body.vendor !== undefined) updates['vendor'] = body.vendor;
     if (body.invoiceNumber !== undefined) updates['invoice_number'] = body.invoiceNumber;
-    if (body.receiptUrl !== undefined) updates['receipt_url'] = body.receiptUrl;
-    if (body.notes !== undefined) updates['notes'] = body.notes;
+    if (body.receiptUrl !== undefined) updates['receipt_url'] = body.receiptUrl ?? null;
+    if (body.notes !== undefined) updates['notes'] = body.notes ?? null;
+
+    // Check if there are any updates to make
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No fields to update.' }, { status: 400 });
+    }
 
     const { data, error } = await supabase
       .from('vehicle_refueling')
@@ -178,9 +185,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       )
       .single();
 
-    if (error || !data) {
-      console.error('Error updating refueling record', error);
-      return NextResponse.json({ error: 'Failed to update refueling record.' }, { status: 500 });
+    if (error) {
+      console.error('Error updating refueling record:', error);
+      console.error('Update payload:', updates);
+      console.error('Record ID:', id);
+      return NextResponse.json(
+        { error: error.message || 'Failed to update refueling record.' },
+        { status: 500 },
+      );
+    }
+
+    if (!data) {
+      console.error('No data returned from update query');
+      return NextResponse.json({ error: 'Record not found or update failed.' }, { status: 404 });
     }
 
     return NextResponse.json({ record: mapRowToRefueling(data as VehicleRefuelingRow) });

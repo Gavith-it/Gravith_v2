@@ -20,6 +20,7 @@ export interface SharedMaterial {
   vendor?: string;
   invoiceNumber?: string;
   purchaseDate?: string;
+  receiptNumber?: string;
   addedBy?: string;
   filledWeight?: number;
   emptyWeight?: number;

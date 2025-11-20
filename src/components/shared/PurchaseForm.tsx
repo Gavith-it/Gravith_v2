@@ -84,27 +84,11 @@ type MaterialCategory = (typeof materialCategories)[number];
 const purchaseFormSchema = z.object({
   materialId: z.string().optional(),
   vendor: z.string().min(1, 'Please select a vendor.'),
-  site: z.string().min(1, 'Please select a site.'),
-  materialName: z.string().min(1, 'Please enter a material name.'),
-  category: z.enum([
-    'Cement',
-    'Steel',
-    'Concrete',
-    'Bricks',
-    'Sand',
-    'Aggregate',
-    'Timber',
-    'Electrical',
-    'Plumbing',
-    'Paint',
-    'Other',
-  ]),
-  quantity: z.number().positive('Quantity must be greater than zero.'),
-  unit: z.string().min(1, 'Please select a unit.'),
-  unitRate: z.number().positive('Unit rate must be greater than zero.'),
   invoiceNumber: z.string().min(1, 'Invoice number is required.'),
   purchaseDate: z.date(),
-  linkedReceiptIds: z.array(z.string()).optional(),
+  receiptNumber: z.string().optional(),
+  linkedReceiptIds: z.array(z.string()).min(1, 'Please select at least one material receipt.'),
+  receiptUnitRates: z.record(z.string(), z.number().positive('Unit rate must be greater than zero.')).optional(),
   filledWeight: z.number().optional(),
   emptyWeight: z.number().optional(),
   netWeight: z.number().optional(),
@@ -112,7 +96,6 @@ const purchaseFormSchema = z.object({
 });
 
 type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
-type SiteOption = { id: string; name: string };
 
 export function PurchaseForm({
   selectedSite,
@@ -126,23 +109,17 @@ export function PurchaseForm({
   const isEditMode = !!editingMaterial;
   const formId = isEditMode ? 'purchase-edit-form' : 'purchase-new-form';
   const [isClient, setIsClient] = React.useState(false);
-  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
     defaultValues: {
       materialId: editingMaterial?.materialId || undefined,
       vendor: editingMaterial?.vendor || '',
-      site: selectedSite || editingMaterial?.site || '',
-      materialName: editingMaterial?.materialName || '',
-      category: (editingMaterial?.category as MaterialCategory) || 'Other',
-      quantity: editingMaterial?.quantity || undefined,
-      unit: editingMaterial?.unit || '',
-      unitRate: editingMaterial?.unitRate || undefined,
       invoiceNumber: editingMaterial?.invoiceNumber || '',
       purchaseDate: parseDateOnly(editingMaterial?.purchaseDate),
+      receiptNumber: undefined,
       linkedReceiptIds: editingMaterial?.linkedReceiptId ? [editingMaterial.linkedReceiptId] : [],
+      receiptUnitRates: {},
       filledWeight: editingMaterial?.filledWeight,
       emptyWeight: editingMaterial?.emptyWeight,
       netWeight: editingMaterial?.netWeight,
@@ -154,55 +131,39 @@ export function PurchaseForm({
     setIsClient(true);
   }, []);
 
-  useEffect(() => {
-    const loadSites = async () => {
-      try {
-        setIsLoadingSites(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Array<{ id: string; name: string }>;
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load sites.');
-        }
-
-        setSiteOptions(
-          (payload.sites ?? []).map((site) => ({
-            id: site.id,
-            name: site.name,
-          })),
-        );
-      } catch (error) {
-        console.error('Failed to load sites', error);
-        toast.error('Failed to load sites list.');
-        setSiteOptions([]);
-      } finally {
-        setIsLoadingSites(false);
-      }
-    };
-
-    void loadSites();
-  }, []);
 
   // Material options loading removed - users now type material names freely
 
-  // Get unlinked receipts directly from receipts array
-  const unlinkedReceipts = React.useMemo(() => {
-    return receipts.filter((receipt) => !receipt.linkedPurchaseId);
-  }, [receipts]);
+  // Get selected vendor
+  const selectedVendor = form.watch('vendor');
+  const linkedReceiptIds = form.watch('linkedReceiptIds') || [];
 
-  const siteFieldValue = form.watch('site');
-  const vendorOptions = useMemo(() => vendors, [vendors]);
-  const siteOptionEntries = useMemo(() => {
-    const unique = new Map<string, SiteOption>();
-    siteOptions.forEach((site) => unique.set(site.name, site));
-    if (siteFieldValue && !unique.has(siteFieldValue)) {
-      unique.set(siteFieldValue, { id: `selected-${siteFieldValue}`, name: siteFieldValue });
+  // Get receipts filtered by selected vendor (include linked receipts in edit mode)
+  const unlinkedReceipts = React.useMemo(() => {
+    if (!selectedVendor) {
+      return [];
     }
-    return Array.from(unique.values());
-  }, [siteOptions, siteFieldValue]);
+    return receipts.filter((receipt) => {
+      // Match by vendor name or vendor ID
+      const matchesVendor = receipt.vendorName === selectedVendor || 
+                           vendors.find(v => v.name === selectedVendor)?.id === receipt.vendorId;
+      // In edit mode, show linked receipts too; otherwise only show unlinked
+      const isLinked = receipt.linkedPurchaseId && receipt.linkedPurchaseId !== editingMaterial?.id;
+      const isCurrentlyLinked = linkedReceiptIds.includes(receipt.id);
+      return matchesVendor && (!isLinked || isCurrentlyLinked);
+    });
+  }, [receipts, selectedVendor, vendors, editingMaterial?.id, linkedReceiptIds]);
+
+  const vendorOptions = useMemo(() => vendors, [vendors]);
+
+  // Get unique receipt numbers from all material receipts
+  const receiptNumberOptions = useMemo(() => {
+    const receiptNumbers = receipts
+      .map(r => r.receiptNumber)
+      .filter((rn): rn is string => Boolean(rn && rn.trim() !== ''));
+    // Remove duplicates and sort
+    return Array.from(new Set(receiptNumbers)).sort();
+  }, [receipts]);
 
   const computeMasterTotalsFromSnapshot = React.useCallback(
     (materialId: string, snapshot: SharedMaterial[]) => {
@@ -259,30 +220,59 @@ export function PurchaseForm({
 
   const handleFormSubmit = React.useCallback(
     async (data: PurchaseFormData) => {
-      const totalAmount = data.quantity * data.unitRate;
+      // Get material info from selected receipts
+      const selectedReceiptIds = data.linkedReceiptIds || [];
+      const selectedReceipts = receipts.filter(r => selectedReceiptIds.includes(r.id));
       
-      // materialId will be set automatically by backend when creating Material Master
+      if (selectedReceiptIds.length === 0) {
+        toast.error('Please select at least one material receipt.');
+        return;
+      }
+
+      // Aggregate quantities and calculate total amount from receipts
+      let totalQuantity = 0;
+      let totalAmount = 0;
+      const receiptUnitRates = data.receiptUnitRates || {};
+      
+      selectedReceipts.forEach(receipt => {
+        const unitRate = receiptUnitRates[receipt.id] || 0;
+        if (unitRate <= 0) {
+          toast.error(`Please enter unit rate for receipt ${receipt.receiptNumber || receipt.vehicleNumber}`);
+          return;
+        }
+        totalQuantity += receipt.quantity;
+        totalAmount += receipt.quantity * unitRate;
+      });
+
+      // Use first receipt's material info as primary
+      const firstReceipt = selectedReceipts[0];
+      if (!firstReceipt) {
+        toast.error('No receipts selected.');
+        return;
+      }
+
       const previousConsumed = editingMaterial?.consumedQuantity ?? 0;
-      const quantityValue = data.quantity;
+      const quantityValue = totalQuantity;
 
       const materialData: Omit<SharedMaterial, 'id'> = {
-        materialId: data.materialId, // Optional - backend will create/link Material Master
-        materialName: data.materialName,
-        site: data.site,
-        quantity: data.quantity,
-        unit: data.unit,
-        unitRate: data.unitRate,
-        costPerUnit: data.unitRate,
+        materialId: firstReceipt.materialId,
+        materialName: firstReceipt.materialName,
+        site: firstReceipt.siteName || '',
+        quantity: totalQuantity,
+        unit: 'kg', // Default unit from receipts
+        unitRate: totalQuantity > 0 ? totalAmount / totalQuantity : 0,
+        costPerUnit: totalQuantity > 0 ? totalAmount / totalQuantity : 0,
         totalAmount,
         vendor: data.vendor,
         invoiceNumber: data.invoiceNumber,
         purchaseDate: formatDateOnly(data.purchaseDate),
+        receiptNumber: data.receiptNumber || undefined,
         addedBy: 'Current User',
         consumedQuantity: previousConsumed,
         remainingQuantity:
           editingMaterial?.remainingQuantity ?? quantityValue - previousConsumed,
-        linkedReceiptId: data.linkedReceiptIds?.[0],
-        category: data.category,
+        linkedReceiptId: selectedReceiptIds[0],
+        category: 'Other', // Default category
         filledWeight: data.filledWeight ? Number(data.filledWeight) : undefined,
         emptyWeight: data.emptyWeight ? Number(data.emptyWeight) : undefined,
         netWeight: data.netWeight ? Number(data.netWeight) : undefined,
@@ -345,12 +335,17 @@ export function PurchaseForm({
     [addMaterial, editingMaterial, linkReceiptToPurchase, materials, syncMaterialMaster, updateMaterial, onSubmit],
   );
 
-  const quantity = form.watch('quantity');
-  const unitRate = form.watch('unitRate');
-  const totalAmount = quantity && unitRate ? quantity * unitRate : 0;
-  const isSubmitDisabled =
-    form.formState.isSubmitting ||
-    isLoadingSites;
+  const receiptUnitRates = form.watch('receiptUnitRates') || {};
+  
+  // Calculate total amount from selected receipts
+  const totalAmount = React.useMemo(() => {
+    const selectedReceipts = receipts.filter(r => linkedReceiptIds.includes(r.id));
+    return selectedReceipts.reduce((sum, receipt) => {
+      const rate = receiptUnitRates[receipt.id] || 0;
+      return sum + (receipt.quantity * rate);
+    }, 0);
+  }, [linkedReceiptIds, receiptUnitRates, receipts]);
+  const isSubmitDisabled = form.formState.isSubmitting;
 
   const getSubmitButtonText = () =>
     form.formState.isSubmitting
@@ -385,243 +380,52 @@ export function PurchaseForm({
           aria-labelledby="purchase-form-heading"
         >
           <FieldGroup>
-            {/* Vendor and Site Row */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Controller
-                name="vendor"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-vendor`}>
-                      Vendor <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id={`${formId}-vendor`} aria-invalid={fieldState.invalid}>
-                        <SelectValue
-                          placeholder={
-                            isVendorsLoading
-                              ? 'Loading vendors…'
-                              : vendorOptions.length === 0
-                                ? 'No vendors available'
-                                : 'Select vendor'
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isVendorsLoading ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">Loading vendors…</div>
-                        ) : vendorOptions.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">
-                            No vendors found. Add vendors first.
-                          </div>
-                        ) : (
-                          vendorOptions.map((vendor) => (
-                            <SelectItem key={vendor.id} value={vendor.name}>
-                              {vendor.name}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>
-                      Supplier of the material. Maintain vendors from the Vendors page.
-                    </FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-
-              <Controller
-                name="site"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-site`}>
-                      Site <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={!!selectedSite || isLoadingSites || siteOptionEntries.length === 0}
-                    >
-                      <SelectTrigger
-                        id={`${formId}-site`}
-                        aria-invalid={fieldState.invalid}
-                        className={selectedSite ? 'bg-muted' : ''}
+            {/* Vendor Row */}
+            <Controller
+              name="vendor"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={`${formId}-vendor`}>
+                    Vendor <span className="text-destructive">*</span>
+                  </FieldLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id={`${formId}-vendor`} aria-invalid={fieldState.invalid} className="max-w-md">
+                      <SelectValue
+                        placeholder={
+                          isVendorsLoading
+                            ? 'Loading vendors…'
+                            : vendorOptions.length === 0
+                              ? 'No vendors available'
+                              : 'Select vendor'
+                        }
                       >
-                        <SelectValue
-                          placeholder={
-                            isLoadingSites
-                              ? 'Loading sites…'
-                              : siteOptionEntries.length === 0
-                                ? 'No sites available'
-                                : 'Select site'
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isLoadingSites ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">Loading sites…</div>
-                        ) : siteOptionEntries.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">
-                            No sites found. Add sites first.
-                          </div>
-                        ) : (
-                          siteOptionEntries.map((site) => (
-                            <SelectItem key={site.id} value={site.name}>
-                              {site.name}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>Delivery destination for this material.</FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-            </div>
-
-            {/* Material and Category Row */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Controller
-                name="materialName"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-material`}>
-                      Material <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Input
-                      {...field}
-                      id={`${formId}-material`}
-                      type="text"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="Enter material name (e.g., Cement, Steel, Paint)"
-                      value={field.value ?? ''}
-                      autoComplete="off"
-                    />
-                    <FieldDescription>
-                      Enter the material name. It will be automatically added to Material Master if it doesn&apos;t exist.
-                    </FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-
-              <Controller
-                name="category"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-category`}>
-                      Category <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id={`${formId}-category`} aria-invalid={fieldState.invalid}>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materialCategories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
+                        {field.value && field.value.length > 30 ? `${field.value.substring(0, 30)}...` : field.value}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isVendorsLoading ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">Loading vendors…</div>
+                      ) : vendorOptions.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          No vendors found. Add vendors first.
+                        </div>
+                      ) : (
+                        vendorOptions.map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.name} className="max-w-md truncate">
+                            <span className="truncate block">{vendor.name}</span>
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>
-                      Material category for organization and reporting.
-                    </FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-            </div>
-
-            {/* Quantity, Unit, and Unit Rate Row */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Controller
-            name="quantity"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${formId}-quantity`}>
-                  Quantity <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  {...field}
-                  id={`${formId}-quantity`}
-                  type="number"
-                  step="0.01"
-                  aria-invalid={fieldState.invalid}
-                  placeholder="Enter quantity"
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    field.onChange(value === '' ? undefined : Number(value));
-                  }}
-                  value={field.value ?? ''}
-                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                />
-                <FieldDescription>Total quantity purchased.</FieldDescription>
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
-
-              <Controller
-                name="unit"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-unit`}>
-                      Unit <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id={`${formId}-unit`} aria-invalid={fieldState.invalid}>
-                        <SelectValue placeholder="Select unit" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {units.map((unit) => (
-                          <SelectItem key={unit.value} value={unit.value}>
-                            {unit.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>Unit of measurement.</FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-
-              <Controller
-                name="unitRate"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-unit-rate`}>
-                      Unit Rate (₹) <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Input
-                      {...field}
-                      id={`${formId}-unit-rate`}
-                      type="number"
-                      step="0.01"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="Enter rate"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === '' ? undefined : Number(value));
-                      }}
-                      value={field.value ?? ''}
-                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                    />
-                    <FieldDescription>Price per unit.</FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-            </div>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    Select vendor to view their material receipts.
+                  </FieldDescription>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
 
         {/* Invoice and Purchase Date Row */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -668,6 +472,44 @@ export function PurchaseForm({
               />
             </div>
 
+            {/* Receipt Number Field */}
+            <Controller
+              name="receiptNumber"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={`${formId}-receipt-number`}>
+                    Receipt Number
+                  </FieldLabel>
+                  <Select
+                    value={field.value || undefined}
+                    onValueChange={(value) => field.onChange(value || undefined)}
+                  >
+                    <SelectTrigger id={`${formId}-receipt-number`} aria-invalid={fieldState.invalid}>
+                      <SelectValue placeholder="Select receipt number (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {receiptNumberOptions.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          No receipt numbers available
+                        </div>
+                      ) : (
+                        receiptNumberOptions.map((receiptNum) => (
+                          <SelectItem key={receiptNum} value={receiptNum}>
+                            {receiptNum}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    Select a receipt number from material receipts (optional).
+                  </FieldDescription>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+
         {/* Link Material Receipts (Optional) */}
         <Controller
           name="linkedReceiptIds"
@@ -677,15 +519,21 @@ export function PurchaseForm({
 
             return (
               <FieldSet data-invalid={fieldState.invalid}>
-                <FieldLegend>Link Material Receipts (Optional)</FieldLegend>
+                <FieldLegend>
+                  Link Material Receipts <span className="text-destructive">*</span>
+                </FieldLegend>
                 <FieldDescription className="mb-3">
                   Select one or more material receipts to link with this purchase. Click on rows to
-                  select.
+                  select. Enter unit rate for each receipt.
                 </FieldDescription>
 
-                {unlinkedReceipts.length === 0 ? (
+                {!selectedVendor ? (
                   <div className="rounded-md border border-dashed p-8 text-center">
-                    <p className="text-sm text-muted-foreground">No unlinked receipts available</p>
+                    <p className="text-sm text-muted-foreground">Please select a vendor first to view receipts</p>
+                  </div>
+                ) : unlinkedReceipts.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-8 text-center">
+                    <p className="text-sm text-muted-foreground">No unlinked receipts available for this vendor</p>
                   </div>
                 ) : (
                   <>
@@ -701,20 +549,42 @@ export function PurchaseForm({
                             <TableHead>Material</TableHead>
                             <TableHead className="text-right">Net Weight (kg)</TableHead>
                             <TableHead className="text-right">Created</TableHead>
+                            <TableHead className="text-right">Unit Rate (₹)</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {unlinkedReceipts.map((receipt) => {
                             const isSelected = selectedIds.includes(receipt.id);
+                            const receiptUnitRates = form.watch('receiptUnitRates') || {};
+                            const currentRate = receiptUnitRates[receipt.id] || '';
 
                             const handleRowClick = () => {
                               const currentIds = Array.isArray(field.value) ? field.value : [];
 
                               if (currentIds.includes(receipt.id)) {
                                 field.onChange(currentIds.filter((id) => id !== receipt.id));
+                                // Remove unit rate when deselected
+                                const newRates = { ...receiptUnitRates };
+                                delete newRates[receipt.id];
+                                form.setValue('receiptUnitRates', newRates);
                               } else {
                                 field.onChange([...currentIds, receipt.id]);
                               }
+                            };
+
+                            const handleUnitRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                              e.stopPropagation();
+                              const value = e.target.value;
+                              const numValue = value === '' ? undefined : Number(value);
+                              const newRates: Record<string, number> = {
+                                ...receiptUnitRates,
+                              };
+                              if (numValue !== undefined) {
+                                newRates[receipt.id] = numValue;
+                              } else {
+                                delete newRates[receipt.id];
+                              }
+                              form.setValue('receiptUnitRates', newRates);
                             };
 
                             return (
@@ -748,6 +618,10 @@ export function PurchaseForm({
                                         field.onChange(
                                           currentIds.filter((id) => id !== receipt.id),
                                         );
+                                        // Remove unit rate when deselected
+                                        const newRates = { ...receiptUnitRates };
+                                        delete newRates[receipt.id];
+                                        form.setValue('receiptUnitRates', newRates);
                                       }
                                     }}
                                     aria-label={`Select receipt ${receipt.vehicleNumber}`}
@@ -770,6 +644,18 @@ export function PurchaseForm({
                                 </TableCell>
                                 <TableCell className="text-right text-sm text-muted-foreground">
                                   {formatDate(receipt.createdAt)}
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Rate"
+                                    value={currentRate === '' || currentRate === undefined ? '' : currentRate}
+                                    onChange={handleUnitRateChange}
+                                    className="w-24 text-right"
+                                    disabled={!isSelected}
+                                    style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                                  />
                                 </TableCell>
                               </TableRow>
                             );

@@ -16,6 +16,7 @@ type RouteContext = {
 const RECEIPT_SELECT = `
   id,
   date,
+  receipt_number,
   vehicle_number,
   material_id,
   material_name,
@@ -103,6 +104,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     if (body.date !== undefined) {
       updates.date = body.date;
+    }
+
+    if (body.receiptNumber !== undefined) {
+      updates.receipt_number = body.receiptNumber ?? null;
     }
 
     if (body.vehicleNumber !== undefined) {
