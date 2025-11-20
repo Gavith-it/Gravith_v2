@@ -136,6 +136,8 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
   const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
   const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
   const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
+  const [isSubmittingActivity, setIsSubmittingActivity] = useState<boolean>(false);
+  const [isSubmittingMilestone, setIsSubmittingMilestone] = useState<boolean>(false);
 
   const activityForm = useForm<ActivityFormData>({
     resolver: zodResolver(activitySchema),
@@ -198,6 +200,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     if (!isActivityDialogOpen) {
       activityForm.reset();
       setEditingActivity(null);
+      setIsSubmittingActivity(false);
       return;
     }
 
@@ -229,6 +232,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     if (!isMilestoneDialogOpen) {
       milestoneForm.reset();
       setEditingMilestone(null);
+      setIsSubmittingMilestone(false);
       return;
     }
 
@@ -269,7 +273,12 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
   const nextMilestone = useMemo(() => findNextMilestone(filteredMilestones), [filteredMilestones]);
 
   const handleActivitySubmit = async (data: ActivityFormData) => {
+    if (isSubmittingActivity) {
+      return; // Prevent double submission
+    }
+
     try {
+      setIsSubmittingActivity(true);
       const site = siteOptions.find((option) => option.id === data.siteId);
       const startDate = data.startDate;
       const endDate = data.endDate;
@@ -312,11 +321,18 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     } catch (error) {
       console.error('Failed to save activity', error);
       toast.error(error instanceof Error ? error.message : 'Failed to save activity.');
+    } finally {
+      setIsSubmittingActivity(false);
     }
   };
 
   const handleMilestoneSubmit = async (data: MilestoneFormData) => {
+    if (isSubmittingMilestone) {
+      return; // Prevent double submission
+    }
+
     try {
+      setIsSubmittingMilestone(true);
       const site = siteOptions.find((option) => option.id === data.siteId);
 
       const payload = {
@@ -340,6 +356,8 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     } catch (error) {
       console.error('Failed to save milestone', error);
       toast.error(error instanceof Error ? error.message : 'Failed to save milestone.');
+    } finally {
+      setIsSubmittingMilestone(false);
     }
   };
 
@@ -989,10 +1007,21 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setActivityDialogOpen(false)}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setActivityDialogOpen(false)}
+                  disabled={isSubmittingActivity}
+                >
                   Cancel
                 </Button>
-                <Button type="submit">{editingActivity ? 'Save Changes' : 'Create Activity'}</Button>
+                <Button type="submit" disabled={isSubmittingActivity}>
+                  {isSubmittingActivity 
+                    ? 'Saving...' 
+                    : editingActivity 
+                      ? 'Save Changes' 
+                      : 'Create Activity'}
+                </Button>
               </DialogFooter>
             </form>
           </Form>
@@ -1118,10 +1147,21 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMilestoneDialogOpen(false)}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setMilestoneDialogOpen(false)}
+                  disabled={isSubmittingMilestone}
+                >
                   Cancel
                 </Button>
-                <Button type="submit">{editingMilestone ? 'Save Changes' : 'Create Milestone'}</Button>
+                <Button type="submit" disabled={isSubmittingMilestone}>
+                  {isSubmittingMilestone 
+                    ? 'Saving...' 
+                    : editingMilestone 
+                      ? 'Save Changes' 
+                      : 'Create Milestone'}
+                </Button>
               </DialogFooter>
             </form>
           </Form>

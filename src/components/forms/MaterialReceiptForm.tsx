@@ -99,9 +99,9 @@ export function MaterialReceiptForm({
               materialName: '',
               siteId: '',
               siteName: '',
-              filledWeight: 0,
-              emptyWeight: 0,
-              quantity: 0,
+              filledWeight: undefined as any,
+              emptyWeight: undefined as any,
+              quantity: undefined as any,
             },
           ],
     },
@@ -392,9 +392,9 @@ export function MaterialReceiptForm({
       materialName: materialOptions.length > 0 ? materialOptions[0].name : '',
       siteId: sites.length > 0 ? sites[0].id : '',
       siteName: sites.length > 0 ? sites[0].name : '',
-      filledWeight: 0,
-      emptyWeight: 0,
-      quantity: 0,
+      filledWeight: undefined as any,
+      emptyWeight: undefined as any,
+      quantity: undefined as any,
     });
   };
 
@@ -690,7 +690,7 @@ export function MaterialReceiptForm({
                                         }
                                       }
                                     }}
-                                    value={field.value ?? ''}
+                                    value={field.value === 0 || field.value === undefined ? '' : field.value}
                                     style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                   />
                                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -730,7 +730,7 @@ export function MaterialReceiptForm({
                                         }
                                       }
                                     }}
-                                    value={field.value ?? ''}
+                                    value={field.value === 0 || field.value === undefined ? '' : field.value}
                                     style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                   />
                                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -759,7 +759,7 @@ export function MaterialReceiptForm({
                                     const value = event.target.value;
                                     field.onChange(value === '' ? undefined : Number(value));
                                   }}
-                                  value={field.value ?? ''}
+                                  value={field.value === 0 || field.value === undefined ? '' : field.value}
                                   style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}

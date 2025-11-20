@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { DollarSign, ShoppingCart } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -809,7 +809,7 @@ export function PurchaseForm({
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-muted-foreground">Total Amount:</span>
               <span className="flex items-center gap-1 text-lg font-bold text-primary">
-                <DollarSign className="h-4 w-4" />₹{totalAmount.toLocaleString()}
+                ₹{totalAmount.toLocaleString()}
               </span>
             </div>
           </div>
