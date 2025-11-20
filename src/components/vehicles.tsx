@@ -158,7 +158,7 @@ export function VehiclesPage({
   selectedVehicle: propSelectedVehicle,
   onVehicleSelect,
 }: VehicleManagementProps) {
-  const { vehicles, isLoading: isVehiclesLoading, addVehicle } = useVehicles();
+  const { vehicles, isLoading: isVehiclesLoading, addVehicle, updateVehicle, deleteVehicle } = useVehicles();
   const { vendors } = useVendors();
 
   const {
@@ -182,6 +182,7 @@ export function VehiclesPage({
   const [isVehicleDialogOpen, setIsVehicleDialogOpen] = useState(false);
   const [isVehicleDetailsDialogOpen, setIsVehicleDetailsDialogOpen] = useState(false);
   const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [isSavingVehicle, setIsSavingVehicle] = useState(false);
   const [isSavingRefueling, setIsSavingRefueling] = useState(false);
   const [isSavingUsage, setIsSavingUsage] = useState(false);
@@ -748,6 +749,7 @@ export function VehiclesPage({
       make: '',
       model: '',
     });
+    setEditingVehicle(null);
   }, []);
 
   const handleVehicleSubmit = async (event: React.FormEvent) => {
@@ -760,25 +762,70 @@ export function VehiclesPage({
 
     setIsSavingVehicle(true);
     try {
-      await addVehicle({
-        vehicleNumber: vehicleForm.vehicleNumber.trim(),
-        type: vehicleForm.type,
-        status: vehicleForm.status,
-        isRental: vehicleForm.isRental,
-        vendor: vehicleForm.vendor.trim() || null,
-        make: vehicleForm.make.trim() || null,
-        model: vehicleForm.model.trim() || null,
-      });
-      toast.success('Vehicle created.');
+      if (editingVehicle) {
+        await updateVehicle(editingVehicle.id, {
+          vehicleNumber: vehicleForm.vehicleNumber.trim(),
+          type: vehicleForm.type,
+          status: vehicleForm.status,
+          isRental: vehicleForm.isRental,
+          vendor: vehicleForm.vendor.trim() || null,
+          make: vehicleForm.make.trim() || null,
+          model: vehicleForm.model.trim() || null,
+        });
+        toast.success('Vehicle updated.');
+      } else {
+        await addVehicle({
+          vehicleNumber: vehicleForm.vehicleNumber.trim(),
+          type: vehicleForm.type,
+          status: vehicleForm.status,
+          isRental: vehicleForm.isRental,
+          vendor: vehicleForm.vendor.trim() || null,
+          make: vehicleForm.make.trim() || null,
+          model: vehicleForm.model.trim() || null,
+        });
+        toast.success('Vehicle created.');
+      }
       resetVehicleForm();
       setIsVehicleDialogOpen(false);
     } catch (error) {
-      console.error('Failed to create vehicle', error);
-      toast.error(error instanceof Error ? error.message : 'Unable to create vehicle right now.');
+      console.error('Failed to save vehicle', error);
+      toast.error(error instanceof Error ? error.message : 'Unable to save vehicle right now.');
     } finally {
       setIsSavingVehicle(false);
     }
   };
+
+  const handleEditVehicle = useCallback((vehicle: Vehicle) => {
+    setEditingVehicle(vehicle);
+    setVehicleForm({
+      vehicleNumber: vehicle.vehicleNumber,
+      type: vehicle.type,
+      status: vehicle.status,
+      isRental: vehicle.isRental,
+      vendor: vehicle.vendor || '',
+      make: vehicle.make || '',
+      model: vehicle.model || '',
+    });
+    setIsVehicleDialogOpen(true);
+  }, []);
+
+  const handleDeleteVehicle = useCallback(async (vehicleId: string) => {
+    if (!confirm('Are you sure you want to delete this vehicle? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteVehicle(vehicleId);
+      toast.success('Vehicle deleted.');
+      if (selectedVehicle === vehicleId) {
+        setSelectedVehicle('');
+        onVehicleSelect?.('');
+      }
+    } catch (error) {
+      console.error('Failed to delete vehicle', error);
+      toast.error(error instanceof Error ? error.message : 'Unable to delete vehicle right now.');
+    }
+  }, [deleteVehicle, selectedVehicle, onVehicleSelect]);
 
   const handleRefuelingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1098,24 +1145,62 @@ export function VehiclesPage({
                             </p>
                           </div>
                         </div>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 flex-shrink-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleViewVehicleDetails(vehicle);
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>View Details</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewVehicleDetails(vehicle);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View Details</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditVehicle(vehicle);
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit Vehicle</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleDeleteVehicle(vehicle.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete Vehicle</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2">
@@ -2244,9 +2329,13 @@ export function VehiclesPage({
       >
         <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="space-y-3 flex-shrink-0 px-6 pt-6 pb-4 border-b">
-            <DialogTitle className="text-xl">Add Vehicle</DialogTitle>
+            <DialogTitle className="text-xl">
+              {editingVehicle ? 'Edit Vehicle' : 'Add Vehicle'}
+            </DialogTitle>
             <DialogDescription>
-              Create a vehicle record so you can log refueling and usage against it.
+              {editingVehicle
+                ? 'Update vehicle record details.'
+                : 'Create a vehicle record so you can log refueling and usage against it.'}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -2350,7 +2439,7 @@ export function VehiclesPage({
                     Cancel
                   </Button>
                   <Button type="submit" form="vehicle-form" disabled={isSavingVehicle}>
-                    {isSavingVehicle ? 'Saving…' : 'Create Vehicle'}
+                    {isSavingVehicle ? 'Saving…' : editingVehicle ? 'Update Vehicle' : 'Create Vehicle'}
                   </Button>
                 </div>
               </CardFooter>
