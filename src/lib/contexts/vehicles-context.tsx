@@ -9,10 +9,16 @@ import { fetchJson } from '../utils/fetch';
 interface VehiclesContextType {
   vehicles: Vehicle[];
   isLoading: boolean;
-  refresh: () => Promise<void>;
+  refresh: (page?: number, limit?: number) => Promise<void>;
   addVehicle: (vehicle: VehicleInput) => Promise<Vehicle | null>;
   updateVehicle: (id: string, updates: Partial<VehicleInput>) => Promise<Vehicle | null>;
   deleteVehicle: (id: string) => Promise<boolean>;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 interface VehicleInput {
@@ -44,12 +50,32 @@ interface VehicleInput {
 
 const VehiclesContext = createContext<VehiclesContextType | undefined>(undefined);
 
-async function fetchVehicles(): Promise<Vehicle[]> {
+async function fetchVehicles(page = 1, limit = 50): Promise<{
+  vehicles: Vehicle[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}> {
   const payload = (await fetchJson<{
     vehicles?: Vehicle[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
-  }>('/api/vehicles').catch(() => ({}))) as {
+  }>(`/api/vehicles?page=${page}&limit=${limit}`).catch(() => ({}))) as {
     vehicles?: Vehicle[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
   };
 
@@ -57,18 +83,28 @@ async function fetchVehicles(): Promise<Vehicle[]> {
     throw new Error(payload.error || 'Failed to load vehicles.');
   }
 
-  return payload.vehicles ?? [];
+  return {
+    vehicles: payload.vehicles ?? [],
+    pagination: payload.pagination,
+  };
 }
 
 export function VehiclesProvider({ children }: { children: ReactNode }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
       setIsLoading(true);
-      const data = await fetchVehicles();
-      setVehicles(data);
+      const result = await fetchVehicles(page, limit);
+      setVehicles(result.vehicles);
+      setPagination(result.pagination);
     } catch (error) {
       console.error('Error loading vehicles', error);
       setVehicles([]);
@@ -147,8 +183,9 @@ export function VehiclesProvider({ children }: { children: ReactNode }) {
       addVehicle,
       updateVehicle,
       deleteVehicle,
+      pagination,
     }),
-    [vehicles, isLoading, refresh, addVehicle, updateVehicle, deleteVehicle],
+    [vehicles, isLoading, refresh, addVehicle, updateVehicle, deleteVehicle, pagination],
   );
 
   return <VehiclesContext.Provider value={value}>{children}</VehiclesContext.Provider>;

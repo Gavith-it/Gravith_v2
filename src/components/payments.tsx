@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Plus, Trash2, Pencil } from 'lucide-react';
+import { Loader2, Plus, Trash2, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -76,7 +76,7 @@ function deriveStats(payments: Payment[]) {
 }
 
 export function PaymentsPage() {
-  const { payments, isLoading, addPayment, updatePayment, deletePayment } = usePayments();
+  const { payments, isLoading, addPayment, updatePayment, deletePayment, refresh, pagination } = usePayments();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -84,6 +84,9 @@ export function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | Payment['status']>('all');
   const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
   const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [limit] = useState<number>(50);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -122,6 +125,16 @@ export function PaymentsPage() {
 
     void loadSites();
   }, []);
+
+  // Fetch payments with pagination
+  useEffect(() => {
+    void refresh(page, limit);
+  }, [refresh, page, limit]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter]);
 
   useEffect(() => {
     if (!isDialogOpen) {
@@ -306,51 +319,107 @@ export function PaymentsPage() {
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Amount (₹)</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Paid Date</TableHead>
-                  <TableHead>Site</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>
-                      <div className="font-medium">{payment.clientName}</div>
-                      {payment.siteName && (
-                        <div className="text-xs text-muted-foreground">{payment.siteName}</div>
-                      )}
-                    </TableCell>
-                    <TableCell>₹{payment.amount.toLocaleString()}</TableCell>
-                    <TableCell className="capitalize">{STATUS_LABELS[payment.status]}</TableCell>
-                    <TableCell>{payment.dueDate ? formatDate(payment.dueDate) : '—'}</TableCell>
-                    <TableCell>{payment.paidDate ? formatDate(payment.paidDate) : '—'}</TableCell>
-                    <TableCell>{payment.siteName ?? '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="icon" onClick={() => openForEdit(payment)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="text-destructive"
-                          onClick={() => handleDelete(payment)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Amount (₹)</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Paid Date</TableHead>
+                    <TableHead>Site</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredPayments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>
+                        <div className="font-medium">{payment.clientName}</div>
+                        {payment.siteName && (
+                          <div className="text-xs text-muted-foreground">{payment.siteName}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>₹{payment.amount.toLocaleString()}</TableCell>
+                      <TableCell className="capitalize">{STATUS_LABELS[payment.status]}</TableCell>
+                      <TableCell>{payment.dueDate ? formatDate(payment.dueDate) : '—'}</TableCell>
+                      <TableCell>{payment.paidDate ? formatDate(payment.paidDate) : '—'}</TableCell>
+                      <TableCell>{payment.siteName ?? '—'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="icon" onClick={() => openForEdit(payment)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="text-destructive"
+                            onClick={() => handleDelete(payment)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {/* Pagination Controls */}
+              {pagination && pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-4 py-3">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} payments
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={pagination.page === 1 || isLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNum: number;
+                        if (pagination.totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (pagination.page <= 3) {
+                          pageNum = i + 1;
+                        } else if (pagination.page >= pagination.totalPages - 2) {
+                          pageNum = pagination.totalPages - 4 + i;
+                        } else {
+                          pageNum = pagination.page - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={pagination.page === pageNum ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setPage(pageNum)}
+                            disabled={isLoading}
+                            className="min-w-[2.5rem]"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                      disabled={pagination.page >= pagination.totalPages || isLoading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

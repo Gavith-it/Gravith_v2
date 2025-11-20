@@ -10,11 +10,17 @@ import { fetchJson } from '../utils/fetch';
 interface VendorsContextType {
   vendors: Vendor[];
   isLoading: boolean;
-  refresh: () => Promise<void>;
+  refresh: (page?: number, limit?: number) => Promise<void>;
   addVendor: (vendor: VendorPayload) => Promise<Vendor | null>;
   updateVendor: (id: string, updates: VendorUpdatePayload) => Promise<Vendor | null>;
   deleteVendor: (id: string) => Promise<boolean>;
   toggleVendorStatus: (id: string, status: Vendor['status']) => Promise<Vendor | null>;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 const VendorsContext = createContext<VendorsContextType | undefined>(undefined);
@@ -42,12 +48,32 @@ type VendorPayload = {
 
 type VendorUpdatePayload = Partial<VendorPayload>;
 
-async function fetchVendors(): Promise<Vendor[]> {
+async function fetchVendors(page = 1, limit = 50): Promise<{
+  vendors: Vendor[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}> {
   const payload = (await fetchJson<{
     vendors?: Vendor[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
-  }>('/api/vendors').catch(() => ({}))) as {
+  }>(`/api/vendors?page=${page}&limit=${limit}`).catch(() => ({}))) as {
     vendors?: Vendor[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
   };
 
@@ -55,18 +81,28 @@ async function fetchVendors(): Promise<Vendor[]> {
     throw new Error(payload.error || 'Failed to load vendors.');
   }
 
-  return payload.vendors ?? [];
+  return {
+    vendors: payload.vendors ?? [],
+    pagination: payload.pagination,
+  };
 }
 
 export function VendorsProvider({ children }: { children: ReactNode }) {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
       setIsLoading(true);
-      const data = await fetchVendors();
-      setVendors(data);
+      const result = await fetchVendors(page, limit);
+      setVendors(result.vendors);
+      setPagination(result.pagination);
     } catch (error) {
       console.error('Error loading vendors', error);
       setVendors([]);
@@ -160,8 +196,9 @@ export function VendorsProvider({ children }: { children: ReactNode }) {
       updateVendor,
       deleteVendor,
       toggleVendorStatus,
+      pagination,
     }),
-    [vendors, isLoading, refresh, addVendor, updateVendor, deleteVendor, toggleVendorStatus],
+    [vendors, isLoading, refresh, addVendor, updateVendor, deleteVendor, toggleVendorStatus, pagination],
   );
 
   return <VendorsContext.Provider value={value}>{children}</VendorsContext.Provider>;

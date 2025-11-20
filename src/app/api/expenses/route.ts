@@ -29,7 +29,7 @@ const EXPENSE_SELECT = `
 
 const VALID_STATUSES: Expense['status'][] = ['paid', 'pending', 'overdue'];
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
@@ -38,11 +38,38 @@ export async function GET() {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
+    // Get pagination params from URL
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const offset = (page - 1) * limit;
+
+    // Validate pagination params
+    if (page < 1 || limit < 1 || limit > 100) {
+      return NextResponse.json(
+        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        { status: 400 },
+      );
+    }
+
+    // Get total count for pagination
+    const { count, error: countError } = await supabase
+      .from('expenses')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', ctx.organizationId);
+
+    if (countError) {
+      console.error('Error counting expenses', countError);
+      return NextResponse.json({ error: 'Failed to load expenses.' }, { status: 500 });
+    }
+
+    // Fetch paginated data
     const { data, error } = await supabase
       .from('expenses')
       .select(EXPENSE_SELECT)
       .eq('organization_id', ctx.organizationId)
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching expenses:', error);
@@ -50,7 +77,26 @@ export async function GET() {
     }
 
     const expenses = (data ?? []).map((row) => mapRowToExpense(row as ExpenseRow));
-    return NextResponse.json({ expenses });
+    const total = count ?? 0;
+    const totalPages = Math.ceil(total / limit);
+
+    const response = NextResponse.json({
+      expenses,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
+
+    // Add cache headers: cache for 60 seconds, revalidate in background
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=60, stale-while-revalidate=120',
+    );
+
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching expenses:', error);
     return NextResponse.json({ error: 'Unexpected error fetching expenses.' }, { status: 500 });

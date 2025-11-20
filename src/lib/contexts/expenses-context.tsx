@@ -10,10 +10,16 @@ import { fetchJson } from '../utils/fetch';
 interface ExpensesContextType {
   expenses: Expense[];
   isLoading: boolean;
-  refresh: () => Promise<void>;
+  refresh: (page?: number, limit?: number) => Promise<void>;
   addExpense: (expense: ExpensePayload) => Promise<Expense | null>;
   updateExpense: (id: string, updates: ExpenseUpdatePayload) => Promise<Expense | null>;
   deleteExpense: (id: string) => Promise<boolean>;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 type ExpensePayload = {
@@ -36,12 +42,32 @@ type ExpenseUpdatePayload = Partial<ExpensePayload>;
 
 const ExpensesContext = createContext<ExpensesContextType | undefined>(undefined);
 
-async function fetchExpenses(): Promise<Expense[]> {
+async function fetchExpenses(page = 1, limit = 50): Promise<{
+  expenses: Expense[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}> {
   const payload = (await fetchJson<{
     expenses?: Expense[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
-  }>('/api/expenses').catch(() => ({}))) as {
+  }>(`/api/expenses?page=${page}&limit=${limit}`).catch(() => ({}))) as {
     expenses?: Expense[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
   };
 
@@ -49,18 +75,28 @@ async function fetchExpenses(): Promise<Expense[]> {
     throw new Error(payload.error || 'Failed to load expenses.');
   }
 
-  return payload.expenses ?? [];
+  return {
+    expenses: payload.expenses ?? [],
+    pagination: payload.pagination,
+  };
 }
 
 export function ExpensesProvider({ children }: { children: ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
       setIsLoading(true);
-      const data = await fetchExpenses();
-      setExpenses(data);
+      const result = await fetchExpenses(page, limit);
+      setExpenses(result.expenses);
+      setPagination(result.pagination);
     } catch (error) {
       console.error('Error loading expenses', error);
       setExpenses([]);
@@ -146,8 +182,9 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
       addExpense,
       updateExpense,
       deleteExpense,
+      pagination,
     }),
-    [expenses, isLoading, refresh, addExpense, updateExpense, deleteExpense],
+    [expenses, isLoading, refresh, addExpense, updateExpense, deleteExpense, pagination],
   );
 
   return <ExpensesContext.Provider value={value}>{children}</ExpensesContext.Provider>;

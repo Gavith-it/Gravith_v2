@@ -144,7 +144,7 @@ async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
@@ -155,13 +155,40 @@ export async function GET() {
 
     const { organizationId } = ctx;
 
+    // Get pagination params from URL
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const offset = (page - 1) * limit;
+
+    // Validate pagination params
+    if (page < 1 || limit < 1 || limit > 100) {
+      return NextResponse.json(
+        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        { status: 400 },
+      );
+    }
+
+    // Get total count for pagination
+    const { count, error: countError } = await supabase
+      .from('material_masters')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', organizationId);
+
+    if (countError) {
+      console.error('Error counting materials', countError);
+      return NextResponse.json({ error: 'Failed to load materials.' }, { status: 500 });
+    }
+
+    // Fetch paginated data
     const { data, error } = await supabase
       .from('material_masters')
       .select(
         'id, name, category, unit, site_id, site_name, quantity, consumed_quantity, standard_rate, is_active, hsn, tax_rate, tax_rate_id, opening_balance, organization_id, created_at, updated_at',
       )
       .eq('organization_id', organizationId)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching materials', error);
@@ -271,7 +298,24 @@ export async function GET() {
         siteAllocations: allocations.length > 0 ? allocations : undefined,
       };
     });
-    return NextResponse.json({ materials });
+
+    const response = NextResponse.json({
+      materials,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+      },
+    });
+
+    // Add cache headers: cache for 60 seconds, revalidate in background
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=60, stale-while-revalidate=120',
+    );
+
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching materials', error);
     return NextResponse.json({ error: 'Unexpected error loading materials.' }, { status: 500 });

@@ -10,10 +10,16 @@ import { fetchJson } from '../utils/fetch';
 interface PaymentsContextType {
   payments: Payment[];
   isLoading: boolean;
-  refresh: () => Promise<void>;
+  refresh: (page?: number, limit?: number) => Promise<void>;
   addPayment: (payment: PaymentPayload) => Promise<Payment | null>;
   updatePayment: (id: string, updates: PaymentUpdatePayload) => Promise<Payment | null>;
   deletePayment: (id: string) => Promise<boolean>;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 type PaymentPayload = {
@@ -30,12 +36,32 @@ type PaymentUpdatePayload = Partial<PaymentPayload>;
 
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
 
-async function fetchPayments(): Promise<Payment[]> {
+async function fetchPayments(page = 1, limit = 50): Promise<{
+  payments: Payment[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}> {
   const payload = (await fetchJson<{
     payments?: Payment[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
-  }>('/api/payments').catch(() => ({}))) as {
+  }>(`/api/payments?page=${page}&limit=${limit}`).catch(() => ({}))) as {
     payments?: Payment[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
     error?: string;
   };
 
@@ -43,18 +69,28 @@ async function fetchPayments(): Promise<Payment[]> {
     throw new Error(payload.error || 'Failed to load payments.');
   }
 
-  return payload.payments ?? [];
+  return {
+    payments: payload.payments ?? [],
+    pagination: payload.pagination,
+  };
 }
 
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
       setIsLoading(true);
-      const data = await fetchPayments();
-      setPayments(data);
+      const result = await fetchPayments(page, limit);
+      setPayments(result.payments);
+      setPagination(result.pagination);
     } catch (error) {
       console.error('Error loading payments', error);
       setPayments([]);
@@ -140,8 +176,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       addPayment,
       updatePayment,
       deletePayment,
+      pagination,
     }),
-    [payments, isLoading, refresh, addPayment, updatePayment, deletePayment],
+    [payments, isLoading, refresh, addPayment, updatePayment, deletePayment, pagination],
   );
 
   return <PaymentsContext.Provider value={value}>{children}</PaymentsContext.Provider>;

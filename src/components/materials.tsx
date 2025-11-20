@@ -14,6 +14,8 @@ import {
   Pause,
   RotateCcw,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -135,6 +137,11 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
   const [isMaterialDialogOpen, setIsMaterialDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialMasterItem | null>(null);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [limit] = useState<number>(50);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalMaterials, setTotalMaterials] = useState<number>(0);
   const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<MaterialAdvancedFilterState>(
     () => createDefaultMaterialAdvancedFilters(),
   );
@@ -154,9 +161,16 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
   const fetchMaterials = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/materials');
+      // Add pagination params to API call
+      const response = await fetch(`/api/materials?page=${page}&limit=${limit}`);
       const payload = (await response.json().catch(() => ({}))) as {
         materials?: MaterialMasterItem[];
+        pagination?: {
+          page: number;
+          limit: number;
+          total: number;
+          totalPages: number;
+        };
         error?: string;
       };
 
@@ -195,6 +209,12 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         return base;
       });
       setMaterialMasterData(normalized);
+      
+      // Update pagination state
+      if (payload.pagination) {
+        setTotalPages(payload.pagination.totalPages);
+        setTotalMaterials(payload.pagination.total);
+      }
     } catch (error) {
       console.error('Error fetching materials', error);
       toast.error(error instanceof Error ? error.message : 'Failed to load materials.');
@@ -202,11 +222,16 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [page, limit]);
 
   useEffect(() => {
     void fetchMaterials();
-  }, [fetchMaterials]);
+  }, [fetchMaterials, page]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [masterCategoryFilter, masterStatusFilter, searchQuery, appliedAdvancedFilters]);
 
   const scopedMaterials = useMemo(() => {
     if (!filterBySite) return materialMasterData;
@@ -357,6 +382,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           throw new Error(payload.error || 'Failed to save material.');
         }
 
+        // Reset to first page after create/update to see the new/updated material
+        setPage(1);
         await fetchMaterials();
         toast.success(isEditing ? 'Material updated successfully.' : 'Material added successfully.');
         setEditingMaterial(null);
@@ -475,7 +502,6 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
     }
   };
 
-  const totalMaterials = scopedMaterials.length;
   const activeMaterials = useMemo(
     () => scopedMaterials.filter((m) => m.isActive).length,
     [scopedMaterials],
@@ -1217,6 +1243,60 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                   </TableBody>
                 </Table>
               </div>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-4 py-3">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalMaterials)} of {totalMaterials} materials
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1 || isLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum: number;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (page <= 3) {
+                          pageNum = i + 1;
+                        } else if (page >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = page - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={page === pageNum ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setPage(pageNum)}
+                            disabled={isLoading}
+                            className="min-w-[2.5rem]"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages || isLoading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

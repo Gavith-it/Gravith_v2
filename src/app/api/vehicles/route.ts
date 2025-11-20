@@ -157,7 +157,7 @@ function mapStatusForInsert(status: Vehicle['status']): string {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const ctx = await resolveContext(supabase);
@@ -166,6 +166,32 @@ export async function GET() {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
+    // Get pagination params from URL
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const offset = (page - 1) * limit;
+
+    // Validate pagination params
+    if (page < 1 || limit < 1 || limit > 100) {
+      return NextResponse.json(
+        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        { status: 400 },
+      );
+    }
+
+    // Get total count for pagination
+    const { count, error: countError } = await supabase
+      .from('vehicles')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', ctx.organizationId);
+
+    if (countError) {
+      console.error('Error counting vehicles', countError);
+      return NextResponse.json({ error: 'Failed to load vehicles.' }, { status: 500 });
+    }
+
+    // Fetch paginated data
     const { data, error } = await supabase
       .from('vehicles')
       .select(
@@ -203,7 +229,8 @@ export async function GET() {
       `,
       )
       .eq('organization_id', ctx.organizationId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching vehicles', error);
@@ -211,7 +238,26 @@ export async function GET() {
     }
 
     const vehicles = (data ?? []).map((row) => mapRowToVehicle(row as VehicleRow));
-    return NextResponse.json({ vehicles });
+    const total = count ?? 0;
+    const totalPages = Math.ceil(total / limit);
+    
+    const response = NextResponse.json({
+      vehicles,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
+    
+    // Add cache headers: cache for 60 seconds, revalidate in background
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=60, stale-while-revalidate=120',
+    );
+    
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching vehicles', error);
     return NextResponse.json({ error: 'Unexpected error loading vehicles.' }, { status: 500 });

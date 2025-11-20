@@ -158,7 +158,7 @@ export function VehiclesPage({
   selectedVehicle: propSelectedVehicle,
   onVehicleSelect,
 }: VehicleManagementProps) {
-  const { vehicles, isLoading: isVehiclesLoading, addVehicle, updateVehicle, deleteVehicle } = useVehicles();
+  const { vehicles, isLoading: isVehiclesLoading, addVehicle, updateVehicle, deleteVehicle, refresh, pagination } = useVehicles();
   const { vendors } = useVendors();
 
   const {
@@ -191,6 +191,9 @@ export function VehiclesPage({
   const [scrollContainerRef, setScrollContainerRef] = useState<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [limit] = useState<number>(50);
   useEffect(() => {
     let isMounted = true;
     const fetchSites = async () => {
@@ -232,6 +235,11 @@ export function VehiclesPage({
       isMounted = false;
     };
   }, []);
+
+  // Fetch vehicles with pagination
+  useEffect(() => {
+    void refresh(page, limit);
+  }, [refresh, page, limit]);
 
   const vendorOptions = useMemo(() => {
     return vendors
@@ -1233,6 +1241,60 @@ export function VehiclesPage({
                   </Card>
                 ))}
               </div>
+              {/* Pagination Controls */}
+              {pagination && pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-4 py-3 mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} vehicles
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={pagination.page === 1 || isVehiclesLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNum: number;
+                        if (pagination.totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (pagination.page <= 3) {
+                          pageNum = i + 1;
+                        } else if (pagination.page >= pagination.totalPages - 2) {
+                          pageNum = pagination.totalPages - 4 + i;
+                        } else {
+                          pageNum = pagination.page - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={pagination.page === pageNum ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setPage(pageNum)}
+                            disabled={isVehiclesLoading}
+                            className="min-w-[2.5rem]"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                      disabled={pagination.page >= pagination.totalPages || isVehiclesLoading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

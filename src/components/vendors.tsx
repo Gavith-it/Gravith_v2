@@ -19,6 +19,8 @@ import {
   Trash2,
   Loader2,
   RotateCcw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 
@@ -140,6 +142,8 @@ export function VendorsPage() {
     updateVendor,
     deleteVendor,
     toggleVendorStatus,
+    refresh,
+    pagination,
   } = useVendors();
   const [selectedCategory, setSelectedCategory] = useState<string>('all-categories');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -147,6 +151,9 @@ export function VendorsPage() {
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [limit] = useState<number>(50);
   const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<VendorAdvancedFilterState>(() =>
     createDefaultVendorAdvancedFilters(),
   );
@@ -177,6 +184,16 @@ export function VendorsPage() {
     [appliedAdvancedFilters],
   );
   const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
+
+  // Fetch vendors with pagination
+  React.useEffect(() => {
+    void refresh(page, limit);
+  }, [refresh, page, limit]);
+
+  // Reset to page 1 when filters change
+  React.useEffect(() => {
+    setPage(1);
+  }, [selectedCategory, statusFilter, searchQuery, appliedAdvancedFilters]);
 
   // Filter and sort vendors
   const sortedAndFilteredVendors = useMemo(() => {
@@ -890,6 +907,60 @@ export function VendorsPage() {
                     })}
                   </TableBody>
                 </Table>
+                {/* Pagination Controls */}
+                {pagination && pagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between border-t px-4 py-3">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} vendors
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={pagination.page === 1 || isLoading}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (pagination.totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (pagination.page <= 3) {
+                            pageNum = i + 1;
+                          } else if (pagination.page >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + i;
+                          } else {
+                            pageNum = pagination.page - 2 + i;
+                          }
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={pagination.page === pageNum ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setPage(pageNum)}
+                              disabled={isLoading}
+                              className="min-w-[2.5rem]"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                        disabled={pagination.page >= pagination.totalPages || isLoading}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

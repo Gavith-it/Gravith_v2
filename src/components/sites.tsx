@@ -749,9 +749,18 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   if (scrollTimeoutRef.current) {
                     clearTimeout(scrollTimeoutRef.current);
                   }
+                  // Capture scrollLeft immediately before the timeout
+                  const target = e.currentTarget;
+                  if (!target) return;
+                  const scrollLeft = target.scrollLeft;
                   scrollTimeoutRef.current = setTimeout(() => {
-                    const newPosition = e.currentTarget.scrollLeft;
-                    setScrollPosition(newPosition);
+                    // Use the ref to get the current value, fallback to captured value
+                    const container = scrollContainerRef.current;
+                    if (container) {
+                      setScrollPosition(container.scrollLeft);
+                    } else {
+                      setScrollPosition(scrollLeft);
+                    }
                   }, 50);
                 }}
               >

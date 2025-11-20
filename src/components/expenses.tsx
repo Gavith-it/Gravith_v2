@@ -11,6 +11,8 @@ import {
   Receipt,
   Loader2,
   RotateCcw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -103,12 +105,17 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     addExpense,
     updateExpense,
     deleteExpense,
+    refresh,
+    pagination,
   } = useExpenses();
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dialogState = useDialogState<Expense>();
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [limit] = useState<number>(50);
 
   type ExpenseAdvancedFilterState = {
     vendors: string[];
@@ -184,6 +191,16 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Fetch expenses with pagination
+  useEffect(() => {
+    void refresh(page, limit);
+  }, [refresh, page, limit]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [tableState.filter.category, tableState.filter.status, searchTerm, appliedAdvancedFilters]);
 
   const handleExpenseSubmit = async (formData: ExpenseFormData) => {
     setIsSaving(true);
@@ -624,13 +641,66 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                   })}
                   data={filteredExpenses}
                   onSort={tableState.setSortField}
-                  onPageChange={tableState.setCurrentPage}
-                  pageSize={tableState.itemsPerPage}
-                  currentPage={tableState.currentPage}
-                  totalPages={tableState.totalPages(filteredExpenses.length)}
+                  pageSize={filteredExpenses.length}
+                  currentPage={1}
+                  totalPages={1}
                   sortField={tableState.sortField}
                   sortDirection={tableState.sortDirection}
                 />
+                {/* Pagination Controls */}
+                {pagination && pagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between border-t px-4 py-3">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} expenses
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={pagination.page === 1 || isExpensesLoading}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (pagination.totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (pagination.page <= 3) {
+                            pageNum = i + 1;
+                          } else if (pagination.page >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + i;
+                          } else {
+                            pageNum = pagination.page - 2 + i;
+                          }
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={pagination.page === pageNum ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setPage(pageNum)}
+                              disabled={isExpensesLoading}
+                              className="min-w-[2.5rem]"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                        disabled={pagination.page >= pagination.totalPages || isExpensesLoading}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
