@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 import { fetchJson } from '../utils/fetch';
+import { useAuth } from '../auth-context';
 
 // Shared Material interface that works for both MaterialManagement and SiteManagement
 export interface SharedMaterial {
@@ -79,6 +80,7 @@ async function fetchPurchases(): Promise<SharedMaterial[]> {
 }
 
 export function MaterialsProvider({ children }: { children: ReactNode }) {
+  const { isLoading: isAuthLoading } = useAuth();
   const [materials, setMaterials] = useState<SharedMaterial[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -89,15 +91,23 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
       setMaterials(purchases);
     } catch (error) {
       console.error('Error loading purchases', error);
-      setMaterials([]);
+      // Handle 401 errors gracefully
+      if (error instanceof Error && error.message.includes('401')) {
+        setMaterials([]);
+      } else {
+        setMaterials([]);
+      }
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    // Wait for auth to finish loading before fetching
+    if (!isAuthLoading) {
+      void refresh();
+    }
+  }, [refresh, isAuthLoading]);
 
   const addMaterial = useCallback(
     async (material: Omit<SharedMaterial, 'id'>): Promise<SharedMaterial | null> => {

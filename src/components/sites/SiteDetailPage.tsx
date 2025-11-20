@@ -51,6 +51,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDate, formatDateShort } from '@/lib/utils';
+import { useAuth } from '@/lib/auth-context';
 import type { Expense } from '@/types';
 
 // Mock Data - In production, this would come from API
@@ -349,6 +350,7 @@ interface SiteDetailPageProps {
 
 export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const router = useRouter();
+  const { isLoading: isAuthLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const expenseDialog = useDialogState();
   const [isLoading, setIsLoading] = useState(false);
@@ -388,6 +390,10 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
 
   // Fetch purchases for the site
   useEffect(() => {
+    if (!siteId || isAuthLoading) {
+      return;
+    }
+
     const fetchPurchases = async () => {
       try {
         const response = await fetch('/api/purchases', { cache: 'no-store' });
@@ -397,6 +403,12 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
         };
 
         if (!response.ok) {
+          // Handle 401 Unauthorized specifically - just return empty array
+          if (response.status === 401) {
+            console.error('Authentication required. Please log in.');
+            setSitePurchases([]);
+            return;
+          }
           throw new Error(payload.error || 'Failed to load purchases');
         }
 
@@ -418,10 +430,8 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
       }
     };
 
-    if (siteId) {
-      void fetchPurchases();
-    }
-  }, [siteId]);
+    void fetchPurchases();
+  }, [siteId, isAuthLoading]);
 
   // Fetch expenses for the site
   useEffect(() => {

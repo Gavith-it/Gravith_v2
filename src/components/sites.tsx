@@ -68,6 +68,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDate, formatDateShort } from '@/lib/utils';
+import { useAuth } from '@/lib/auth-context';
 
 interface SiteManagementProps {
   selectedSite?: string;
@@ -75,8 +76,10 @@ interface SiteManagementProps {
 }
 
 export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: SiteManagementProps) {
+  const { isLoading: isAuthLoading } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
-  const [selectedSite, setSelectedSite] = useState<string | null>(propSelectedSite ?? null);
+  const initialSelectedSite = propSelectedSite ?? null;
+  const [selectedSite, setSelectedSite] = useState<string | null>(initialSelectedSite);
   const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
   const [isSiteDialogOpen, setIsSiteDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
@@ -90,6 +93,8 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
   const [sitesWithTransactions, setSitesWithTransactions] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletedSiteName, setDeletedSiteName] = useState<string | null>(null);
+  // Use ref to track selectedSite to avoid infinite loops in fetchSites
+  const selectedSiteRef = React.useRef<string | null>(initialSelectedSite);
 
   type SiteAdvancedFilterState = {
     locations: string[];
@@ -184,6 +189,13 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         };
 
         if (!response.ok) {
+          // Handle 401 Unauthorized specifically
+          if (response.status === 401) {
+            console.error('Authentication required. Please log in.');
+            setIsSitesLoading(false);
+            setSites([]);
+            return [];
+          }
           throw new Error(payload.error || 'Failed to load sites.');
         }
 
@@ -209,61 +221,87 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         }
         setSitesWithTransactions(sitesWithTx);
 
+        // Use ref to get current selectedSite value without causing dependency loop
+        const currentSelectedSite = selectedSiteRef.current;
         const nextSelection =
           (focusId && fetchedSites.some((site) => site.id === focusId) && focusId) ||
           (propSelectedSite &&
             fetchedSites.some((site) => site.id === propSelectedSite) &&
             propSelectedSite) ||
-          (selectedSite && fetchedSites.some((site) => site.id === selectedSite) && selectedSite) ||
+          (currentSelectedSite && fetchedSites.some((site) => site.id === currentSelectedSite) && currentSelectedSite) ||
           (fetchedSites.length ? fetchedSites[0].id : null);
 
-        setSelectedSite(nextSelection);
+        // Only update if selection actually changed
+        if (nextSelection !== currentSelectedSite) {
+          selectedSiteRef.current = nextSelection;
+          setSelectedSite(nextSelection);
+        }
         return fetchedSites;
       } catch (error) {
         console.error('Failed to load sites', error);
         toast.error(error instanceof Error ? error.message : 'Failed to load sites.');
         setSites([]);
+        selectedSiteRef.current = null;
         setSelectedSite(null);
         return [];
       } finally {
         setIsSitesLoading(false);
       }
     },
-    [propSelectedSite, selectedSite, checkSiteHasTransactions],
+    [propSelectedSite, checkSiteHasTransactions],
   );
 
+  // Initial fetch on mount
   useEffect(() => {
-    void fetchSites();
-  }, [fetchSites]);
+    // Wait for auth to finish loading before fetching
+    if (!isAuthLoading) {
+      void fetchSites();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthLoading]); // Re-fetch when auth loading state changes
 
+  // Handle propSelectedSite changes from parent
   useEffect(() => {
-    if (propSelectedSite) {
+    if (propSelectedSite && propSelectedSite !== selectedSiteRef.current) {
+      selectedSiteRef.current = propSelectedSite;
       setSelectedSite(propSelectedSite);
     }
   }, [propSelectedSite]);
 
+  // Notify parent when selectedSite changes (but not during initial load)
   useEffect(() => {
-    if (selectedSite) {
+    if (selectedSite && !isSitesLoading) {
       onSiteSelect?.(selectedSite);
     }
-  }, [selectedSite, onSiteSelect]);
+  }, [selectedSite, onSiteSelect, isSitesLoading]);
 
+  // Ensure selectedSite is valid when sites change (only if current selection is invalid)
   useEffect(() => {
     if (isSitesLoading) {
       return;
     }
 
     if (!sites.length) {
-      setSelectedSite(null);
+      if (selectedSiteRef.current !== null) {
+        selectedSiteRef.current = null;
+        setSelectedSite(null);
+      }
       return;
     }
 
-    if (selectedSite && sites.some((site) => site.id === selectedSite)) {
-      return;
+    const currentSelected = selectedSiteRef.current;
+    // Only update if current selection is invalid
+    if (currentSelected && !sites.some((site) => site.id === currentSelected)) {
+      const newSelection = sites[0]?.id ?? null;
+      selectedSiteRef.current = newSelection;
+      setSelectedSite(newSelection);
+    } else if (!currentSelected && sites.length > 0) {
+      // If no selection and sites exist, select first one
+      const newSelection = sites[0]?.id ?? null;
+      selectedSiteRef.current = newSelection;
+      setSelectedSite(newSelection);
     }
-
-    setSelectedSite(sites[0]?.id ?? null);
-  }, [sites, selectedSite, isSitesLoading]);
+  }, [sites, isSitesLoading]);
 
   const locationOptions = useMemo(() => {
     const uniqueLocations = new Set<string>();
@@ -458,6 +496,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         
         // Clear selection if deleted site was selected
         if (selectedSite === site.id) {
+          selectedSiteRef.current = null;
           setSelectedSite(null);
         }
 
@@ -839,6 +878,8 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                           : 'border border-border hover:border-primary/40 hover:shadow-md'
                       }`}
                       onClick={() => {
+                        // Update ref immediately to prevent race conditions
+                        selectedSiteRef.current = site.id;
                         setSelectedSite(site.id);
                         onSiteSelect?.(site.id);
                       }}
