@@ -93,8 +93,15 @@ export function AppShell({ children }: AppShellProps) {
     currentPage === 'organization' ||
     currentPage === 'settings'
   ) {
+    // Determine required contexts based on current page
+    // Sites page includes Work Progress tab, so it needs work-progress context
+    const requiredContexts = 
+      currentPage === 'sites' 
+        ? [currentPage, 'work-progress', 'materials', 'expenses', 'purchase', 'scheduling']
+        : [currentPage];
+    
     return (
-      <ContextProviders requiredContexts={[currentPage]}>
+      <ContextProviders requiredContexts={requiredContexts}>
         <SidebarProvider>
           <div className="flex h-screen w-full bg-background">
             <MainSidebar

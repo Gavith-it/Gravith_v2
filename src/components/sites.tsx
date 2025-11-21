@@ -12,7 +12,6 @@ import {
   Search,
   BarChart3,
   Filter,
-  Settings,
   TrendingUp,
   Clock,
   CheckCircle2,
@@ -1134,24 +1133,6 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                         {currentSite.status === 'Canceled' && <XCircle className="h-3 w-3 mr-1" />}
                         {currentSite.status}
                       </Badge>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditSite(currentSite)}
-                              className="gap-2 transition-all hover:shadow-md"
-                            >
-                              <Settings className="h-4 w-4" />
-                              <span className="hidden sm:inline">Settings</span>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Site settings and configuration</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
                     </div>
                   </div>
                 </CardContent>
