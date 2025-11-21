@@ -5,6 +5,7 @@ import './globals.css';
 import { AppShell } from '@/components/AppShell';
 import { AuthErrorBoundary } from '@/components/AuthErrorBoundary';
 import { AuthProvider } from '@/lib/auth-context';
+import { ThemeProvider } from '@/components/theme-provider';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -31,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="w-full h-full">
+    <html lang="en" className="w-full h-full" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased w-full h-full`}>
         <a
           href="#main"
@@ -39,11 +40,13 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <AuthProvider>
-          <AuthErrorBoundary>
-            <AppShell>{children}</AppShell>
-          </AuthErrorBoundary>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AuthErrorBoundary>
+              <AppShell>{children}</AppShell>
+            </AuthErrorBoundary>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

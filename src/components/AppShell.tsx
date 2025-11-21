@@ -7,6 +7,7 @@ import React from 'react';
 import { MainSidebar } from './MainSidebar';
 import { SaaSHomepage } from './SaaSHomepage';
 import { SidebarProvider, SidebarTrigger } from './ui/sidebar';
+import { ThemeToggle } from './theme-toggle';
 
 import { useAuth } from '@/lib/auth-context';
 import { ContextProviders } from './ContextProviders';
@@ -55,10 +56,10 @@ export function AppShell({ children }: AppShellProps) {
   // Show loading state while checking authentication
   if (isLoading && currentPage !== 'home' && currentPage !== 'login') {
     return (
-      <div className="flex items-center justify-center h-screen w-screen bg-gray-50">
+      <div className="flex items-center justify-center h-screen w-screen bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       </div>
     );
@@ -95,7 +96,7 @@ export function AppShell({ children }: AppShellProps) {
     return (
       <ContextProviders requiredContexts={[currentPage]}>
         <SidebarProvider>
-          <div className="flex h-screen w-full bg-gray-50">
+          <div className="flex h-screen w-full bg-background">
             <MainSidebar
               currentPage={currentPage}
               onNavigate={(page: string) => {
@@ -106,9 +107,9 @@ export function AppShell({ children }: AppShellProps) {
             />
 
             <main className="flex-1 overflow-auto w-full">
-              <div className="flex items-center justify-between h-16 px-6 bg-gradient-to-r from-white to-gray-50/80 border-b border-gray-200/60">
+              <div className="flex items-center justify-between h-16 px-6 bg-gradient-to-r from-white to-gray-50/80 dark:from-gray-900 dark:to-gray-800/80 border-b border-gray-200/60 dark:border-gray-700/60">
                 <div className="flex items-center gap-4">
-                  <SidebarTrigger className="h-9 w-9 rounded-lg border border-gray-200/60 bg-white/80 hover:bg-gray-50/80 shadow-sm hover:shadow-md transition-all duration-200" />
+                  <SidebarTrigger className="h-9 w-9 rounded-lg border border-gray-200/60 dark:border-gray-700/60 bg-white/80 dark:bg-gray-800/80 hover:bg-gray-50/80 dark:hover:bg-gray-700/80 shadow-sm hover:shadow-md transition-all duration-200" />
                   <div className="flex items-center gap-3">
                     <Image
                       src="/fevicon.jpeg"
@@ -119,10 +120,10 @@ export function AppShell({ children }: AppShellProps) {
                       priority
                     />
                     <div>
-                      <h1 className="text-xl font-bold text-gray-900 capitalize leading-tight">
+                      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 capitalize leading-tight">
                         {currentPage}
                       </h1>
-                      <p className="text-sm text-gray-500 font-medium leading-tight">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-tight">
                         Management Dashboard
                       </p>
                     </div>
@@ -130,7 +131,7 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
                 <div className="flex items-center gap-3">
                   {user && (
-                    <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
+                    <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                         <span className="text-white text-sm font-semibold">
                           {user.firstName?.charAt(0) ?? user.username.charAt(0)}
@@ -144,9 +145,10 @@ export function AppShell({ children }: AppShellProps) {
                       </span>
                     </div>
                   )}
+                  <ThemeToggle />
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 transition-all duration-200"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -160,7 +162,7 @@ export function AppShell({ children }: AppShellProps) {
                   </button>
                 </div>
               </div>
-              <div className="min-h-full w-full max-w-none">{children}</div>
+              <div className="min-h-full w-full max-w-none bg-background">{children}</div>
             </main>
           </div>
         </SidebarProvider>

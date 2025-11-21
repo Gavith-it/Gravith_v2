@@ -29,22 +29,22 @@ export class AuthErrorBoundary extends React.Component<ErrorBoundaryProps, Error
   override render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="flex items-center justify-center min-h-screen bg-background">
           <div className="text-center p-8">
-            <h2 className="text-2xl font-bold text-red-600 mb-4">Authentication Error</h2>
-            <p className="text-gray-600 mb-4">
+            <h2 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-4">Authentication Error</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
               There was an error with the authentication system. Please refresh the page.
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600"
             >
               Refresh Page
             </button>
             {this.state.error && (
               <details className="mt-4 text-left">
-                <summary className="cursor-pointer text-sm text-gray-500">Error Details</summary>
-                <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto">
+                <summary className="cursor-pointer text-sm text-gray-500 dark:text-gray-400">Error Details</summary>
+                <pre className="mt-2 text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-auto text-gray-900 dark:text-gray-100">
                   {this.state.error.toString()}
                 </pre>
               </details>

@@ -830,7 +830,6 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[250px]">Material</TableHead>
-                      <TableHead className="min-w-[160px]">Site</TableHead>
                       <TableHead className="min-w-[120px]">Category</TableHead>
                       <TableHead className="min-w-[80px]">Unit</TableHead>
                       <TableHead className="min-w-[120px] text-right">Available Qty</TableHead>
@@ -1116,11 +1115,6 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                                   {material.name}
                                 </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <div className="font-medium">
-                              {material.siteName ?? 'Unassigned'}
                             </div>
                           </TableCell>
                           <TableCell>

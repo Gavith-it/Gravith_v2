@@ -1,7 +1,9 @@
 'use client';
 
 import { User as UserIcon, Shield, Bell, Palette, Lock, Save } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { useTheme } from '@/components/theme-provider';
 
 import { SectionCard } from './layout/SectionCard';
 import { Badge } from './ui/badge';
@@ -14,22 +16,99 @@ import { Separator } from './ui/separator';
 import { Switch } from './ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
+function ThemePreferenceControl() {
+  const { theme, setTheme, effectiveTheme } = useTheme();
+
+  return (
+    <div className="flex items-center justify-between p-4 border rounded-lg">
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Theme</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Current: {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'} 
+          {theme === 'system' && ` (${effectiveTheme === 'dark' ? 'Dark' : 'Light'})`}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant={theme === 'light' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setTheme('light')}
+          className="h-8"
+        >
+          Light
+        </Button>
+        <Button
+          variant={theme === 'dark' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setTheme('dark')}
+          className="h-8"
+        >
+          Dark
+        </Button>
+        <Button
+          variant={theme === 'system' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setTheme('system')}
+          className="h-8"
+        >
+          System
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface UserSettingsProps {
-  user: {
+  user?: {
     username: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
     role: string;
+    organizationRole?: string;
     companyName: string;
   };
-  onUpdateUser: (updates: Partial<{ username: string; role: string; companyName: string }>) => void;
+  onUpdateUser?: (updates: Partial<{
+    username: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  }>) => Promise<void> | void;
 }
 
 export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
-  const [profileForm, setProfileForm] = useState({
-    username: user.username,
+  // Provide default user if not provided
+  const safeUser = user || {
+    username: '',
     email: '',
-    fullName: '',
-    phone: '',
+    firstName: '',
+    lastName: '',
+    role: 'user',
+    organizationRole: 'user',
+    companyName: '',
+  };
+
+  const [profileForm, setProfileForm] = useState({
+    username: safeUser.username,
+    email: safeUser.email,
+    firstName: safeUser.firstName || '',
+    lastName: safeUser.lastName || '',
   });
+
+  // Computed full name for display
+  const fullName = [safeUser.firstName, safeUser.lastName].filter(Boolean).join(' ') || '';
+
+  // Update form when user data changes
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        username: user.username || '',
+        email: user.email || '',
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+      });
+    }
+  }, [user]);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -40,32 +119,101 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
   const [preferences, setPreferences] = useState({
     emailNotifications: true,
     pushNotifications: false,
-    darkMode: false,
     language: 'en',
     timezone: 'Asia/Kolkata',
   });
 
-  const handleProfileSubmit = (e: React.FormEvent) => {
+  const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Update user profile
-    onUpdateUser(profileForm);
-    alert('Profile updated successfully');
+    try {
+      if (onUpdateUser) {
+        await onUpdateUser({
+          username: profileForm.username,
+          email: profileForm.email,
+          firstName: profileForm.firstName,
+          lastName: profileForm.lastName,
+        });
+        toast.success('Profile updated successfully');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
+    }
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('New passwords do not match');
+      toast.error('New passwords do not match');
       return;
     }
-    // Update password
-    alert('Password updated successfully');
-    setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
+    if (passwordForm.newPassword.length < 6) {
+      toast.error('New password must be at least 6 characters long');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const response = await fetch('/api/auth/password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json().catch(() => ({ error: 'Failed to update password' }));
+        throw new Error(error || 'Failed to update password');
+      }
+
+      toast.success('Password updated successfully');
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update password');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
-  const handlePreferencesUpdate = (key: string, value: string | boolean) => {
-    setPreferences((prev) => ({ ...prev, [key]: value }));
-    // Auto-save preferences
+  // Load preferences from localStorage on mount
+  useEffect(() => {
+    const savedPreferences = localStorage.getItem('userPreferences');
+    if (savedPreferences) {
+      try {
+        const parsed = JSON.parse(savedPreferences);
+        // Exclude darkMode from saved preferences (handled by ThemeProvider)
+        const { darkMode, ...rest } = parsed;
+        setPreferences((prev) => ({ ...prev, ...rest }));
+      } catch (error) {
+        console.error('Error loading preferences from localStorage:', error);
+      }
+    }
+  }, []);
+
+  const handlePreferencesUpdate = async (key: string, value: string | boolean) => {
+    const updatedPreferences = { ...preferences, [key]: value };
+    setPreferences(updatedPreferences);
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem('userPreferences', JSON.stringify(updatedPreferences));
+      
+      // Also save to API (optional, for future database storage)
+      await fetch('/api/auth/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      }).catch(() => {
+        // Silently fail if API call fails, localStorage is the primary storage
+      });
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+    }
   };
 
   return (
@@ -105,17 +253,26 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                   <div className="flex items-center gap-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border">
                     <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full shadow-lg">
                       <span className="text-white font-bold text-lg">
-                        {user.username.slice(0, 2).toUpperCase()}
+                        {fullName
+                          ? fullName
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()
+                          : safeUser.username.slice(0, 2).toUpperCase() || 'U'}
                       </span>
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-xl font-semibold text-gray-900">{user.username}</h3>
+                      <h3 className="text-xl font-semibold text-gray-900">
+                        {fullName || safeUser.username || 'User'}
+                      </h3>
                       <div className="flex items-center gap-3 mt-2">
                         <Badge variant="secondary" className="flex items-center gap-1">
                           <Shield className="h-3 w-3" />
-                          {user.role}
+                          {safeUser.organizationRole || safeUser.role}
                         </Badge>
-                        <span className="text-sm text-gray-600">{user.companyName}</span>
+                        <span className="text-sm text-gray-600">{safeUser.companyName}</span>
                       </div>
                     </div>
                   </div>
@@ -133,29 +290,13 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                           setProfileForm((prev) => ({ ...prev, username: e.target.value }))
                         }
                         disabled
-                        className="bg-gray-50"
+                        className="bg-gray-50 dark:bg-gray-800"
                       />
                       <p className="text-xs text-gray-500">Username cannot be changed</p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="fullName" className="text-sm font-medium text-gray-700">
-                        Full Name
-                      </Label>
-                      <Input
-                        id="fullName"
-                        value={profileForm.fullName}
-                        onChange={(e) =>
-                          setProfileForm((prev) => ({ ...prev, fullName: e.target.value }))
-                        }
-                        placeholder="John Doe"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
                       <Label htmlFor="email" className="text-sm font-medium text-gray-700">
-                        Email Address
+                        Email Address <span className="text-destructive">*</span>
                       </Label>
                       <Input
                         id="email"
@@ -165,28 +306,60 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                           setProfileForm((prev) => ({ ...prev, email: e.target.value }))
                         }
                         placeholder="john@example.com"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
-                        Phone Number
-                      </Label>
-                      <Input
-                        id="phone"
-                        value={profileForm.phone}
-                        onChange={(e) =>
-                          setProfileForm((prev) => ({ ...prev, phone: e.target.value }))
-                        }
-                        placeholder="+91 98765 43210"
+                        required
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName" className="text-sm font-medium text-gray-700">
+                        First Name
+                      </Label>
+                      <Input
+                        id="firstName"
+                        value={profileForm.firstName}
+                        onChange={(e) =>
+                          setProfileForm((prev) => ({ ...prev, firstName: e.target.value }))
+                        }
+                        placeholder="John"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName" className="text-sm font-medium text-gray-700">
+                        Last Name
+                      </Label>
+                      <Input
+                        id="lastName"
+                        value={profileForm.lastName}
+                        onChange={(e) =>
+                          setProfileForm((prev) => ({ ...prev, lastName: e.target.value }))
+                        }
+                        placeholder="Doe"
+                      />
+                    </div>
+                  </div>
+
+                  {fullName && (
+                    <div className="space-y-2">
+                      <Label htmlFor="fullNameDisplay" className="text-sm font-medium text-gray-700">
+                        Full Name
+                      </Label>
+                      <Input
+                        id="fullNameDisplay"
+                        value={fullName}
+                        disabled
+                        className="bg-gray-50 dark:bg-gray-800"
+                      />
+                      <p className="text-xs text-gray-500">Computed from First Name and Last Name</p>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="company" className="text-sm font-medium text-gray-700">
                       Company
                     </Label>
-                    <Input id="company" value={user.companyName} disabled className="bg-gray-50" />
+                    <Input id="company" value={safeUser.companyName} disabled className="bg-gray-50" />
                     <p className="text-xs text-gray-500">Company cannot be changed</p>
                   </div>
 
@@ -268,9 +441,13 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                   <Separator />
 
                   <div className="flex justify-end">
-                    <Button type="submit" className="bg-blue-600 hover:bg-blue-700 px-6">
+                    <Button 
+                      type="submit" 
+                      className="bg-blue-600 hover:bg-blue-700 px-6"
+                      disabled={isUpdatingPassword}
+                    >
                       <Lock className="h-4 w-4 mr-2" />
-                      Update Password
+                      {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                     </Button>
                   </div>
                 </form>
@@ -320,16 +497,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
             <div className="max-w-4xl mx-auto space-y-6">
               <SectionCard title="Application Preferences">
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-900">Dark Mode</p>
-                      <p className="text-xs text-gray-500">Use dark theme for the application</p>
-                    </div>
-                    <Switch
-                      checked={preferences.darkMode}
-                      onCheckedChange={(checked) => handlePreferencesUpdate('darkMode', checked)}
-                    />
-                  </div>
+                  <ThemePreferenceControl />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
