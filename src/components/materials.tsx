@@ -180,13 +180,24 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
 
       const materials = payload.materials ?? [];
       const normalized: MaterialMasterItem[] = materials.map((material) => {
+        // If material has site allocations but no direct siteId/siteName, use the first allocation's site info
+        // This ensures materials with OB allocated via site allocations show their site information
+        let displaySiteId = material.siteId ?? null;
+        let displaySiteName = material.siteName ?? null;
+        
+        if (!displaySiteId && !displaySiteName && material.siteAllocations && material.siteAllocations.length > 0) {
+          // Use the first site allocation's info for display
+          displaySiteId = material.siteAllocations[0].siteId;
+          displaySiteName = material.siteAllocations[0].siteName;
+        }
+        
         const base = {
           id: material.id,
           name: material.name,
           category: material.category,
           unit: material.unit,
-          siteId: material.siteId ?? null,
-          siteName: material.siteName ?? null,
+          siteId: displaySiteId,
+          siteName: displaySiteName,
           quantity: material.quantity,
           consumedQuantity: material.consumedQuantity,
           standardRate: material.standardRate,
@@ -236,11 +247,25 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
   const scopedMaterials = useMemo(() => {
     if (!filterBySite) return materialMasterData;
     const filterLower = filterBySite.toLowerCase();
-    return materialMasterData.filter(
-      (material) =>
-        material.siteId?.toLowerCase() === filterLower ||
-        (material.siteName ?? '').toLowerCase() === filterLower,
-    );
+    return materialMasterData.filter((material) => {
+      // Check if material has direct siteId match (backward compatibility)
+      if (material.siteId?.toLowerCase() === filterLower) {
+        return true;
+      }
+      // Check if material has siteName match (backward compatibility)
+      if ((material.siteName ?? '').toLowerCase() === filterLower) {
+        return true;
+      }
+      // Check if material has site allocations for this site (OB allocated via material_site_allocations)
+      if (material.siteAllocations && material.siteAllocations.length > 0) {
+        return material.siteAllocations.some(
+          (alloc) =>
+            alloc.siteId?.toLowerCase() === filterLower ||
+            alloc.siteName?.toLowerCase() === filterLower,
+        );
+      }
+      return false;
+    });
   }, [filterBySite, materialMasterData]);
 
   const unitOptions = useMemo(() => {
@@ -1088,7 +1113,25 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                         return unitMap[unit.toLowerCase()] || unit;
                       };
 
-                      const availableQuantity = material.openingBalance ?? material.quantity ?? 0;
+                      // Calculate available quantity based on context
+                      // If filterBySite is provided, use site-specific OB from allocations
+                      // Otherwise, use total OB
+                      let availableQuantity: number;
+                      if (filterBySite && material.siteAllocations && material.siteAllocations.length > 0) {
+                        // Find site-specific allocation
+                        const normalizedFilterSiteId = String(filterBySite || '').trim().toLowerCase();
+                        const siteAllocation = material.siteAllocations.find((alloc) => {
+                          const allocSiteId = String(alloc.siteId || '').trim().toLowerCase();
+                          const allocSiteName = String(alloc.siteName || '').trim().toLowerCase();
+                          return allocSiteId === normalizedFilterSiteId || allocSiteName === normalizedFilterSiteId;
+                        });
+                        // Use site-specific OB if found, otherwise 0
+                        availableQuantity = siteAllocation?.quantity ?? 0;
+                      } else {
+                        // No site filter or no allocations - use total OB
+                        availableQuantity = material.openingBalance ?? material.quantity ?? 0;
+                      }
+                      
                       // Get tax rate info from masters
                       const taxRateId = material.taxRateId;
                       const taxRateInfo = taxRateId 

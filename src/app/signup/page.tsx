@@ -1,17 +1,15 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { createClient } from '@/lib/supabase/client';
 
 export default function SignupPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -69,12 +67,18 @@ export default function SignupPage() {
         'Account created successfully. You can sign in with your email and password.',
       );
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      // Use server-side login API route to avoid CORS issues
+      const loginResponse = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
         email: formData.email,
         password: formData.password,
+        }),
       });
 
-      if (signInError) {
+      if (!loginResponse.ok) {
+        // If login fails, redirect to login page with success message
         router.push(`/login?message=${successMessage}`);
         return;
       }

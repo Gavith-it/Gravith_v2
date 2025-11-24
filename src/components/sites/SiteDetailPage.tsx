@@ -352,6 +352,11 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const router = useRouter();
   const { isLoading: isAuthLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Immediate log when component mounts
+  console.log('🚀 SiteDetailPage Component Mounted!');
+  console.log('🚀 Site ID:', siteId);
+  console.log('🚀 Site ID Type:', typeof siteId);
   const expenseDialog = useDialogState();
   const [isLoading, setIsLoading] = useState(false);
   const [site, setSite] = useState<Site | null>(null);
@@ -582,6 +587,15 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   useEffect(() => {
     const fetchMaterials = async () => {
       try {
+        // Add prominent log - DO NOT CLEAR CONSOLE
+        console.log('🔍 ===== OB DEBUG START =====');
+        console.log('🔍 ===== OB DEBUG START =====');
+        console.log('🔍 ===== OB DEBUG START =====');
+        console.log('📍 Current Site ID:', siteId);
+        console.log('📍 Site ID Type:', typeof siteId);
+        console.log('📍 Site ID Length:', siteId?.length);
+        console.log('📍 Site ID Normalized:', String(siteId || '').trim());
+        
         const response = await fetch('/api/materials', { cache: 'no-store' });
         const payload = (await response.json().catch(() => ({}))) as {
           materials?: Array<{
@@ -592,6 +606,11 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
             siteId?: string | null;
             quantity: number;
             consumedQuantity: number;
+            siteAllocations?: Array<{
+              siteId: string;
+              siteName: string;
+              quantity: number;
+            }>;
           }>;
           error?: string;
         };
@@ -600,26 +619,124 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           throw new Error(payload.error || 'Failed to load materials');
         }
 
-        const materials = (payload.materials ?? []).filter((m) => m.siteId === siteId);
-        const mappedMaterials: SiteMaterialMaster[] = materials.map((m) => ({
-          id: m.id,
-          siteId: m.siteId || '',
-          materialName: m.name,
-          category: m.category,
-          unit: m.unit,
-          siteStock: m.quantity - m.consumedQuantity,
-          allocated: m.quantity,
-          reserved: 0,
-          status: m.quantity - m.consumedQuantity > 0 ? 'available' : 'critical',
-        }));
+        // Filter materials that either:
+        // 1. Have siteId matching the current site (backward compatibility)
+        // 2. Have site allocations for the current site (OB allocated via material_site_allocations)
+        const normalizedSiteId = String(siteId || '').trim();
+        const materials = (payload.materials ?? []).filter((m) => {
+          // Check if material has direct siteId match (normalize for comparison)
+          const materialSiteId = String(m.siteId || '').trim();
+          if (materialSiteId === normalizedSiteId) {
+            return true;
+          }
+          // Check if material has site allocations for this site
+          if (m.siteAllocations && m.siteAllocations.length > 0) {
+            return m.siteAllocations.some((alloc) => {
+              const allocSiteId = String(alloc.siteId || '').trim();
+              return allocSiteId === normalizedSiteId;
+            });
+          }
+          return false;
+        });
+
+        const mappedMaterials: SiteMaterialMaster[] = materials.map((m) => {
+          // Find the site allocation for this specific site
+          // Use strict comparison and also handle potential string/UUID format differences
+          const normalizedSiteId = String(siteId || '').trim();
+          
+          // Debug logging - ALWAYS log for materials with allocations
+          if (m.siteAllocations && m.siteAllocations.length > 0) {
+            console.log('📦 Material:', m.name, `(${m.id})`);
+            console.log('🔎 Looking for siteId:', `"${normalizedSiteId}"`);
+            console.log('📋 All Site Allocations:', m.siteAllocations);
+            console.log('📋 Allocation Details:', m.siteAllocations.map(a => ({
+              siteId: a.siteId,
+              siteIdType: typeof a.siteId,
+              siteIdNormalized: String(a.siteId || '').trim(),
+              siteName: a.siteName,
+              quantity: a.quantity,
+              matches: String(a.siteId || '').trim() === normalizedSiteId
+            })));
+          } else {
+            console.log('📦 Material:', m.name, '- NO site allocations');
+          }
+          
+          const siteAllocation = m.siteAllocations?.find((alloc) => {
+            // Normalize both IDs for comparison (trim and convert to string)
+            const allocSiteId = String(alloc.siteId || '').trim();
+            const currentSiteId = String(siteId || '').trim();
+            const matches = allocSiteId === currentSiteId;
+            
+            if (m.siteAllocations && m.siteAllocations.length > 0 && !matches) {
+              console.log(`[OB Debug] Comparing: "${allocSiteId}" === "${currentSiteId}" = ${matches}`);
+            }
+            
+            return matches;
+          });
+          
+          // If material has site allocations, we MUST use the site-specific allocation
+          // If no site allocation found but material has allocations array, use 0 (shouldn't happen if filtering works)
+          // Otherwise, fall back to material's quantity (for backward compatibility with materials without site allocations)
+          let allocatedOB: number;
+          if (m.siteAllocations && m.siteAllocations.length > 0) {
+            // Material has site allocations - use site-specific OB or 0 if not found
+            if (siteAllocation) {
+              allocatedOB = siteAllocation.quantity;
+              console.log('✅ MATCH FOUND! Using site-specific OB:', allocatedOB);
+              console.log('✅ Allocation Details:', {
+                siteId: siteAllocation.siteId,
+                siteName: siteAllocation.siteName,
+                quantity: siteAllocation.quantity
+              });
+            } else {
+              // This shouldn't happen if filtering works correctly, but log for debugging
+              console.error('❌ NO MATCH FOUND!');
+              console.error('❌ Material:', m.name, `(${m.id})`);
+              console.error('❌ Looking for siteId:', `"${normalizedSiteId}"`);
+              console.error('❌ Available siteIds:', m.siteAllocations.map(a => `"${String(a.siteId || '').trim()}"`));
+              console.error('❌ Using 0 instead of total quantity');
+              allocatedOB = 0; // Use 0 - material shouldn't appear if no allocation matches
+            }
+          } else {
+            // Material doesn't have site allocations - use total quantity (backward compatibility)
+            allocatedOB = m.quantity;
+            console.log('⚠️ No site allocations, using total quantity:', allocatedOB);
+          }
+          
+          console.log('💰 Final allocatedOB for', m.name, ':', allocatedOB);
+          console.log('---');
+          
+          const siteStock = allocatedOB - m.consumedQuantity;
+
+          return {
+            id: m.id,
+            siteId: siteId,
+            materialName: m.name,
+            category: m.category,
+            unit: m.unit,
+            siteStock: siteStock,
+            allocated: allocatedOB,
+            reserved: 0,
+            status: siteStock > 0 ? (siteStock < allocatedOB * 0.2 ? 'low' : 'available') : 'critical',
+          };
+        });
+        console.log('📊 Final Mapped Materials:', mappedMaterials);
+        console.log('📊 Materials Summary:');
+        mappedMaterials.forEach((m) => {
+          console.log(`  - ${m.materialName}: Allocated=${m.allocated}, On Site=${m.siteStock}`);
+        });
+        console.log('🔍 ===== OB DEBUG END =====');
         setSiteMaterialMasters(mappedMaterials);
       } catch (error) {
-        console.error('Error fetching materials:', error);
+        console.error('❌ Error fetching materials:', error);
       }
     };
 
     if (siteId) {
+      console.log('✅ siteId exists:', siteId, '- calling fetchMaterials()');
       void fetchMaterials();
+    } else {
+      console.error('❌ No siteId provided! Cannot fetch materials.');
     }
   }, [siteId]);
 

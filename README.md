@@ -46,3 +46,34 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 4. After the first deployment, review the environment variables in Vercel and add them to any Preview/Production environments as needed.
 
 For more background, review the official [Next.js deployment guide](https://nextjs.org/docs/app/building-your-application/deploying).
+
+## Troubleshooting
+
+### CORS Errors
+
+If you encounter CORS errors like:
+```
+Access to fetch at 'https://your-project.supabase.co/auth/v1/token' from origin 'http://localhost:3000' has been blocked by CORS policy
+```
+
+**Why this happens now:**
+- Supabase's client-side SDK automatically refreshes authentication tokens when they expire
+- This token refresh happens directly from the browser to Supabase's auth API
+- Recent Supabase updates have tightened CORS security, requiring explicit origin allowlisting
+- If tokens weren't expiring before, or if Supabase had more permissive defaults, it would have worked without configuration
+
+**Solution:** Add your local development URL to Supabase's allowed origins:
+
+1. Go to your [Supabase Dashboard](https://app.supabase.com)
+2. Select your project
+3. Navigate to **Authentication** → **URL Configuration**
+4. Under **Redirect URLs**, add:
+   - `http://localhost:3000`
+   - `http://localhost:3000/**` (wildcard for all routes)
+5. Under **Site URL**, ensure it's set to `http://localhost:3000` (for local development)
+6. Click **Save**
+
+**Note:** 
+- The app will still work via server-side token refresh (handled by middleware), but client-side refresh requires CORS configuration
+- Changes may take a few moments to propagate. Refresh your browser after updating the configuration
+- For production, add your production domain (e.g., `https://yourdomain.com`) to the allowed origins

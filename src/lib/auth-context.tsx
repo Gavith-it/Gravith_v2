@@ -32,12 +32,32 @@ async function fetchAuthenticatedProfile(): Promise<UserWithOrganization | null>
     });
 
     if (!response.ok) {
-      const { error } = await response.json().catch(() => ({ error: 'Unknown error' }));
-      console.error('Failed to load profile:', error);
+      let errorMessage = 'Unknown error';
+      try {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          errorMessage = errorData.error || 'Unknown error';
+        } else {
+          const text = await response.text();
+          errorMessage = `Server error: ${text.substring(0, 100)}`;
+        }
+      } catch (parseError) {
+        console.error('Failed to parse error response:', parseError);
+      }
+      console.error('Failed to load profile:', errorMessage);
       return null;
     }
 
-    const { profile } = (await response.json()) as {
+    let responseData;
+    try {
+      responseData = await response.json();
+    } catch (jsonError) {
+      console.error('Failed to parse JSON response:', jsonError);
+      return null;
+    }
+
+    const { profile } = responseData as {
       profile: {
         id: string;
         username: string;
@@ -107,9 +127,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initialize = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        // Try to get session, but if CORS fails, fall back to server-side check
+        let session = null;
+        let sessionError = null;
+        
+        try {
+          const result = await supabase.auth.getSession();
+          session = result.data.session;
+          sessionError = result.error;
+        } catch (error) {
+          // If getSession fails due to CORS, try to get session info from cookies/localStorage
+          // The middleware should have refreshed the session server-side
+          sessionError = error;
+        }
+
+        // Handle CORS or network errors gracefully
+        if (sessionError) {
+          // Check if it's a CORS error
+          const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+          if (
+            errorMessage.includes('CORS') ||
+            errorMessage.includes('Failed to fetch') ||
+            errorMessage.includes('NetworkError') ||
+            errorMessage.includes('Access-Control-Allow-Origin')
+          ) {
+            console.warn(
+              'CORS error detected. The middleware handles token refresh server-side, but client-side refresh requires CORS configuration.',
+            );
+            console.warn(
+              'To fix: Add http://localhost:3000 to Supabase Dashboard > Authentication > URL Configuration > Redirect URLs',
+            );
+            // Fall back to checking via API route (server-side)
+            const profile = await fetchAuthenticatedProfile();
+            if (profile) {
+              setIsLoggedIn(true);
+              setUser(profile);
+            } else {
+              setIsLoggedIn(false);
+              setUser(null);
+            }
+            setIsLoading(false);
+            return;
+          }
+          throw sessionError;
+        }
 
         if (session?.user) {
           const profile = await fetchAuthenticatedProfile();
@@ -125,7 +186,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
         }
       } catch (error) {
-        console.error('Error checking authentication:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // Handle CORS errors specifically
+        if (
+          errorMessage.includes('CORS') ||
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('NetworkError') ||
+          errorMessage.includes('Access-Control-Allow-Origin')
+        ) {
+          console.warn(
+            'CORS error detected. Please add http://localhost:3000 to your Supabase project allowed origins in the Authentication > URL Configuration settings.',
+          );
+        } else {
+          console.error('Error checking authentication:', error);
+        }
         setIsLoggedIn(false);
         setUser(null);
       } finally {
@@ -162,15 +236,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (email: string, password: string): Promise<{ error: Error | null }> => {
       try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+        // Use server-side login API route to avoid CORS issues
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
         });
 
-        if (error) {
-          return { error };
+        if (!response.ok) {
+          let errorMessage = 'Login failed';
+          try {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const errorData = await response.json();
+              errorMessage = errorData.error || 'Login failed';
+            } else {
+              const text = await response.text();
+              errorMessage = text.substring(0, 100) || 'Login failed';
+            }
+          } catch (parseError) {
+            console.error('Failed to parse error response:', parseError);
+          }
+
+          return { error: new Error(errorMessage) };
         }
 
+        // Login successful, now fetch profile
         const profile = await fetchAuthenticatedProfile();
         if (profile) {
           setIsLoggedIn(true);
@@ -183,10 +274,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       } catch (error) {
         console.error('Error during login:', error);
-        return { error: error as Error };
+        const errorMessage =
+          error instanceof Error ? error.message : 'Login failed';
+        return { error: new Error(errorMessage) };
       }
     },
-    [supabase],
+    [],
   );
 
   const logout = useCallback(async () => {

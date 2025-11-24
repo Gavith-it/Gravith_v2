@@ -5,26 +5,59 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    let supabase;
+    try {
+      supabase = await createClient();
+    } catch (error) {
+      console.error('Failed to create Supabase client:', error);
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 },
+      );
+    }
+
+    let user, authError;
+    try {
+      const result = await supabase.auth.getUser();
+      user = result.data.user;
+      authError = result.error;
+    } catch (error) {
+      console.error('Failed to retrieve authenticated user - exception:', error);
+      return NextResponse.json(
+        { error: 'Authentication service error' },
+        { status: 500 },
+      );
+    }
 
     if (authError) {
       console.error('Failed to retrieve authenticated user:', authError);
-      return NextResponse.json({ error: 'Authentication error' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Authentication error', details: authError.message },
+        { status: 401 },
+      );
     }
 
     if (!user) {
       return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
     }
 
-    const adminClient = createAdminClient();
-    const { data: profile, error: profileError } = await adminClient
-      .from('user_profiles')
-      .select(
-        `
+    let adminClient;
+    try {
+      adminClient = createAdminClient();
+    } catch (error) {
+      console.error('Failed to create admin client:', error);
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 },
+      );
+    }
+
+    let profile, profileError;
+    try {
+      const result = await adminClient
+        .from('user_profiles')
+        .select(
+          `
           id,
           username,
           email,
@@ -46,13 +79,25 @@ export async function GET() {
             created_by
           )
         `,
-      )
-      .eq('id', user.id)
-      .maybeSingle();
+        )
+        .eq('id', user.id)
+        .maybeSingle();
+      profile = result.data;
+      profileError = result.error;
+    } catch (error) {
+      console.error('Failed to load user profile - exception:', error);
+      return NextResponse.json(
+        { error: 'Database service error' },
+        { status: 500 },
+      );
+    }
 
     if (profileError || !profile) {
       console.error('Failed to load user profile via admin client:', profileError);
-      return NextResponse.json({ error: 'Unable to load user profile' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Unable to load user profile', details: profileError?.message },
+        { status: 500 },
+      );
     }
 
     if (!profile.is_active) {
