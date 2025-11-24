@@ -12,6 +12,7 @@ import {
   Info,
   BarChart3,
   Loader2,
+  FileText,
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -43,6 +44,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './ui/tooltip';
+import { ExpenseReport } from './expense-report';
 
 type MonthlyExpensePoint = {
   key: string;
@@ -825,7 +827,7 @@ export function ReportsPage() {
         <Card className="border-0 shadow-none rounded-none border-b bg-gradient-to-r from-background to-muted/20">
           <CardContent className="px-6 py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <TabsList className="grid w-auto grid-cols-3">
+              <TabsList className="grid w-auto grid-cols-4">
                 <TabsTrigger value="financial" className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4" />
                   Financial
@@ -837,6 +839,10 @@ export function ReportsPage() {
                 <TabsTrigger value="analytics" className="flex items-center gap-2">
                   <BarChart3 className="h-4 w-4" />
                   Analytics
+                </TabsTrigger>
+                <TabsTrigger value="expense-report" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Expense Report
                 </TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-3">
@@ -894,6 +900,12 @@ export function ReportsPage() {
         <TabsContent value="analytics" className="flex-1 overflow-auto">
           <div className="p-6">
             <AnalyticsContent />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="expense-report" className="flex-1 overflow-auto">
+          <div className="p-6">
+            <ExpenseReport />
           </div>
         </TabsContent>
       </Tabs>
