@@ -87,7 +87,6 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
 
           if (payload.sites && payload.sites.length > 0) {
             allSites.push(...payload.sites);
-            console.log(`Loaded ${payload.sites.length} sites from page ${page}. Total so far: ${allSites.length}`);
           }
 
           // Check if there are more pages
@@ -100,7 +99,6 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
           }
         }
 
-        console.log(`Total sites loaded: ${allSites.length}`, allSites);
         setSites(allSites);
       } catch (error) {
         console.error('Failed to load sites:', error);

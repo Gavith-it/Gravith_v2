@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { ensureMutationAccess, mapRowToExpense, resolveContext } from '../_utils';
+import { mapRowToExpense, resolveContext } from '../_utils';
 import type { ExpenseRow } from '../_utils';
 
 import { createClient } from '@/lib/supabase/server';
