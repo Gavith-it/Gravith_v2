@@ -114,16 +114,16 @@ export function AppShell({ children }: AppShellProps) {
             />
 
             <main className="flex-1 overflow-auto w-full">
-              <div className="flex items-center justify-between h-16 px-6 bg-gradient-to-r from-white to-gray-50/80 dark:from-gray-900 dark:to-gray-800/80 border-b border-gray-200/60 dark:border-gray-700/60">
+              <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/60 dark:border-gray-700/60 dark:bg-gradient-to-r dark:from-gray-900 dark:to-gray-800/80">
                 <div className="flex items-center gap-4">
                   <SidebarTrigger className="h-9 w-9 rounded-lg border border-gray-200/60 dark:border-gray-700/60 bg-white/80 dark:bg-gray-800/80 hover:bg-gray-50/80 dark:hover:bg-gray-700/80 shadow-sm hover:shadow-md transition-all duration-200" />
                   <div className="flex items-center gap-3">
                     <Image
-                      src="/fevicon.jpeg"
+                      src="/Untitled design.png"
                       alt="Dashboard icon"
                       width={32}
                       height={32}
-                      className="h-8 w-8 rounded-lg object-cover"
+                      className="h-8 w-8 object-cover"
                       priority
                     />
                     <div>

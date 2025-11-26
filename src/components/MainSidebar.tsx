@@ -19,8 +19,6 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 
-import gLogo from '../assets/g-logo.png';
-
 import {
   Sidebar,
   SidebarContent,
@@ -125,15 +123,11 @@ export function MainSidebar({ currentPage, onNavigate }: MainSidebarProps) {
         <SidebarHeader className="border-b border-sidebar-border h-16 px-4">
           <div className="flex h-full w-full items-center justify-center">
             <Image
-              src={gLogo}
+              src="/Untitled design.png"
               alt="Build Logo"
               width={40}
               height={40}
-              style={{
-                width: '40px',
-                height: '40px',
-                objectFit: 'fill',
-              }}
+              className="h-10 w-10 object-cover"
             />
             {state === 'expanded' && (
               <span className="text-2xl font-bold text-sidebar-foreground leading-tight tracking-tight ml-3">
