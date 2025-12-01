@@ -23,10 +23,6 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 
-
-
-
-
 interface SaaSHomepageProps {
   onGetStarted: () => void;
   onLogin: () => void;
@@ -157,55 +153,57 @@ export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
 
       {/* Hero Section - Full Screen from top, starts behind header */}
       <section
-        className="relative overflow-hidden"
+        className="relative overflow-visible"
         style={{
           position: 'relative',
           top: 0,
           left: 0,
           margin: 0,
           padding: 0,
-          minHeight: '100vh',
-          height: '100vh',
+          minHeight: 'calc(100vh + 100px)', // Extend hero section to show more of building
+          height: 'calc(100vh + 100px)',
           width: '100%',
           maxWidth: '100%',
           background: 'radial-gradient(circle at center, #071F3F 0%, #02142A 60%, #010D1D 100%)',
         }}
       >
-        {/* Hero Background Image - Full viewport from absolute top */}
+        {/* Hero Background Image - Starts below header, shows full image */}
         <div
-          className="absolute"
           style={{
             position: 'absolute',
-            top: 0,
+            top: '48px', // Start below header (header height is 48px)
             left: 0,
             right: 0,
-            bottom: 0,
             width: '100%',
-            height: '100%',
-            margin: 0,
-            padding: 0,
+            height: 'calc(100vh + 100px - 48px)', // Extended height to show full building
+            zIndex: 0,
+            backgroundColor: '#071F3F', // Match background gradient color
           }}
         >
           <ImageWithFallback
-            src="/1000142857.jpg"
+            src="/gavith1.jpeg"
             alt="Gavith Build Construction Management Platform"
             className="w-full h-full"
             style={{
               display: 'block',
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
-              objectPosition: 'right center',
+              objectFit: 'cover', // Fill container - image is 2000x1400px, perfect for hero section
+              objectPosition: 'right center', // Center the image to show crane and building
               margin: 0,
               padding: 0,
             }}
-            width={1920}
-            height={1080}
+            width={2000}
+            height={1400}
             sizes="100vw"
             priority
           />
         </div>
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-transparent"></div>
+        {/* Gradient overlay */}
+        <div
+          className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-transparent"
+          style={{ zIndex: 1 }}
+        ></div>
 
         {/* Scroll Indicator */}
         <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 text-center z-10 animate-bounce">

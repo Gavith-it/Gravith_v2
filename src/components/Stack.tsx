@@ -1,0 +1,177 @@
+'use client';
+
+import type { PanInfo } from 'framer-motion';
+import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+
+interface CardData {
+  id: number;
+  img: string;
+  title?: string;
+  description?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}
+
+interface StackProps {
+  cardsData: CardData[];
+  cardDimensions: { width: number; height: number };
+  randomRotation?: boolean;
+  sensitivity?: number;
+  sendToBackOnClick?: boolean;
+}
+
+export default function Stack({
+  cardsData,
+  cardDimensions,
+  randomRotation = true,
+  sensitivity = 180,
+  sendToBackOnClick = false,
+}: StackProps) {
+  const [cards, setCards] = useState(cardsData);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isInView, setIsInView] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Initialize rotations deterministically based on card ID to avoid hydration mismatch
+  const getRotation = (id: number) => {
+    if (!randomRotation) return 0;
+    // Use a simple hash function to generate deterministic "random" rotation
+    // This ensures the same card ID always gets the same rotation (SSR-safe)
+    const hash = id * 9301 + 49297; // Simple hash function
+    const normalized = (hash % 1000) / 1000; // Normalize to 0-1
+    return normalized * 10 - 5; // Scale to -5 to 5 degrees
+  };
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsInView(true);
+        }
+      },
+      { threshold: 0.3 },
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      if (containerRef.current) {
+        observer.unobserve(containerRef.current);
+      }
+    };
+  }, []);
+
+  const handleDragEnd = (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo,
+    id: number,
+  ) => {
+    const threshold = sensitivity;
+
+    if (Math.abs(info.offset.x) > threshold || Math.abs(info.offset.y) > threshold) {
+      // Remove the card from the stack
+      setCards((prev) => prev.filter((card) => card.id !== id));
+    }
+  };
+
+  const handleCardClick = (id: number) => {
+    if (sendToBackOnClick) {
+      setCards((prev) => {
+        const clickedCard = prev.find((card) => card.id === id);
+        const otherCards = prev.filter((card) => card.id !== id);
+        return clickedCard ? [...otherCards, clickedCard] : prev;
+      });
+    }
+  };
+
+  // Don't render until mounted to avoid hydration mismatch
+  if (!isMounted) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative flex items-center justify-center"
+        style={{ width: cardDimensions.width, height: cardDimensions.height }}
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative flex items-center justify-center"
+      style={{ width: cardDimensions.width, height: cardDimensions.height }}
+    >
+      {cards.map((card, index) => {
+        const rotation = getRotation(card.id);
+        const zIndex = cards.length - index;
+
+        return (
+          <motion.div
+            key={card.id}
+            drag
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={1}
+            onDragEnd={(event, info) => handleDragEnd(event, info, card.id)}
+            onClick={() => handleCardClick(card.id)}
+            initial={{
+              y: 800,
+              rotate: rotation,
+              scale: 1 - index * 0.05,
+              opacity: 0,
+            }}
+            animate={
+              isInView
+                ? {
+                    y: -index * 10,
+                    rotate: rotation,
+                    scale: 1 - index * 0.05,
+                    opacity: 1,
+                  }
+                : {
+                    y: 800,
+                    rotate: rotation,
+                    scale: 1 - index * 0.05,
+                    opacity: 0,
+                  }
+            }
+            transition={{
+              type: 'spring',
+              stiffness: 100,
+              damping: 15,
+              delay: index * 0.15,
+              opacity: { duration: 0.3, delay: index * 0.15 },
+            }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 1.1 }}
+            className="absolute cursor-grab active:cursor-grabbing rounded-2xl overflow-hidden shadow-2xl border-4 border-white/30 backdrop-blur-xl"
+            style={{
+              width: cardDimensions.width,
+              height: cardDimensions.height,
+              zIndex: zIndex,
+              backgroundImage: `url(${card.img})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+            suppressHydrationWarning
+          >
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
+              {card.icon && (
+                <div className="mb-3">
+                  <card.icon className="w-10 h-10 text-white" />
+                </div>
+              )}
+              {card.title && <h3 className="font-bold text-white text-xl mb-2">{card.title}</h3>}
+              {card.description && <p className="text-white/90 text-sm">{card.description}</p>}
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
