@@ -31,6 +31,7 @@ export default function Stack({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [draggingOut, setDraggingOut] = useState<Map<number, { x: number; y: number }>>(new Map());
 
   // Initialize rotations deterministically based on card ID to avoid hydration mismatch
   const getRotation = (id: number) => {
@@ -75,8 +76,23 @@ export default function Stack({
     const threshold = sensitivity;
 
     if (Math.abs(info.offset.x) > threshold || Math.abs(info.offset.y) > threshold) {
-      // Remove the card from the stack
-      setCards((prev) => prev.filter((card) => card.id !== id));
+      // Store drag direction and mark card as dragging out
+      setDraggingOut((prev) => new Map(prev).set(id, { x: info.offset.x, y: info.offset.y }));
+
+      // After animation completes, move card to back of stack
+      setTimeout(() => {
+        setCards((prev) => {
+          const draggedCard = prev.find((card) => card.id === id);
+          const otherCards = prev.filter((card) => card.id !== id);
+          return draggedCard ? [...otherCards, draggedCard] : prev;
+        });
+        // Remove from dragging out map
+        setDraggingOut((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(id);
+          return newMap;
+        });
+      }, 400); // Wait for animation to complete
     }
   };
 
@@ -110,13 +126,27 @@ export default function Stack({
       {cards.map((card, index) => {
         const rotation = getRotation(card.id);
         const zIndex = cards.length - index;
+        const dragInfo = draggingOut.get(card.id);
+        const isDraggingOut = !!dragInfo;
+        const isNewPosition = index === cards.length - 1 && !isDraggingOut;
+
+        // Calculate exit direction
+        let exitX = 0;
+        let exitY = 0;
+        if (dragInfo) {
+          if (Math.abs(dragInfo.x) > Math.abs(dragInfo.y)) {
+            exitX = dragInfo.x > 0 ? 1000 : -1000;
+          } else {
+            exitY = dragInfo.y > 0 ? 1000 : -1000;
+          }
+        }
 
         return (
           <motion.div
             key={card.id}
             drag
-            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-            dragElastic={1}
+            dragConstraints={false}
+            dragElastic={0.2}
             onDragEnd={(event, info) => handleDragEnd(event, info, card.id)}
             onClick={() => handleCardClick(card.id)}
             initial={{
@@ -126,27 +156,50 @@ export default function Stack({
               opacity: 0,
             }}
             animate={
-              isInView
+              isDraggingOut
                 ? {
-                    y: -index * 10,
-                    rotate: rotation,
-                    scale: 1 - index * 0.05,
-                    opacity: 1,
-                  }
-                : {
-                    y: 800,
-                    rotate: rotation,
-                    scale: 1 - index * 0.05,
+                    // Animate card off-screen based on drag direction
+                    x: exitX,
+                    y: exitY,
+                    rotate: rotation + (dragInfo?.x || 0) * 0.1,
+                    scale: 0.5,
                     opacity: 0,
                   }
+                : isInView
+                  ? {
+                      x: 0,
+                      y: -index * 10,
+                      rotate: rotation,
+                      scale: 1 - index * 0.05,
+                      opacity: 1,
+                    }
+                  : {
+                      x: 0,
+                      y: 800,
+                      rotate: rotation,
+                      scale: 1 - index * 0.05,
+                      opacity: 0,
+                    }
             }
-            transition={{
-              type: 'spring',
-              stiffness: 100,
-              damping: 15,
-              delay: index * 0.15,
-              opacity: { duration: 0.3, delay: index * 0.15 },
-            }}
+            transition={
+              isDraggingOut
+                ? {
+                    type: 'spring',
+                    stiffness: 200,
+                    damping: 20,
+                    duration: 0.4,
+                  }
+                : {
+                    type: 'spring',
+                    stiffness: 100,
+                    damping: 15,
+                    delay: isNewPosition ? 0.4 : index * 0.15,
+                    opacity: {
+                      duration: 0.3,
+                      delay: isNewPosition ? 0.4 : index * 0.15,
+                    },
+                  }
+            }
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 1.1 }}
             className="absolute cursor-grab active:cursor-grabbing rounded-2xl overflow-hidden shadow-2xl border-4 border-white/30 backdrop-blur-xl"
