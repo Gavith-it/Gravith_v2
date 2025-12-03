@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import React from 'react';
+import React, { useEffect } from 'react';
 
 import { ContextProviders } from './ContextProviders';
 import { MainSidebar } from './MainSidebar';
@@ -15,6 +15,24 @@ import { useAuth } from '@/lib/auth-context';
 interface AppShellProps {
   children: React.ReactNode;
 }
+
+// Protected pages list - defined outside component to avoid recreation
+const protectedPages = [
+  'dashboard',
+  'sites',
+  'materials',
+  'masters',
+  'purchase',
+  'work-progress',
+  'vehicles',
+  'vendors',
+  'expenses',
+  'payments',
+  'scheduling',
+  'reports',
+  'organization',
+  'settings',
+] as const;
 
 export function AppShell({ children }: AppShellProps) {
   const { isLoggedIn, user, logout, isLoading } = useAuth();
@@ -47,6 +65,16 @@ export function AppShell({ children }: AppShellProps) {
 
   const currentPage = getCurrentPage();
 
+  // Redirect to home if not logged in and trying to access protected pages
+  // MUST be called before any early returns (Rules of Hooks)
+  useEffect(() => {
+    // If not logged in and trying to access protected page, redirect to home
+    if (!isLoading && !isLoggedIn && (protectedPages as readonly string[]).includes(currentPage)) {
+      router.push('/');
+      router.refresh();
+    }
+  }, [isLoading, isLoggedIn, currentPage, router]);
+
   const handleLogout = async () => {
     await logout();
     // No need to prefetch logout route
@@ -76,24 +104,8 @@ export function AppShell({ children }: AppShellProps) {
     return <div>{children}</div>;
   }
 
-  // Show main application with sidebar for authenticated users or dashboard pages
-  if (
-    isLoggedIn ||
-    currentPage === 'dashboard' ||
-    currentPage === 'sites' ||
-    currentPage === 'materials' ||
-    currentPage === 'masters' ||
-    currentPage === 'purchase' ||
-    currentPage === 'work-progress' ||
-    currentPage === 'vehicles' ||
-    currentPage === 'vendors' ||
-    currentPage === 'expenses' ||
-    currentPage === 'payments' ||
-    currentPage === 'scheduling' ||
-    currentPage === 'reports' ||
-    currentPage === 'organization' ||
-    currentPage === 'settings'
-  ) {
+  // Show main application with sidebar only for authenticated users
+  if (isLoggedIn && (protectedPages as readonly string[]).includes(currentPage)) {
     // Determine required contexts based on current page
     // Sites page includes Work Progress tab, so it needs work-progress context
     const requiredContexts =

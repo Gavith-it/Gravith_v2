@@ -122,6 +122,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isMounted, setIsMounted] = useState(false);
   const supabase = createClient();
 
+  // Session expiration: 24 hours (1 day) in milliseconds
+  const SESSION_EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours
+  // Check session validity every 5 minutes
+  const SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+  const logout = useCallback(async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error during logout:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected error during logout:', error);
+    } finally {
+      setIsLoggedIn(false);
+      setUser(null);
+      // Clear any stored session timestamp
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('session_start_time');
+      }
+    }
+  }, [supabase]);
+
+  // Check if session has expired
+  const checkSessionExpiry = useCallback(async () => {
+    if (typeof window === 'undefined') return true;
+
+    const sessionStartTime = localStorage.getItem('session_start_time');
+    if (!sessionStartTime) {
+      // No session timestamp, check if we have a valid session
+      const result = await supabase.auth.getSession();
+      if (!result.data.session) {
+        // No session, logout
+        await logout();
+        return false;
+      }
+      // Valid session, store timestamp
+      localStorage.setItem('session_start_time', Date.now().toString());
+      return true;
+    }
+
+    const sessionAge = Date.now() - parseInt(sessionStartTime, 10);
+    if (sessionAge > SESSION_EXPIRY_TIME) {
+      // Session expired, logout
+      console.log('Session expired, logging out...');
+      await logout();
+      return false;
+    }
+
+    // Check if session is still valid with Supabase
+    const result = await supabase.auth.getSession();
+    if (!result.data.session || result.error) {
+      // Session invalid, logout
+      console.log('Session invalid, logging out...');
+      await logout();
+      return false;
+    }
+
+    return true;
+  }, [supabase, logout, SESSION_EXPIRY_TIME]);
+
   useEffect(() => {
     setIsMounted(true);
 
@@ -130,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Try to get session, but if CORS fails, fall back to server-side check
         let session = null;
         let sessionError = null;
-        
+
         try {
           const result = await supabase.auth.getSession();
           session = result.data.session;
@@ -144,7 +205,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Handle CORS or network errors gracefully
         if (sessionError) {
           // Check if it's a CORS error
-          const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+          const errorMessage =
+            sessionError instanceof Error ? sessionError.message : String(sessionError);
           if (
             errorMessage.includes('CORS') ||
             errorMessage.includes('Failed to fetch') ||
@@ -162,9 +224,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (profile) {
               setIsLoggedIn(true);
               setUser(profile);
+              // Store session start time for expiration tracking
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('session_start_time', Date.now().toString());
+              }
             } else {
               setIsLoggedIn(false);
               setUser(null);
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('session_start_time');
+              }
             }
             setIsLoading(false);
             return;
@@ -177,13 +246,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (profile) {
             setIsLoggedIn(true);
             setUser(profile);
+            // Store session start time for expiration tracking
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('session_start_time', Date.now().toString());
+            }
           } else {
             setIsLoggedIn(false);
             setUser(null);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('session_start_time');
+            }
           }
         } else {
           setIsLoggedIn(false);
           setUser(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('session_start_time');
+          }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -217,21 +296,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profile) {
           setIsLoggedIn(true);
           setUser(profile);
+          // Store session start time for expiration tracking
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('session_start_time', Date.now().toString());
+          }
         }
       }
 
-      if (event === 'SIGNED_OUT') {
-        setIsLoggedIn(false);
-        setUser(null);
+      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+        if (event === 'SIGNED_OUT') {
+          setIsLoggedIn(false);
+          setUser(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('session_start_time');
+          }
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Token refreshed, update session start time
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('session_start_time', Date.now().toString());
+          }
+        }
       }
 
       setIsLoading(false);
     });
 
+    // Periodic session validation
+    const sessionCheckInterval = setInterval(async () => {
+      if (isLoggedIn) {
+        const isValid = await checkSessionExpiry();
+        if (!isValid) {
+          // Session expired, logout will be handled by checkSessionExpiry
+          clearInterval(sessionCheckInterval);
+        }
+      }
+    }, SESSION_CHECK_INTERVAL);
+
+    // Check session on window focus (user returns to tab)
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && isLoggedIn) {
+        await checkSessionExpiry();
+      }
+    };
+
+    // Check session on window focus
+    const handleFocus = async () => {
+      if (isLoggedIn) {
+        await checkSessionExpiry();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('focus', handleFocus);
+    }
+
     return () => {
       subscription.unsubscribe();
+      clearInterval(sessionCheckInterval);
+      if (typeof window !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('focus', handleFocus);
+      }
     };
-  }, [supabase]);
+  }, [supabase, isLoggedIn, checkSessionExpiry, SESSION_CHECK_INTERVAL]);
 
   const login = useCallback(
     async (email: string, password: string): Promise<{ error: Error | null }> => {
@@ -266,6 +394,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profile) {
           setIsLoggedIn(true);
           setUser(profile);
+          // Store session start time for expiration tracking
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('session_start_time', Date.now().toString());
+          }
           return { error: null };
         }
 
@@ -274,27 +406,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       } catch (error) {
         console.error('Error during login:', error);
-        const errorMessage =
-          error instanceof Error ? error.message : 'Login failed';
+        const errorMessage = error instanceof Error ? error.message : 'Login failed';
         return { error: new Error(errorMessage) };
       }
     },
     [],
   );
-
-  const logout = useCallback(async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Error during logout:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected error during logout:', error);
-    } finally {
-      setIsLoggedIn(false);
-      setUser(null);
-    }
-  }, [supabase]);
 
   const value = useMemo<AuthContextType>(() => {
     return {
