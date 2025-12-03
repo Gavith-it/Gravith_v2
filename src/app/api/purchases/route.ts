@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
 import { buildPurchaseUsageMap } from '@/app/api/_utils/work-progress-usage';
-import { formatDateOnly } from '@/lib/utils/date';
 import type { SharedMaterial } from '@/lib/contexts/materials-context';
 import { createClient } from '@/lib/supabase/server';
+import { formatDateOnly } from '@/lib/utils/date';
 import type { MaterialMaster } from '@/types/entities';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -34,7 +34,10 @@ type PurchaseRow = {
   material_masters?: unknown;
 };
 
-function mapRowToSharedMaterial(row: PurchaseRow, usageOverrides?: Map<string, number>): SharedMaterial {
+function mapRowToSharedMaterial(
+  row: PurchaseRow,
+  usageOverrides?: Map<string, number>,
+): SharedMaterial {
   const rawCategory = row.material_masters;
   let category: MaterialMaster['category'] | undefined;
   if (rawCategory && typeof rawCategory === 'object' && 'category' in rawCategory) {
@@ -56,10 +59,9 @@ function mapRowToSharedMaterial(row: PurchaseRow, usageOverrides?: Map<string, n
   const remainingFromUsage =
     overrideConsumed !== undefined
       ? Math.max(0, baseQuantity - overrideConsumed)
-      :
-    (row.remaining_quantity !== null && row.remaining_quantity !== undefined
-      ? Number(row.remaining_quantity)
-      : Math.max(0, baseQuantity - consumedFromUsage));
+      : row.remaining_quantity !== null && row.remaining_quantity !== undefined
+        ? Number(row.remaining_quantity)
+        : Math.max(0, baseQuantity - consumedFromUsage);
 
   return {
     id: row.id,
@@ -85,9 +87,7 @@ function mapRowToSharedMaterial(row: PurchaseRow, usageOverrides?: Map<string, n
         ? Number(row.empty_weight)
         : undefined,
     netWeight:
-      row.net_weight !== null && row.net_weight !== undefined
-        ? Number(row.net_weight)
-        : undefined,
+      row.net_weight !== null && row.net_weight !== undefined ? Number(row.net_weight) : undefined,
     weightUnit: row.weight_unit ?? undefined,
     consumedQuantity: consumedFromUsage,
     remainingQuantity: remainingFromUsage,
@@ -204,15 +204,17 @@ async function findOrCreateMaterialMaster(
     throw new Error('Failed to search for material master');
   }
 
-  const existingMaterial = (existingMaterials ?? [] as MaterialMasterRow[]).find(
-    (m) => typeof m.name === 'string' && m.name.toLowerCase().trim() === materialName.toLowerCase().trim(),
+  const existingMaterial = (existingMaterials ?? ([] as MaterialMasterRow[])).find(
+    (m) =>
+      typeof m.name === 'string' &&
+      m.name.toLowerCase().trim() === materialName.toLowerCase().trim(),
   ) as MaterialMasterRow | undefined;
 
   if (existingMaterial) {
     // Material exists - update quantity
     const currentQuantity = Number(existingMaterial.quantity ?? 0);
     const newQuantity = currentQuantity + purchasedQuantity;
-    
+
     // Update standard_rate if the new rate is higher (or use average)
     const currentRate = Number(existingMaterial.standard_rate ?? 0);
     const newRate = currentRate > 0 ? Math.max(currentRate, unitRate) : unitRate;
@@ -287,7 +289,10 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
@@ -395,10 +400,7 @@ export async function GET(request: Request) {
     });
 
     // Add cache headers: cache for 60 seconds, revalidate in background
-    response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
-    );
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
 
     return response;
   } catch (error) {
@@ -416,7 +418,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
+    if (
+      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(
+        ctx.role,
+      )
+    ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -444,14 +450,36 @@ export async function POST(request: Request) {
       remainingQuantity,
     } = body;
 
-    if (!materialName || !site || typeof quantity !== 'number' || typeof unitRate !== 'number') {
-      return NextResponse.json({ error: 'Missing required purchase fields.' }, { status: 400 });
+    // Validate required fields with explicit checks
+    if (!materialName || typeof materialName !== 'string' || materialName.trim() === '') {
+      return NextResponse.json({ error: 'Material name is required.' }, { status: 400 });
+    }
+
+    if (!site || typeof site !== 'string' || site.trim() === '') {
+      return NextResponse.json({ error: 'Site name is required.' }, { status: 400 });
+    }
+
+    if (typeof quantity !== 'number' || quantity <= 0) {
+      return NextResponse.json(
+        { error: 'Valid quantity (greater than 0) is required.' },
+        { status: 400 },
+      );
+    }
+
+    if (typeof unitRate !== 'number' || unitRate <= 0) {
+      return NextResponse.json(
+        { error: 'Valid unit rate (greater than 0) is required.' },
+        { status: 400 },
+      );
     }
 
     // Resolve site by name to get site_id
     const siteResolution = await resolveSiteByName(supabase, site, ctx.organizationId);
     if (!siteResolution.ok) {
-      return NextResponse.json({ error: siteResolution.message }, { status: siteResolution.status });
+      return NextResponse.json(
+        { error: siteResolution.message },
+        { status: siteResolution.status },
+      );
     }
 
     // Find or create Material Master automatically
@@ -473,7 +501,12 @@ export async function POST(request: Request) {
     } catch (masterError) {
       console.error('Error in findOrCreateMaterialMaster', masterError);
       return NextResponse.json(
-        { error: masterError instanceof Error ? masterError.message : 'Failed to process material master.' },
+        {
+          error:
+            masterError instanceof Error
+              ? masterError.message
+              : 'Failed to process material master.',
+        },
         { status: 500 },
       );
     }
@@ -501,6 +534,27 @@ export async function POST(request: Request) {
       created_by: ctx.userId,
       updated_by: ctx.userId,
     };
+
+    // Check for duplicate receipt number if receipt_number is provided
+    if (receiptNumber && receiptNumber.trim() !== '') {
+      const { data: existingPurchase, error: checkError } = await supabase
+        .from('material_purchases')
+        .select('id, receipt_number')
+        .eq('organization_id', ctx.organizationId)
+        .eq('receipt_number', receiptNumber.trim())
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking for duplicate receipt number', checkError);
+      } else if (existingPurchase) {
+        return NextResponse.json(
+          {
+            error: `A purchase with receipt number "${receiptNumber}" already exists for this organization. Please use a different receipt number or leave it empty.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     const { data, error } = await supabase
       .from('material_purchases')
@@ -535,7 +589,38 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error('Error creating purchase', error);
-      return NextResponse.json({ error: 'Failed to create purchase.' }, { status: 500 });
+      const errorMessage = error?.message || 'Unknown database error';
+      const errorCode = error?.code;
+      const errorDetails = error?.details || '';
+      console.error('Error details:', { errorMessage, errorCode, errorDetails, payload });
+
+      // Handle specific PostgreSQL error codes
+      if (errorCode === '23505') {
+        // Unique constraint violation
+        if (errorMessage.includes('receipt_number')) {
+          return NextResponse.json(
+            {
+              error: `A purchase with receipt number "${receiptNumber}" already exists for this organization. Please use a different receipt number or leave it empty.`,
+            },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json(
+          {
+            error: 'A purchase with these details already exists. Please check for duplicates.',
+            details: errorMessage,
+          },
+          { status: 400 },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: 'Failed to create purchase.',
+          details: errorMessage,
+        },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json(

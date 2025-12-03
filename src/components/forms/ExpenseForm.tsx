@@ -73,8 +73,8 @@ export function ExpenseForm({
       amount: defaultValues?.amount ?? undefined,
       date: new Date(),
       vendor: '',
-      siteId: '',
-      siteName: lockedSite || '',
+      siteId: defaultValues?.siteId || '',
+      siteName: defaultValues?.siteName || lockedSite || '',
       receipt: '',
       approvedBy: '',
       ...defaultValues,
@@ -82,7 +82,13 @@ export function ExpenseForm({
   });
 
   const { vendors, isLoading: isVendorsLoading } = useVendors();
-  const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>(() => {
+    // Initialize with default site if provided, so Select can show it immediately
+    if (defaultValues?.siteId && defaultValues?.siteName) {
+      return [{ id: defaultValues.siteId, name: defaultValues.siteName }];
+    }
+    return [];
+  });
   const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
 
   useEffect(() => {
@@ -99,15 +105,54 @@ export function ExpenseForm({
           throw new Error(payload.error || 'Failed to load sites.');
         }
 
-        const options = (payload.sites ?? []).map((site) => ({ id: site.id, name: site.name }));
+        let options = (payload.sites ?? []).map((site) => ({ id: site.id, name: site.name }));
+
+        // Ensure default site is in the options list (in case it wasn't loaded or is filtered out)
+        if (defaultValues?.siteId && defaultValues?.siteName) {
+          const defaultSiteExists = options.some((s) => s.id === defaultValues.siteId);
+          if (!defaultSiteExists) {
+            // Add default site at the beginning of the list
+            options = [{ id: defaultValues.siteId, name: defaultValues.siteName }, ...options];
+          } else {
+            // Update the name if it's different (in case site name changed)
+            const existingIndex = options.findIndex((s) => s.id === defaultValues.siteId);
+            if (existingIndex >= 0 && options[existingIndex].name !== defaultValues.siteName) {
+              options[existingIndex].name = defaultValues.siteName;
+            }
+          }
+        }
+
         setSiteOptions(options);
 
+        // Set siteId if defaultValues were provided or if siteName is set
         const currentSiteName = form.getValues('siteName');
         const currentSiteId = form.getValues('siteId');
-        if (!currentSiteId && currentSiteName) {
+
+        // If we have a siteId from defaultValues, use it (now that options are loaded)
+        if (defaultValues?.siteId) {
+          const match = options.find((site) => site.id === defaultValues.siteId);
+          if (match) {
+            // Only set if not already set or if different
+            if (currentSiteId !== match.id) {
+              form.setValue('siteId', match.id, { shouldValidate: true });
+            }
+            if (form.getValues('siteName') !== match.name) {
+              form.setValue('siteName', match.name, { shouldValidate: true });
+            }
+          }
+        } else if (!currentSiteId && currentSiteName) {
+          // Fallback: try to match by name (handles lockedSite case)
           const match = options.find((site) => site.name === currentSiteName);
           if (match) {
             form.setValue('siteId', match.id, { shouldValidate: true });
+            form.setValue('siteName', match.name, { shouldValidate: true });
+          }
+        } else if (!currentSiteId && lockedSite) {
+          // Handle lockedSite prop: try to find site by name
+          const match = options.find((site) => site.name === lockedSite);
+          if (match) {
+            form.setValue('siteId', match.id, { shouldValidate: true });
+            form.setValue('siteName', match.name, { shouldValidate: true });
           }
         }
       } catch (error) {
@@ -119,8 +164,9 @@ export function ExpenseForm({
     };
 
     void loadSites();
-  }, [form, lockedSite]);
+  }, [form, lockedSite, defaultValues?.siteId, defaultValues?.siteName]);
 
+  // Set siteId immediately when defaultValues are provided (before sites load)
   useEffect(() => {
     if (defaultValues?.siteId) {
       form.setValue('siteId', defaultValues.siteId, { shouldValidate: true });
@@ -129,6 +175,24 @@ export function ExpenseForm({
       form.setValue('siteName', defaultValues.siteName, { shouldValidate: true });
     }
   }, [defaultValues?.siteId, defaultValues?.siteName, form]);
+
+  // Update siteId when sites finish loading to ensure it matches loaded options
+  useEffect(() => {
+    if (defaultValues?.siteId && !isLoadingSites && siteOptions.length > 0) {
+      // Verify the siteId exists in the loaded options and update if needed
+      const siteExists = siteOptions.some((site) => site.id === defaultValues.siteId);
+      if (siteExists) {
+        const currentSiteId = form.getValues('siteId');
+        if (currentSiteId !== defaultValues.siteId) {
+          form.setValue('siteId', defaultValues.siteId, { shouldValidate: true });
+        }
+        const match = siteOptions.find((site) => site.id === defaultValues.siteId);
+        if (match && match.name !== form.getValues('siteName')) {
+          form.setValue('siteName', match.name, { shouldValidate: true });
+        }
+      }
+    }
+  }, [defaultValues?.siteId, form, isLoadingSites, siteOptions]);
 
   const vendorOptions = useMemo(() => {
     return vendors.filter((vendor) => vendor.status === 'active');
@@ -150,7 +214,9 @@ export function ExpenseForm({
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Category <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Category <span className="text-destructive">*</span>
+                      </FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -175,7 +241,9 @@ export function ExpenseForm({
                   name="subcategory"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Subcategory <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Subcategory <span className="text-destructive">*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input placeholder="Cement, Steel, etc." {...field} />
                       </FormControl>
@@ -190,7 +258,9 @@ export function ExpenseForm({
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description <span className="text-destructive">*</span></FormLabel>
+                    <FormLabel>
+                      Description <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Purchase of cement for foundation work"
@@ -209,7 +279,9 @@ export function ExpenseForm({
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Amount (₹) <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Amount (₹) <span className="text-destructive">*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -233,7 +305,9 @@ export function ExpenseForm({
                   name="date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Date <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Date <span className="text-destructive">*</span>
+                      </FormLabel>
                       <FormControl>
                         <DatePicker
                           date={field.value}
@@ -253,7 +327,9 @@ export function ExpenseForm({
                   name="vendor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Vendor <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Vendor <span className="text-destructive">*</span>
+                      </FormLabel>
                       <Select
                         onValueChange={field.onChange}
                         defaultValue={field.value}
@@ -299,18 +375,22 @@ export function ExpenseForm({
                   name="siteId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Site <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Site <span className="text-destructive">*</span>
+                      </FormLabel>
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value);
                           const selected = siteOptions.find((site) => site.id === value);
-                          form.setValue('siteName', selected?.name ?? '', { shouldValidate: true });
+                          if (selected) {
+                            form.setValue('siteName', selected.name, { shouldValidate: true });
+                          }
                         }}
-                        value={field.value}
-                        disabled={!!lockedSite || isLoadingSites || siteOptions.length === 0}
+                        value={field.value || ''}
+                        disabled={isLoadingSites}
                       >
                         <FormControl>
-                          <SelectTrigger className={lockedSite ? 'bg-muted' : ''}>
+                          <SelectTrigger>
                             <SelectValue
                               placeholder={
                                 isLoadingSites
@@ -324,7 +404,9 @@ export function ExpenseForm({
                         </FormControl>
                         <SelectContent>
                           {isLoadingSites ? (
-                            <div className="px-3 py-2 text-sm text-muted-foreground">Loading sites…</div>
+                            <div className="px-3 py-2 text-sm text-muted-foreground">
+                              Loading sites…
+                            </div>
                           ) : siteOptions.length === 0 ? (
                             <div className="px-3 py-2 text-sm text-muted-foreground">
                               No active sites found. Add sites first.
@@ -364,7 +446,9 @@ export function ExpenseForm({
                   name="approvedBy"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Approved By <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel>
+                        Approved By <span className="text-destructive">*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input placeholder="Project Manager" {...field} />
                       </FormControl>
@@ -373,7 +457,6 @@ export function ExpenseForm({
                   )}
                 />
               </div>
-
             </div>
           </form>
         </Form>

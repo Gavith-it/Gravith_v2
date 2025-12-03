@@ -103,6 +103,8 @@ export async function GET() {
       { data: allExpenseRows },
       { count: activeVendorCount },
       { data: activityRows },
+      { data: materialMastersRows },
+      { data: vehicleRows },
     ] = await Promise.all([
       supabase
         .from('sites')
@@ -116,8 +118,9 @@ export async function GET() {
           'id, name, location, status, progress, expected_end_date, budget, spent, updated_at',
         )
         .eq('organization_id', organizationId)
-        .order('updated_at', { ascending: false })
-        .limit(5),
+        .not('status', 'eq', 'Completed')
+        .not('status', 'eq', 'Canceled')
+        .order('updated_at', { ascending: false }),
       supabase
         .from('vehicles')
         .select('id', { count: 'exact', head: true })
@@ -152,6 +155,16 @@ export async function GET() {
         .from('project_activities')
         .select('id, name, progress')
         .eq('organization_id', organizationId),
+      supabase
+        .from('material_masters')
+        .select('id, material_name, remaining_quantity, unit, site_id, site_name')
+        .eq('organization_id', organizationId)
+        .gt('remaining_quantity', 0),
+      supabase
+        .from('vehicles')
+        .select('id, vehicle_number, last_maintenance_date, next_maintenance_date, status')
+        .eq('organization_id', organizationId)
+        .not('status', 'eq', 'returned'),
     ]);
 
     const materialValue = (materialPurchaseTotals ?? []).reduce<number>(
@@ -182,16 +195,18 @@ export async function GET() {
       const siteId = record.site_id;
       const siteName = record.site_name;
       const amount = Number(record.amount ?? 0);
-      
+
       // Match by site_id if available, otherwise by site_name
       if (typeof siteId === 'string' && siteId) {
         const current = siteSpentMap.get(siteId) ?? 0;
         siteSpentMap.set(siteId, current + amount);
-      } else if (typeof siteName === 'string' && siteName) {
-        // Find site by name and add to its spent
-        const matchingSite = (siteRows ?? []).find(
-          (s) => (s as Record<string, unknown>).name === siteName
-        );
+      } else if (typeof siteName === 'string' && siteName.trim()) {
+        // Find site by name (case-insensitive, trimmed) and add to its spent
+        const normalizedSiteName = siteName.trim().toLowerCase();
+        const matchingSite = (siteRows ?? []).find((s) => {
+          const sName = (s as Record<string, unknown>).name;
+          return typeof sName === 'string' && sName.trim().toLowerCase() === normalizedSiteName;
+        });
         if (matchingSite) {
           const siteIdFromMatch = (matchingSite as Record<string, unknown>).id;
           if (typeof siteIdFromMatch === 'string') {
@@ -211,7 +226,7 @@ export async function GET() {
       const statusValue = record.status;
       const dueDateValue = record.expected_end_date;
       const budgetValue = record.budget;
-      
+
       // Get spent from expenses map, fallback to sites.spent if no expenses found
       const siteId = typeof idValue === 'string' ? idValue : String(idValue ?? '');
       const calculatedSpent = siteSpentMap.get(siteId) ?? 0;
@@ -296,6 +311,126 @@ export async function GET() {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 6);
 
+    // Generate alerts
+    const alerts: DashboardAlert[] = [];
+
+    // 1. Low stock warnings (materials with remaining quantity < 10% of typical purchase)
+    const lowStockMaterials = (materialMastersRows ?? []).filter((material) => {
+      const record = material as Record<string, unknown>;
+      const remainingQty = Number(record.remaining_quantity ?? 0);
+      // Consider low stock if remaining quantity is less than 10 units (adjust threshold as needed)
+      return remainingQty > 0 && remainingQty < 10;
+    });
+
+    if (lowStockMaterials.length > 0) {
+      const materialNames = lowStockMaterials
+        .slice(0, 3)
+        .map((m) => {
+          const record = m as Record<string, unknown>;
+          return String(record.material_name ?? 'Unknown');
+        })
+        .join(', ');
+      const count = lowStockMaterials.length;
+      alerts.push({
+        id: 'low-stock-warning',
+        type: 'warning',
+        title: 'Low Stock Alert',
+        description:
+          count === 1
+            ? `${materialNames} is running low on stock.`
+            : `${count} materials are running low on stock: ${materialNames}${count > 3 ? ' and more' : ''}.`,
+        priority: 'high',
+      });
+    }
+
+    // 2. Budget overrun warnings (sites with >90% budget used)
+    const budgetAlerts = activeSites.filter((site) => {
+      const budgetUsed =
+        site.budget.allocated > 0 ? (site.budget.spent / site.budget.allocated) * 100 : 0;
+      return budgetUsed >= 90 && budgetUsed < 100;
+    });
+
+    if (budgetAlerts.length > 0) {
+      budgetAlerts.forEach((site) => {
+        const budgetUsed =
+          site.budget.allocated > 0 ? (site.budget.spent / site.budget.allocated) * 100 : 0;
+        alerts.push({
+          id: `budget-warning-${site.id}`,
+          type: 'warning',
+          title: 'Budget Warning',
+          description: `${site.name} has used ${Math.round(budgetUsed)}% of allocated budget (₹${(site.budget.spent / 100000).toFixed(1)}L / ₹${(site.budget.allocated / 100000).toFixed(1)}L).`,
+          priority: budgetUsed >= 95 ? 'high' : 'medium',
+        });
+      });
+    }
+
+    // 3. Budget exceeded alerts (sites with >100% budget used)
+    const exceededBudgetSites = activeSites.filter((site) => {
+      const budgetUsed =
+        site.budget.allocated > 0 ? (site.budget.spent / site.budget.allocated) * 100 : 0;
+      return budgetUsed >= 100;
+    });
+
+    if (exceededBudgetSites.length > 0) {
+      exceededBudgetSites.forEach((site) => {
+        const budgetUsed =
+          site.budget.allocated > 0 ? (site.budget.spent / site.budget.allocated) * 100 : 0;
+        alerts.push({
+          id: `budget-exceeded-${site.id}`,
+          type: 'warning',
+          title: 'Budget Exceeded',
+          description: `${site.name} has exceeded its budget by ${Math.round(budgetUsed - 100)}% (₹${(site.budget.spent / 100000).toFixed(1)}L / ₹${(site.budget.allocated / 100000).toFixed(1)}L).`,
+          priority: 'high',
+        });
+      });
+    }
+
+    // 4. Vehicle maintenance reminders
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sevenDaysFromNow = new Date(today);
+    sevenDaysFromNow.setDate(today.getDate() + 7);
+
+    const vehiclesNeedingService = (vehicleRows ?? []).filter((vehicle) => {
+      const record = vehicle as Record<string, unknown>;
+      const nextServiceDate = record.next_maintenance_date;
+
+      if (!nextServiceDate) return false;
+
+      const serviceDate = new Date(nextServiceDate as string);
+      serviceDate.setHours(0, 0, 0, 0);
+
+      // Alert if service is due within 7 days or overdue
+      return serviceDate <= sevenDaysFromNow;
+    });
+
+    if (vehiclesNeedingService.length > 0) {
+      const vehicleNumbers = vehiclesNeedingService
+        .slice(0, 3)
+        .map((v) => {
+          const record = v as Record<string, unknown>;
+          return String(record.vehicle_number ?? 'Unknown');
+        })
+        .join(', ');
+      const count = vehiclesNeedingService.length;
+      alerts.push({
+        id: 'vehicle-maintenance-reminder',
+        type: 'info',
+        title: 'Vehicle Maintenance Due',
+        description:
+          count === 1
+            ? `Vehicle ${vehicleNumbers} requires maintenance soon.`
+            : `${count} vehicles require maintenance soon: ${vehicleNumbers}${count > 3 ? ' and more' : ''}.`,
+        priority: 'medium',
+      });
+    }
+
+    // Sort alerts by priority (high first, then medium, then low)
+    alerts.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      return priorityOrder[b.priority] - priorityOrder[a.priority];
+    });
+
     const payload: DashboardPayload = {
       quickStats: {
         activeSites: activeSitesCount ?? 0,
@@ -306,7 +441,7 @@ export async function GET() {
         completionRate,
       },
       recentActivities,
-      alerts: [],
+      alerts: alerts.slice(0, 10), // Limit to 10 most important alerts
       activeSites,
     };
 

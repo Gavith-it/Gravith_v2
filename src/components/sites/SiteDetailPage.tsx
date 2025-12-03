@@ -24,13 +24,12 @@ import {
 import { useRouter } from 'next/navigation';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import type { Site } from '@/types/sites';
-import type { MaterialPurchase } from '@/types/entities';
-import type { WorkProgressEntry } from '@/types/entities';
+
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
 import { ExpenseForm, type ExpenseFormData } from '@/components/forms/ExpenseForm';
+import MaterialMasterForm from '@/components/forms/MaterialMasterForm';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SectionCard } from '@/components/layout/SectionCard';
 import {
@@ -48,11 +47,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useAuth } from '@/lib/auth-context';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDate, formatDateShort } from '@/lib/utils';
-import { useAuth } from '@/lib/auth-context';
 import type { Expense } from '@/types';
+import type { WorkProgressEntry } from '@/types/entities';
+import type { MaterialPurchase } from '@/types/entities';
+import type { MaterialMasterInput } from '@/types/materials';
+import type { Site } from '@/types/sites';
 
 // Mock Data - In production, this would come from API
 interface SiteDetails {
@@ -352,12 +355,13 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const router = useRouter();
   const { isLoading: isAuthLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
-  
+
   // Immediate log when component mounts
   console.log('🚀 SiteDetailPage Component Mounted!');
   console.log('🚀 Site ID:', siteId);
   console.log('🚀 Site ID Type:', typeof siteId);
   const expenseDialog = useDialogState();
+  const materialDialog = useDialogState();
   const [isLoading, setIsLoading] = useState(false);
   const [site, setSite] = useState<Site | null>(null);
   const [sitePurchases, setSitePurchases] = useState<SitePurchase[]>([]);
@@ -494,7 +498,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
         // Some work progress entries might have siteId as null, so we match by name
         const siteNameNormalized = siteName.trim().toLowerCase();
         const allEntries = payload.entries ?? [];
-        
+
         const entries = allEntries.filter((e) => {
           const matchesSiteId = e.siteId === siteId;
           const entrySiteNameNormalized = e.siteName?.trim().toLowerCase() || '';
@@ -512,14 +516,14 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           });
           window.console.log('Total entries from API:', allEntries.length);
           window.console.log('Matched entries:', entries.length);
-          
+
           // Show why each entry matched or didn't match
           allEntries.forEach((e) => {
             const entrySiteNameNorm = e.siteName?.trim().toLowerCase() || '';
             const matchesId = e.siteId === siteId;
             const matchesName = entrySiteNameNorm === siteNameNormalized;
             const matches = matchesId || matchesName;
-            
+
             if (!matches) {
               window.console.warn('❌ Entry NOT matched:', {
                 id: e.id,
@@ -549,9 +553,8 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
             on_hold: 'on-hold',
             in_progress: 'in-progress',
           };
-          const mappedStatus: SiteWorkProgress['status'] =
-            statusMap[e.status] || 'in-progress';
-          
+          const mappedStatus: SiteWorkProgress['status'] = statusMap[e.status] || 'in-progress';
+
           const mapped: SiteWorkProgress = {
             id: e.id,
             activityName: e.workType,
@@ -565,7 +568,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           };
           return mapped;
         });
-        
+
         if (!isCancelled) {
           setSiteWorkProgress(mappedProgress);
         }
@@ -583,162 +586,172 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
     };
   }, [siteId, siteName]); // Depend on siteId and memoized site name
 
-  // Fetch material masters for the site
-  useEffect(() => {
-    const fetchMaterials = async () => {
-      try {
-        // Add prominent log - DO NOT CLEAR CONSOLE
-        console.log('🔍 ===== OB DEBUG START =====');
-        console.log('🔍 ===== OB DEBUG START =====');
-        console.log('🔍 ===== OB DEBUG START =====');
-        console.log('📍 Current Site ID:', siteId);
-        console.log('📍 Site ID Type:', typeof siteId);
-        console.log('📍 Site ID Length:', siteId?.length);
-        console.log('📍 Site ID Normalized:', String(siteId || '').trim());
-        
-        const response = await fetch('/api/materials', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          materials?: Array<{
-            id: string;
-            name: string;
-            category: string;
-            unit: string;
-            siteId?: string | null;
+  // Fetch material masters for the site - extracted as reusable function
+  const fetchMaterials = React.useCallback(async () => {
+    try {
+      // Add prominent log - DO NOT CLEAR CONSOLE
+      console.log('🔍 ===== OB DEBUG START =====');
+      console.log('🔍 ===== OB DEBUG START =====');
+      console.log('🔍 ===== OB DEBUG START =====');
+      console.log('📍 Current Site ID:', siteId);
+      console.log('📍 Site ID Type:', typeof siteId);
+      console.log('📍 Site ID Length:', siteId?.length);
+      console.log('📍 Site ID Normalized:', String(siteId || '').trim());
+
+      const response = await fetch('/api/materials', { cache: 'no-store' });
+      const payload = (await response.json().catch(() => ({}))) as {
+        materials?: Array<{
+          id: string;
+          name: string;
+          category: string;
+          unit: string;
+          siteId?: string | null;
+          quantity: number;
+          consumedQuantity: number;
+          siteAllocations?: Array<{
+            siteId: string;
+            siteName: string;
             quantity: number;
-            consumedQuantity: number;
-            siteAllocations?: Array<{
-              siteId: string;
-              siteName: string;
-              quantity: number;
-            }>;
           }>;
-          error?: string;
-        };
+        }>;
+        error?: string;
+      };
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load materials');
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load materials');
+      }
+
+      // Filter materials that either:
+      // 1. Have siteId matching the current site (backward compatibility)
+      // 2. Have site allocations for the current site (OB allocated via material_site_allocations)
+      const normalizedSiteId = String(siteId || '').trim();
+      const materials = (payload.materials ?? []).filter((m) => {
+        // Check if material has direct siteId match (normalize for comparison)
+        const materialSiteId = String(m.siteId || '').trim();
+        if (materialSiteId === normalizedSiteId) {
+          return true;
         }
+        // Check if material has site allocations for this site
+        if (m.siteAllocations && m.siteAllocations.length > 0) {
+          return m.siteAllocations.some((alloc) => {
+            const allocSiteId = String(alloc.siteId || '').trim();
+            return allocSiteId === normalizedSiteId;
+          });
+        }
+        return false;
+      });
 
-        // Filter materials that either:
-        // 1. Have siteId matching the current site (backward compatibility)
-        // 2. Have site allocations for the current site (OB allocated via material_site_allocations)
+      const mappedMaterials: SiteMaterialMaster[] = materials.map((m) => {
+        // Find the site allocation for this specific site
+        // Use strict comparison and also handle potential string/UUID format differences
         const normalizedSiteId = String(siteId || '').trim();
-        const materials = (payload.materials ?? []).filter((m) => {
-          // Check if material has direct siteId match (normalize for comparison)
-          const materialSiteId = String(m.siteId || '').trim();
-          if (materialSiteId === normalizedSiteId) {
-            return true;
-          }
-          // Check if material has site allocations for this site
-          if (m.siteAllocations && m.siteAllocations.length > 0) {
-            return m.siteAllocations.some((alloc) => {
-              const allocSiteId = String(alloc.siteId || '').trim();
-              return allocSiteId === normalizedSiteId;
-            });
-          }
-          return false;
-        });
 
-        const mappedMaterials: SiteMaterialMaster[] = materials.map((m) => {
-          // Find the site allocation for this specific site
-          // Use strict comparison and also handle potential string/UUID format differences
-          const normalizedSiteId = String(siteId || '').trim();
-          
-          // Debug logging - ALWAYS log for materials with allocations
-          if (m.siteAllocations && m.siteAllocations.length > 0) {
-            console.log('📦 Material:', m.name, `(${m.id})`);
-            console.log('🔎 Looking for siteId:', `"${normalizedSiteId}"`);
-            console.log('📋 All Site Allocations:', m.siteAllocations);
-            console.log('📋 Allocation Details:', m.siteAllocations.map(a => ({
+        // Debug logging - ALWAYS log for materials with allocations
+        if (m.siteAllocations && m.siteAllocations.length > 0) {
+          console.log('📦 Material:', m.name, `(${m.id})`);
+          console.log('🔎 Looking for siteId:', `"${normalizedSiteId}"`);
+          console.log('📋 All Site Allocations:', m.siteAllocations);
+          console.log(
+            '📋 Allocation Details:',
+            m.siteAllocations.map((a) => ({
               siteId: a.siteId,
               siteIdType: typeof a.siteId,
               siteIdNormalized: String(a.siteId || '').trim(),
               siteName: a.siteName,
               quantity: a.quantity,
-              matches: String(a.siteId || '').trim() === normalizedSiteId
-            })));
-          } else {
-            console.log('📦 Material:', m.name, '- NO site allocations');
-          }
-          
-          const siteAllocation = m.siteAllocations?.find((alloc) => {
-            // Normalize both IDs for comparison (trim and convert to string)
-            const allocSiteId = String(alloc.siteId || '').trim();
-            const currentSiteId = String(siteId || '').trim();
-            const matches = allocSiteId === currentSiteId;
-            
-            if (m.siteAllocations && m.siteAllocations.length > 0 && !matches) {
-              console.log(`[OB Debug] Comparing: "${allocSiteId}" === "${currentSiteId}" = ${matches}`);
-            }
-            
-            return matches;
-          });
-          
-          // If material has site allocations, we MUST use the site-specific allocation
-          // If no site allocation found but material has allocations array, use 0 (shouldn't happen if filtering works)
-          // Otherwise, fall back to material's quantity (for backward compatibility with materials without site allocations)
-          let allocatedOB: number;
-          if (m.siteAllocations && m.siteAllocations.length > 0) {
-            // Material has site allocations - use site-specific OB or 0 if not found
-            if (siteAllocation) {
-              allocatedOB = siteAllocation.quantity;
-              console.log('✅ MATCH FOUND! Using site-specific OB:', allocatedOB);
-              console.log('✅ Allocation Details:', {
-                siteId: siteAllocation.siteId,
-                siteName: siteAllocation.siteName,
-                quantity: siteAllocation.quantity
-              });
-            } else {
-              // This shouldn't happen if filtering works correctly, but log for debugging
-              console.error('❌ NO MATCH FOUND!');
-              console.error('❌ Material:', m.name, `(${m.id})`);
-              console.error('❌ Looking for siteId:', `"${normalizedSiteId}"`);
-              console.error('❌ Available siteIds:', m.siteAllocations.map(a => `"${String(a.siteId || '').trim()}"`));
-              console.error('❌ Using 0 instead of total quantity');
-              allocatedOB = 0; // Use 0 - material shouldn't appear if no allocation matches
-            }
-          } else {
-            // Material doesn't have site allocations - use total quantity (backward compatibility)
-            allocatedOB = m.quantity;
-            console.log('⚠️ No site allocations, using total quantity:', allocatedOB);
-          }
-          
-          console.log('💰 Final allocatedOB for', m.name, ':', allocatedOB);
-          console.log('---');
-          
-          const siteStock = allocatedOB - m.consumedQuantity;
+              matches: String(a.siteId || '').trim() === normalizedSiteId,
+            })),
+          );
+        } else {
+          console.log('📦 Material:', m.name, '- NO site allocations');
+        }
 
-          return {
-            id: m.id,
-            siteId: siteId,
-            materialName: m.name,
-            category: m.category,
-            unit: m.unit,
-            siteStock: siteStock,
-            allocated: allocatedOB,
-            reserved: 0,
-            status: siteStock > 0 ? (siteStock < allocatedOB * 0.2 ? 'low' : 'available') : 'critical',
-          };
-        });
-        console.log('📊 Final Mapped Materials:', mappedMaterials);
-        console.log('📊 Materials Summary:');
-        mappedMaterials.forEach((m) => {
-          console.log(`  - ${m.materialName}: Allocated=${m.allocated}, On Site=${m.siteStock}`);
-        });
-        console.log('🔍 ===== OB DEBUG END =====');
-        setSiteMaterialMasters(mappedMaterials);
-      } catch (error) {
-        console.error('❌ Error fetching materials:', error);
-      }
-    };
+        const siteAllocation = m.siteAllocations?.find((alloc) => {
+          // Normalize both IDs for comparison (trim and convert to string)
+          const allocSiteId = String(alloc.siteId || '').trim();
+          const currentSiteId = String(siteId || '').trim();
+          const matches = allocSiteId === currentSiteId;
 
+          if (m.siteAllocations && m.siteAllocations.length > 0 && !matches) {
+            console.log(
+              `[OB Debug] Comparing: "${allocSiteId}" === "${currentSiteId}" = ${matches}`,
+            );
+          }
+
+          return matches;
+        });
+
+        // If material has site allocations, we MUST use the site-specific allocation
+        // If no site allocation found but material has allocations array, use 0 (shouldn't happen if filtering works)
+        // Otherwise, fall back to material's quantity (for backward compatibility with materials without site allocations)
+        let allocatedOB: number;
+        if (m.siteAllocations && m.siteAllocations.length > 0) {
+          // Material has site allocations - use site-specific OB or 0 if not found
+          if (siteAllocation) {
+            allocatedOB = siteAllocation.quantity;
+            console.log('✅ MATCH FOUND! Using site-specific OB:', allocatedOB);
+            console.log('✅ Allocation Details:', {
+              siteId: siteAllocation.siteId,
+              siteName: siteAllocation.siteName,
+              quantity: siteAllocation.quantity,
+            });
+          } else {
+            // This shouldn't happen if filtering works correctly, but log for debugging
+            console.error('❌ NO MATCH FOUND!');
+            console.error('❌ Material:', m.name, `(${m.id})`);
+            console.error('❌ Looking for siteId:', `"${normalizedSiteId}"`);
+            console.error(
+              '❌ Available siteIds:',
+              m.siteAllocations.map((a) => `"${String(a.siteId || '').trim()}"`),
+            );
+            console.error('❌ Using 0 instead of total quantity');
+            allocatedOB = 0; // Use 0 - material shouldn't appear if no allocation matches
+          }
+        } else {
+          // Material doesn't have site allocations - use total quantity (backward compatibility)
+          allocatedOB = m.quantity;
+          console.log('⚠️ No site allocations, using total quantity:', allocatedOB);
+        }
+
+        console.log('💰 Final allocatedOB for', m.name, ':', allocatedOB);
+        console.log('---');
+
+        const siteStock = allocatedOB - m.consumedQuantity;
+
+        return {
+          id: m.id,
+          siteId: siteId,
+          materialName: m.name,
+          category: m.category,
+          unit: m.unit,
+          siteStock: siteStock,
+          allocated: allocatedOB,
+          reserved: 0,
+          status:
+            siteStock > 0 ? (siteStock < allocatedOB * 0.2 ? 'low' : 'available') : 'critical',
+        };
+      });
+      console.log('📊 Final Mapped Materials:', mappedMaterials);
+      console.log('📊 Materials Summary:');
+      mappedMaterials.forEach((m) => {
+        console.log(`  - ${m.materialName}: Allocated=${m.allocated}, On Site=${m.siteStock}`);
+      });
+      console.log('🔍 ===== OB DEBUG END =====');
+      setSiteMaterialMasters(mappedMaterials);
+    } catch (error) {
+      console.error('❌ Error fetching materials:', error);
+    }
+  }, [siteId]);
+
+  // Fetch materials when siteId changes
+  useEffect(() => {
     if (siteId) {
       console.log('✅ siteId exists:', siteId, '- calling fetchMaterials()');
       void fetchMaterials();
     } else {
       console.error('❌ No siteId provided! Cannot fetch materials.');
     }
-  }, [siteId]);
+  }, [siteId, fetchMaterials]);
 
   // Use mock data for vehicles and labour (not yet implemented in API)
   const siteVehicles = mockVehicles;
@@ -968,9 +981,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                 <div className="space-y-1">
                   <p className="text-2xl font-bold text-blue-600">{averageProgress}%</p>
                   {siteWorkProgress.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      (No work progress entries)
-                    </p>
+                    <p className="text-xs text-muted-foreground">(No work progress entries)</p>
                   )}
                   {siteWorkProgress.length > 0 && (
                     <p className="text-xs text-muted-foreground">
@@ -1203,7 +1214,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                 Monitor on-site material availability and allocation
               </p>
             </div>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => materialDialog.openDialog()}>
               <Plus className="h-4 w-4" />
               Add Material
             </Button>
@@ -1525,8 +1536,81 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
           onSubmit={handleExpenseSubmit}
           onCancel={expenseDialog.closeDialog}
           isLoading={isLoading}
-          lockedSite={site.name}
           defaultValues={{ siteId: site.id, siteName: site.name }}
+        />
+      </FormDialog>
+
+      {/* Add Material Dialog */}
+      <FormDialog
+        title="Add Material Master"
+        description={`Create a new material master${site ? ` for ${site.name}` : ''}`}
+        isOpen={materialDialog.isDialogOpen}
+        onOpenChange={(open) => (open ? materialDialog.openDialog() : materialDialog.closeDialog())}
+        maxWidth="max-w-4xl"
+      >
+        <MaterialMasterForm
+          onSubmit={async (data: MaterialMasterInput) => {
+            try {
+              setIsLoading(true);
+              const response = await fetch('/api/materials', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  name: data.name,
+                  category: data.category,
+                  unit: data.unit,
+                  standardRate: data.standardRate,
+                  isActive: data.isActive,
+                  hsn: data.hsn,
+                  taxRateId: data.taxRateId,
+                  siteId: site?.id ?? null,
+                  openingBalance: data.openingBalance,
+                  siteAllocations:
+                    data.siteAllocations ||
+                    (site
+                      ? [
+                          {
+                            siteId: site.id,
+                            siteName: site.name,
+                            quantity: data.openingBalance || 0,
+                          },
+                        ]
+                      : []),
+                }),
+              });
+
+              const payload = (await response.json().catch(() => ({}))) as {
+                material?: unknown;
+                error?: string;
+              };
+
+              if (!response.ok || !payload.material) {
+                throw new Error(payload.error || 'Failed to create material');
+              }
+
+              toast.success('Material created successfully');
+              materialDialog.closeDialog();
+
+              // Refresh the materials list immediately
+              await fetchMaterials();
+            } catch (error) {
+              console.error('Error creating material:', error);
+              toast.error(error instanceof Error ? error.message : 'Failed to create material');
+              throw error; // Re-throw to let the form handle the error state
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          onCancel={materialDialog.closeDialog}
+          defaultValues={
+            site
+              ? {
+                  siteId: site.id,
+                }
+              : undefined
+          }
         />
       </FormDialog>
     </div>

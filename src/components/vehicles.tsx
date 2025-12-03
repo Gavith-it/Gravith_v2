@@ -29,23 +29,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { DatePicker } from '@/components/ui/date-picker';
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
   DialogContent,
@@ -54,20 +39,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { useDialogState } from '@/lib/hooks/useDialogState';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  useVehicleRefueling,
-  useVehicles,
-  useVehicleUsage,
-  useVendors,
-} from '@/lib/contexts';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useVehicleRefueling, useVehicles, useVehicleUsage, useVendors } from '@/lib/contexts';
+import { useDialogState } from '@/lib/hooks/useDialogState';
+import { formatDateShort } from '@/lib/utils';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 import type {
   Vehicle as VehicleEntity,
   VehicleRefueling as VehicleRefuelingEntity,
   VehicleUsage as VehicleUsageEntity,
 } from '@/types/entities';
-import { formatDateShort } from '@/lib/utils';
-import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 type Vehicle = VehicleEntity;
 type VehicleRefueling = VehicleRefuelingEntity;
@@ -158,7 +153,15 @@ export function VehiclesPage({
   selectedVehicle: propSelectedVehicle,
   onVehicleSelect,
 }: VehicleManagementProps) {
-  const { vehicles, isLoading: isVehiclesLoading, addVehicle, updateVehicle, deleteVehicle, refresh, pagination } = useVehicles();
+  const {
+    vehicles,
+    isLoading: isVehiclesLoading,
+    addVehicle,
+    updateVehicle,
+    deleteVehicle,
+    refresh,
+    pagination,
+  } = useVehicles();
   const { vendors } = useVendors();
 
   const {
@@ -256,6 +259,8 @@ export function VehiclesPage({
     vendor: '',
     make: '',
     model: '',
+    lastMaintenanceDate: '',
+    nextMaintenanceDate: '',
   });
 
   const refuelingDialog = useDialogState<VehicleRefueling>();
@@ -321,13 +326,16 @@ export function VehiclesPage({
 
   const [appliedRefuelingFilters, setAppliedRefuelingFilters] =
     useState<RefuelingAdvancedFilterState>(createDefaultRefuelingAdvancedFilters());
-  const [draftRefuelingFilters, setDraftRefuelingFilters] =
-    useState<RefuelingAdvancedFilterState>(createDefaultRefuelingAdvancedFilters());
+  const [draftRefuelingFilters, setDraftRefuelingFilters] = useState<RefuelingAdvancedFilterState>(
+    createDefaultRefuelingAdvancedFilters(),
+  );
 
-  const [appliedUsageFilters, setAppliedUsageFilters] =
-    useState<UsageAdvancedFilterState>(createDefaultUsageAdvancedFilters());
-  const [draftUsageFilters, setDraftUsageFilters] =
-    useState<UsageAdvancedFilterState>(createDefaultUsageAdvancedFilters());
+  const [appliedUsageFilters, setAppliedUsageFilters] = useState<UsageAdvancedFilterState>(
+    createDefaultUsageAdvancedFilters(),
+  );
+  const [draftUsageFilters, setDraftUsageFilters] = useState<UsageAdvancedFilterState>(
+    createDefaultUsageAdvancedFilters(),
+  );
 
   const cloneRefuelingAdvancedFilters = (
     filters: RefuelingAdvancedFilterState,
@@ -508,9 +516,13 @@ export function VehiclesPage({
       const matchesDateFrom = !dateFrom || (usageDate !== null && usageDate >= dateFrom);
       const matchesDateTo = !dateTo || (usageDate !== null && usageDate <= dateTo);
       const matchesDistanceMin =
-        distanceMin === undefined || Number.isNaN(distanceMin) || record.totalDistance >= distanceMin;
+        distanceMin === undefined ||
+        Number.isNaN(distanceMin) ||
+        record.totalDistance >= distanceMin;
       const matchesDistanceMax =
-        distanceMax === undefined || Number.isNaN(distanceMax) || record.totalDistance <= distanceMax;
+        distanceMax === undefined ||
+        Number.isNaN(distanceMax) ||
+        record.totalDistance <= distanceMax;
       const matchesFuelMin =
         fuelMin === undefined || Number.isNaN(fuelMin) || record.fuelConsumed >= fuelMin;
       const matchesFuelMax =
@@ -582,9 +594,10 @@ export function VehiclesPage({
     }
 
     if (!selectedVehicle || !vehicles.some((vehicle) => vehicle.id === selectedVehicle)) {
-      const nextId = propSelectedVehicle && vehicles.some((v) => v.id === propSelectedVehicle)
-        ? propSelectedVehicle
-        : vehicles[0].id;
+      const nextId =
+        propSelectedVehicle && vehicles.some((v) => v.id === propSelectedVehicle)
+          ? propSelectedVehicle
+          : vehicles[0].id;
       setSelectedVehicle(nextId);
       onVehicleSelect?.(nextId);
     }
@@ -659,10 +672,7 @@ export function VehiclesPage({
     (sum, record) => sum + record.totalDistance,
     0,
   );
-  const totalFuelConsumed = usageRecords.reduce(
-    (sum, record) => sum + record.fuelConsumed,
-    0,
-  );
+  const totalFuelConsumed = usageRecords.reduce((sum, record) => sum + record.fuelConsumed, 0);
   const averageFuelEfficiency =
     totalFuelConsumed > 0 ? totalDistanceTravelled / totalFuelConsumed : 0;
 
@@ -756,6 +766,8 @@ export function VehiclesPage({
       vendor: '',
       make: '',
       model: '',
+      lastMaintenanceDate: '',
+      nextMaintenanceDate: '',
     });
     setEditingVehicle(null);
   }, []);
@@ -779,6 +791,8 @@ export function VehiclesPage({
           vendor: vehicleForm.vendor.trim() || null,
           make: vehicleForm.make.trim() || null,
           model: vehicleForm.model.trim() || null,
+          lastMaintenanceDate: vehicleForm.lastMaintenanceDate || null,
+          nextMaintenanceDate: vehicleForm.nextMaintenanceDate || null,
         });
         toast.success('Vehicle updated.');
       } else {
@@ -790,6 +804,8 @@ export function VehiclesPage({
           vendor: vehicleForm.vendor.trim() || null,
           make: vehicleForm.make.trim() || null,
           model: vehicleForm.model.trim() || null,
+          lastMaintenanceDate: vehicleForm.lastMaintenanceDate || null,
+          nextMaintenanceDate: vehicleForm.nextMaintenanceDate || null,
         });
         toast.success('Vehicle created.');
       }
@@ -813,27 +829,32 @@ export function VehiclesPage({
       vendor: vehicle.vendor || '',
       make: vehicle.make || '',
       model: vehicle.model || '',
+      lastMaintenanceDate: vehicle.lastMaintenanceDate || '',
+      nextMaintenanceDate: vehicle.nextMaintenanceDate || '',
     });
     setIsVehicleDialogOpen(true);
   }, []);
 
-  const handleDeleteVehicle = useCallback(async (vehicleId: string) => {
-    if (!confirm('Are you sure you want to delete this vehicle? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      await deleteVehicle(vehicleId);
-      toast.success('Vehicle deleted.');
-      if (selectedVehicle === vehicleId) {
-        setSelectedVehicle('');
-        onVehicleSelect?.('');
+  const handleDeleteVehicle = useCallback(
+    async (vehicleId: string) => {
+      if (!confirm('Are you sure you want to delete this vehicle? This action cannot be undone.')) {
+        return;
       }
-    } catch (error) {
-      console.error('Failed to delete vehicle', error);
-      toast.error(error instanceof Error ? error.message : 'Unable to delete vehicle right now.');
-    }
-  }, [deleteVehicle, selectedVehicle, onVehicleSelect]);
+
+      try {
+        await deleteVehicle(vehicleId);
+        toast.success('Vehicle deleted.');
+        if (selectedVehicle === vehicleId) {
+          setSelectedVehicle('');
+          onVehicleSelect?.('');
+        }
+      } catch (error) {
+        console.error('Failed to delete vehicle', error);
+        toast.error(error instanceof Error ? error.message : 'Unable to delete vehicle right now.');
+      }
+    },
+    [deleteVehicle, selectedVehicle, onVehicleSelect],
+  );
 
   const handleRefuelingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -849,17 +870,16 @@ export function VehiclesPage({
       return;
     }
 
-  const quantity = Number(refuelingForm.quantity);
-  const cost = Number(refuelingForm.cost);
-  const odometerReading = Number(refuelingForm.odometerReading);
+    const quantity = Number(refuelingForm.quantity);
+    const cost = Number(refuelingForm.cost);
+    const odometerReading = Number(refuelingForm.odometerReading);
 
-  if ([quantity, cost, odometerReading].some((value) => Number.isNaN(value))) {
-    toast.error('Please enter valid numeric values.');
-    return;
-  }
+    if ([quantity, cost, odometerReading].some((value) => Number.isNaN(value))) {
+      toast.error('Please enter valid numeric values.');
+      return;
+    }
 
-    const unit: VehicleRefueling['unit'] =
-      refuelingForm.fuelType === 'Electric' ? 'kWh' : 'liters';
+    const unit: VehicleRefueling['unit'] = refuelingForm.fuelType === 'Electric' ? 'kWh' : 'liters';
 
     const payload = {
       vehicleId: vehicle.id,
@@ -952,7 +972,7 @@ export function VehiclesPage({
       operator: operatorName,
       fuelConsumed,
       isRental: vehicle.isRental,
-      rentalCost: vehicle.isRental ? vehicle.rentalCostPerDay ?? null : null,
+      rentalCost: vehicle.isRental ? (vehicle.rentalCostPerDay ?? null) : null,
       vendor: vehicle.vendor ?? null,
       status: 'Completed' as VehicleUsage['status'],
       notes: usageForm.notes || null,
@@ -1246,7 +1266,9 @@ export function VehiclesPage({
               {pagination && pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-4 py-3 mt-4">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} vehicles
+                    Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                    {pagination.total} vehicles
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1435,7 +1457,9 @@ export function VehiclesPage({
                                     size="sm"
                                     className="gap-2 transition-all hover:shadow-md"
                                     onClick={() => {
-                                      setDraftRefuelingFilters(cloneRefuelingAdvancedFilters(appliedRefuelingFilters));
+                                      setDraftRefuelingFilters(
+                                        cloneRefuelingAdvancedFilters(appliedRefuelingFilters),
+                                      );
                                       setIsRefuelingFilterSheetOpen(true);
                                     }}
                                   >
@@ -1478,7 +1502,10 @@ export function VehiclesPage({
                             </Button>
                           </div>
                         </div>
-                        <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium w-fit">
+                        <Badge
+                          variant="secondary"
+                          className="px-3 py-1.5 text-sm font-medium w-fit"
+                        >
                           {filteredRefuelingRecords.length} record
                           {filteredRefuelingRecords.length !== 1 ? 's' : ''} found
                         </Badge>
@@ -1487,28 +1514,43 @@ export function VehiclesPage({
                             {(() => {
                               const chips: string[] = [];
                               if (appliedRefuelingFilters.vehicles.length > 0) {
-                                chips.push(`Vehicles: ${appliedRefuelingFilters.vehicles.join(', ')}`);
+                                chips.push(
+                                  `Vehicles: ${appliedRefuelingFilters.vehicles.join(', ')}`,
+                                );
                               }
                               if (appliedRefuelingFilters.fuelTypes.length > 0) {
                                 chips.push(`Fuel: ${appliedRefuelingFilters.fuelTypes.join(', ')}`);
                               }
                               if (appliedRefuelingFilters.vendors.length > 0) {
-                                chips.push(`Vendors: ${appliedRefuelingFilters.vendors.join(', ')}`);
+                                chips.push(
+                                  `Vendors: ${appliedRefuelingFilters.vendors.join(', ')}`,
+                                );
                               }
                               if (appliedRefuelingFilters.locations.length > 0) {
-                                chips.push(`Locations: ${appliedRefuelingFilters.locations.join(', ')}`);
+                                chips.push(
+                                  `Locations: ${appliedRefuelingFilters.locations.join(', ')}`,
+                                );
                               }
-                              if (appliedRefuelingFilters.dateFrom || appliedRefuelingFilters.dateTo) {
+                              if (
+                                appliedRefuelingFilters.dateFrom ||
+                                appliedRefuelingFilters.dateTo
+                              ) {
                                 chips.push(
                                   `Date: ${appliedRefuelingFilters.dateFrom ?? 'Any'} → ${appliedRefuelingFilters.dateTo ?? 'Any'}`,
                                 );
                               }
-                              if (appliedRefuelingFilters.quantityMin || appliedRefuelingFilters.quantityMax) {
+                              if (
+                                appliedRefuelingFilters.quantityMin ||
+                                appliedRefuelingFilters.quantityMax
+                              ) {
                                 chips.push(
                                   `Quantity: ${appliedRefuelingFilters.quantityMin || '0'} - ${appliedRefuelingFilters.quantityMax || '∞'}`,
                                 );
                               }
-                              if (appliedRefuelingFilters.costMin || appliedRefuelingFilters.costMax) {
+                              if (
+                                appliedRefuelingFilters.costMin ||
+                                appliedRefuelingFilters.costMax
+                              ) {
                                 chips.push(
                                   `Cost: ₹${appliedRefuelingFilters.costMin || '0'} - ₹${appliedRefuelingFilters.costMax || '∞'}`,
                                 );
@@ -1522,7 +1564,11 @@ export function VehiclesPage({
                               }
                               return chips;
                             })().map((chip) => (
-                              <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                              <Badge
+                                key={chip}
+                                variant="outline"
+                                className="rounded-full px-3 py-1 text-xs"
+                              >
                                 {chip}
                               </Badge>
                             ))}
@@ -1585,7 +1631,9 @@ export function VehiclesPage({
                                                 type="button"
                                                 variant="outline"
                                                 size="icon"
-                                            onClick={() => void handleDeleteRefueling(record.id)}
+                                                onClick={() =>
+                                                  void handleDeleteRefueling(record.id)
+                                                }
                                                 aria-label={`Delete refueling record ${record.invoiceNumber}`}
                                                 className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
                                               >
@@ -1715,7 +1763,9 @@ export function VehiclesPage({
                                   size="sm"
                                   className="gap-2 transition-all hover:shadow-md"
                                   onClick={() => {
-                                    setDraftUsageFilters(cloneUsageAdvancedFilters(appliedUsageFilters));
+                                    setDraftUsageFilters(
+                                      cloneUsageAdvancedFilters(appliedUsageFilters),
+                                    );
                                     setIsUsageFilterSheetOpen(true);
                                   }}
                                 >
@@ -1773,7 +1823,9 @@ export function VehiclesPage({
                               chips.push(`Sites: ${appliedUsageFilters.sites.join(', ')}`);
                             }
                             if (appliedUsageFilters.categories.length > 0) {
-                              chips.push(`Categories: ${appliedUsageFilters.categories.join(', ')}`);
+                              chips.push(
+                                `Categories: ${appliedUsageFilters.categories.join(', ')}`,
+                              );
                             }
                             if (appliedUsageFilters.statuses.length > 0) {
                               chips.push(`Statuses: ${appliedUsageFilters.statuses.join(', ')}`);
@@ -1783,7 +1835,10 @@ export function VehiclesPage({
                                 `Date: ${appliedUsageFilters.dateFrom ?? 'Any'} → ${appliedUsageFilters.dateTo ?? 'Any'}`,
                               );
                             }
-                            if (appliedUsageFilters.distanceMin || appliedUsageFilters.distanceMax) {
+                            if (
+                              appliedUsageFilters.distanceMin ||
+                              appliedUsageFilters.distanceMax
+                            ) {
                               chips.push(
                                 `Distance: ${appliedUsageFilters.distanceMin || '0'}km - ${appliedUsageFilters.distanceMax || '∞'}km`,
                               );
@@ -1795,12 +1850,18 @@ export function VehiclesPage({
                             }
                             if (appliedUsageFilters.rentalType !== 'all') {
                               chips.push(
-                                appliedUsageFilters.rentalType === 'rental' ? 'Rental only' : 'Owned only',
+                                appliedUsageFilters.rentalType === 'rental'
+                                  ? 'Rental only'
+                                  : 'Owned only',
                               );
                             }
                             return chips;
                           })().map((chip) => (
-                            <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                            <Badge
+                              key={chip}
+                              variant="outline"
+                              className="rounded-full px-3 py-1 text-xs"
+                            >
                               {chip}
                             </Badge>
                           ))}
@@ -1865,7 +1926,7 @@ export function VehiclesPage({
                                               type="button"
                                               variant="outline"
                                               size="icon"
-                                          onClick={() => void handleDeleteUsage(record.id)}
+                                              onClick={() => void handleDeleteUsage(record.id)}
                                               aria-label={`Delete usage record ${record.id}`}
                                               className="h-8 w-8 border-destructive text-destructive hover:bg-destructive/10"
                                             >
@@ -2415,7 +2476,10 @@ export function VehiclesPage({
                           id="vehicle-number"
                           value={vehicleForm.vehicleNumber}
                           onChange={(event) =>
-                            setVehicleForm((prev) => ({ ...prev, vehicleNumber: event.target.value }))
+                            setVehicleForm((prev) => ({
+                              ...prev,
+                              vehicleNumber: event.target.value,
+                            }))
                           }
                           placeholder="MH-14-TC-9087"
                           required
@@ -2428,7 +2492,9 @@ export function VehiclesPage({
                         </FieldLabel>
                         <Select
                           value={vehicleForm.type}
-                          onValueChange={(value) => setVehicleForm((prev) => ({ ...prev, type: value }))}
+                          onValueChange={(value) =>
+                            setVehicleForm((prev) => ({ ...prev, type: value }))
+                          }
                         >
                           <SelectTrigger id="vehicle-type">
                             <SelectValue />
@@ -2493,16 +2559,67 @@ export function VehiclesPage({
                         <FieldDescription>Vehicle model name (optional).</FieldDescription>
                       </Field>
                     </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="last-maintenance-date">Last Service Date</FieldLabel>
+                        <DatePicker
+                          date={
+                            vehicleForm.lastMaintenanceDate
+                              ? parseDateOnly(vehicleForm.lastMaintenanceDate)
+                              : undefined
+                          }
+                          onSelect={(date) =>
+                            setVehicleForm((prev) => ({
+                              ...prev,
+                              lastMaintenanceDate: date ? formatDateOnly(date) : '',
+                            }))
+                          }
+                          placeholder="Select last service date"
+                        />
+                        <FieldDescription>
+                          Date of last maintenance service (optional).
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="next-maintenance-date">Next Service Date</FieldLabel>
+                        <DatePicker
+                          date={
+                            vehicleForm.nextMaintenanceDate
+                              ? parseDateOnly(vehicleForm.nextMaintenanceDate)
+                              : undefined
+                          }
+                          onSelect={(date) =>
+                            setVehicleForm((prev) => ({
+                              ...prev,
+                              nextMaintenanceDate: date ? formatDateOnly(date) : '',
+                            }))
+                          }
+                          placeholder="Select next service date"
+                        />
+                        <FieldDescription>
+                          Date when next maintenance is due (optional).
+                        </FieldDescription>
+                      </Field>
+                    </div>
                   </FieldGroup>
                 </form>
               </CardContent>
               <CardFooter className="border-t px-6">
                 <div className="flex justify-end gap-2 w-full">
-                  <Button type="button" variant="outline" onClick={() => setIsVehicleDialogOpen(false)} disabled={isSavingVehicle}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsVehicleDialogOpen(false)}
+                    disabled={isSavingVehicle}
+                  >
                     Cancel
                   </Button>
                   <Button type="submit" form="vehicle-form" disabled={isSavingVehicle}>
-                    {isSavingVehicle ? 'Saving…' : editingVehicle ? 'Update Vehicle' : 'Create Vehicle'}
+                    {isSavingVehicle
+                      ? 'Saving…'
+                      : editingVehicle
+                        ? 'Update Vehicle'
+                        : 'Create Vehicle'}
                   </Button>
                 </div>
               </CardFooter>
@@ -2642,7 +2759,10 @@ export function VehiclesPage({
                           type="number"
                           value={refuelingForm.odometerReading}
                           onChange={(e) =>
-                            setRefuelingForm((prev) => ({ ...prev, odometerReading: e.target.value }))
+                            setRefuelingForm((prev) => ({
+                              ...prev,
+                              odometerReading: e.target.value,
+                            }))
                           }
                           placeholder="2480"
                           required
@@ -2676,8 +2796,8 @@ export function VehiclesPage({
                             vendorOptions.includes(refuelingForm.vendor)
                               ? refuelingForm.vendor
                               : refuelingForm.vendor
-                              ? '__custom__'
-                              : ''
+                                ? '__custom__'
+                                : ''
                           }
                           onValueChange={(value) => {
                             if (value === '__custom__') {
@@ -2702,7 +2822,7 @@ export function VehiclesPage({
                             <SelectItem value="__custom__">Other (enter manually)</SelectItem>
                           </SelectContent>
                         </Select>
-                        {(refuelingForm.vendor && !vendorOptions.includes(refuelingForm.vendor)) && (
+                        {refuelingForm.vendor && !vendorOptions.includes(refuelingForm.vendor) && (
                           <Input
                             className="mt-2"
                             value={refuelingForm.vendor}
@@ -2736,20 +2856,34 @@ export function VehiclesPage({
                       <Textarea
                         id="notes"
                         value={refuelingForm.notes}
-                        onChange={(e) => setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        onChange={(e) =>
+                          setRefuelingForm((prev) => ({ ...prev, notes: e.target.value }))
+                        }
                         placeholder="Additional notes..."
                       />
-                      <FieldDescription>Any additional notes about this refueling.</FieldDescription>
+                      <FieldDescription>
+                        Any additional notes about this refueling.
+                      </FieldDescription>
                     </Field>
                   </FieldGroup>
                 </form>
               </CardContent>
               <CardFooter className="border-t px-6">
                 <div className="flex justify-end gap-2 w-full">
-                  <Button type="button" variant="outline" onClick={() => refuelingDialog.closeDialog()} disabled={isSavingRefueling}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => refuelingDialog.closeDialog()}
+                    disabled={isSavingRefueling}
+                  >
                     Cancel
                   </Button>
-                  <Button type="submit" form="refueling-form" className="gap-2" disabled={isSavingRefueling}>
+                  <Button
+                    type="submit"
+                    form="refueling-form"
+                    className="gap-2"
+                    disabled={isSavingRefueling}
+                  >
                     {isSavingRefueling ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
@@ -2854,7 +2988,9 @@ export function VehiclesPage({
                           id="endTime"
                           type="time"
                           value={usageForm.endTime}
-                          onChange={(e) => setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                          onChange={(e) =>
+                            setUsageForm((prev) => ({ ...prev, endTime: e.target.value }))
+                          }
                           required
                         />
                         <FieldDescription>Time when vehicle usage ended.</FieldDescription>
@@ -2921,7 +3057,9 @@ export function VehiclesPage({
                         }
                         placeholder="Enter driver name"
                       />
-                      <FieldDescription>Name of the driver or operator (optional).</FieldDescription>
+                      <FieldDescription>
+                        Name of the driver or operator (optional).
+                      </FieldDescription>
                     </Field>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <Field>
@@ -2955,7 +3093,9 @@ export function VehiclesPage({
                         <Select
                           value={usageForm.siteId}
                           disabled={isSitesLoading || vehicleSiteOptions.length === 0}
-                          onValueChange={(value) => setUsageForm((prev) => ({ ...prev, siteId: value }))}
+                          onValueChange={(value) =>
+                            setUsageForm((prev) => ({ ...prev, siteId: value }))
+                          }
                         >
                           <SelectTrigger id="site">
                             <SelectValue
@@ -3002,7 +3142,9 @@ export function VehiclesPage({
                         <Textarea
                           id="notes"
                           value={usageForm.notes}
-                          onChange={(e) => setUsageForm((prev) => ({ ...prev, notes: e.target.value }))}
+                          onChange={(e) =>
+                            setUsageForm((prev) => ({ ...prev, notes: e.target.value }))
+                          }
                           placeholder="Additional notes..."
                         />
                         <FieldDescription>Any additional notes about this usage.</FieldDescription>
@@ -3013,10 +3155,20 @@ export function VehiclesPage({
               </CardContent>
               <CardFooter className="border-t px-6">
                 <div className="flex justify-end gap-2 w-full">
-                  <Button type="button" variant="outline" onClick={() => usageDialog.closeDialog()} disabled={isSavingUsage}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => usageDialog.closeDialog()}
+                    disabled={isSavingUsage}
+                  >
                     Cancel
                   </Button>
-                  <Button type="submit" form="usage-form" className="gap-2" disabled={isSavingUsage}>
+                  <Button
+                    type="submit"
+                    form="usage-form"
+                    className="gap-2"
+                    disabled={isSavingUsage}
+                  >
                     {isSavingUsage ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
@@ -3143,7 +3295,9 @@ export function VehiclesPage({
                     {viewingVehicle.rentalCostPerDay && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Daily Rental Cost</p>
-                        <p className="font-medium">₹{viewingVehicle.rentalCostPerDay.toLocaleString()}</p>
+                        <p className="font-medium">
+                          ₹{viewingVehicle.rentalCostPerDay.toLocaleString()}
+                        </p>
                       </div>
                     )}
                     {viewingVehicle.rentalStartDate && (
@@ -3177,7 +3331,9 @@ export function VehiclesPage({
                     {viewingVehicle.totalRentalCost && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Total Rental Cost</p>
-                        <p className="font-medium">₹{viewingVehicle.totalRentalCost.toLocaleString()}</p>
+                        <p className="font-medium">
+                          ₹{viewingVehicle.totalRentalCost.toLocaleString()}
+                        </p>
                       </div>
                     )}
                   </div>
