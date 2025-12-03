@@ -1,11 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import VehicleUsageForm from '@/components/forms/VehicleUsageForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
+import { fetcher, swrConfig } from '@/lib/swr';
 import type { Vehicle as VehicleEntity, Site, VehicleUsage } from '@/types/entities';
 
 type Vehicle = {
@@ -33,82 +35,59 @@ type Vehicle = {
 
 export default function VehicleUsagePage() {
   const router = useRouter();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [sites, setSites] = useState<Array<{ id: string; name: string }>>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        const [vehiclesResponse, sitesResponse] = await Promise.all([
-          fetch('/api/vehicles', { cache: 'no-store' }),
-          fetch('/api/sites', { cache: 'no-store' }),
-        ]);
+  // Fetch vehicles and sites using SWR
+  const { data: vehiclesData, isLoading: isVehiclesLoading } = useSWR<{
+    vehicles: VehicleEntity[];
+  }>('/api/vehicles', fetcher, swrConfig);
+  const { data: sitesData, isLoading: isSitesLoading } = useSWR<{ sites: Site[] }>(
+    '/api/sites',
+    fetcher,
+    swrConfig,
+  );
 
-        const vehiclesPayload = (await vehiclesResponse.json().catch(() => ({}))) as {
-          vehicles?: VehicleEntity[];
-          error?: string;
-        };
-        const sitesPayload = (await sitesResponse.json().catch(() => ({}))) as {
-          sites?: Site[];
-          error?: string;
-        };
+  const isLoading = isVehiclesLoading || isSitesLoading;
 
-        if (!vehiclesResponse.ok) {
-          throw new Error(vehiclesPayload.error || 'Failed to load vehicles');
-        }
-        if (!sitesResponse.ok) {
-          throw new Error(sitesPayload.error || 'Failed to load sites');
-        }
+  // Map VehicleEntity to Vehicle format expected by form
+  const vehicles = useMemo(() => {
+    if (!vehiclesData?.vehicles) return [];
+    return vehiclesData.vehicles.map((v) => ({
+      id: v.id,
+      vehicleNumber: v.vehicleNumber,
+      type: v.type,
+      make: v.make || '',
+      model: v.model || '',
+      year: v.year || 0,
+      siteId: v.siteId || '',
+      siteName: v.siteName || '',
+      status: (v.status === 'available' || v.status === 'in_use'
+        ? 'Active'
+        : v.status === 'maintenance'
+          ? 'Maintenance'
+          : v.status === 'idle'
+            ? 'Idle'
+            : 'Returned') as Vehicle['status'],
+      operator: v.operator || '',
+      isRental: v.isRental,
+      fuelCapacity: v.fuelCapacity || 0,
+      currentFuelLevel: v.currentFuelLevel || 0,
+      mileage: v.mileage || 0,
+      lastMaintenanceDate: v.lastMaintenanceDate || '',
+      nextMaintenanceDate: v.nextMaintenanceDate || '',
+      insuranceExpiry: v.insuranceExpiry || '',
+      registrationExpiry: v.registrationExpiry || '',
+      createdAt: v.createdAt,
+      lastUpdated: v.updatedAt,
+    }));
+  }, [vehiclesData]);
 
-        // Map VehicleEntity to Vehicle format expected by form
-        const mappedVehicles: Vehicle[] = (vehiclesPayload.vehicles ?? []).map((v) => ({
-          id: v.id,
-          vehicleNumber: v.vehicleNumber,
-          type: v.type,
-          make: v.make || '',
-          model: v.model || '',
-          year: v.year || 0,
-          siteId: v.siteId || '',
-          siteName: v.siteName || '',
-          status: (v.status === 'available' || v.status === 'in_use'
-            ? 'Active'
-            : v.status === 'maintenance'
-              ? 'Maintenance'
-              : v.status === 'idle'
-                ? 'Idle'
-                : 'Returned') as Vehicle['status'],
-          operator: v.operator || '',
-          isRental: v.isRental,
-          fuelCapacity: v.fuelCapacity || 0,
-          currentFuelLevel: v.currentFuelLevel || 0,
-          mileage: v.mileage || 0,
-          lastMaintenanceDate: v.lastMaintenanceDate || '',
-          nextMaintenanceDate: v.nextMaintenanceDate || '',
-          insuranceExpiry: v.insuranceExpiry || '',
-          registrationExpiry: v.registrationExpiry || '',
-          createdAt: v.createdAt,
-          lastUpdated: v.updatedAt,
-        }));
-
-        setVehicles(mappedVehicles);
-        setSites(
-          (sitesPayload.sites ?? []).map((site) => ({
-            id: site.id,
-            name: site.name,
-          })),
-        );
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load data');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void fetchData();
-  }, []);
+  const sites = useMemo(() => {
+    if (!sitesData?.sites) return [];
+    return sitesData.sites.map((site) => ({
+      id: site.id,
+      name: site.name,
+    }));
+  }, [sitesData]);
 
   const handleSubmit = async (data: {
     vehicleId: string;
@@ -118,7 +97,12 @@ export default function VehicleUsagePage() {
     startOdometer: number;
     endOdometer: number;
     workDescription: string;
-    workCategory: 'Transportation' | 'Material Hauling' | 'Equipment Transport' | 'Site Inspection' | 'Other';
+    workCategory:
+      | 'Transportation'
+      | 'Material Hauling'
+      | 'Equipment Transport'
+      | 'Site Inspection'
+      | 'Other';
     siteId: string;
     fuelConsumed: number;
     notes?: string;
@@ -137,7 +121,7 @@ export default function VehicleUsagePage() {
       const totalDistance = Math.max(0, data.endOdometer - data.startOdometer);
 
       // Fetch original vehicle entity to get vendor info
-      const vehicleResponse = await fetch(`/api/vehicles/${data.vehicleId}`, { cache: 'no-store' });
+      const vehicleResponse = await fetch(`/api/vehicles/${data.vehicleId}`);
       const vehiclePayload = (await vehicleResponse.json().catch(() => ({}))) as {
         vehicle?: VehicleEntity;
         error?: string;

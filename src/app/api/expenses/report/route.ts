@@ -87,7 +87,7 @@ export async function GET(request: Request) {
       {} as Record<Expense['category'], number>,
     );
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       expenses,
       summary: {
         totalAmount,
@@ -95,9 +95,18 @@ export async function GET(request: Request) {
         categoryBreakdown,
       },
     });
+
+    // Add cache headers: cache for 60 seconds, revalidate in background
+    // Note: This route accepts query params (siteId, category, dateFrom, dateTo)
+    // Next.js will cache different query combinations separately
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching expense report:', error);
-    return NextResponse.json({ error: 'Unexpected error fetching expense report.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Unexpected error fetching expense report.' },
+      { status: 500 },
+    );
   }
 }
-

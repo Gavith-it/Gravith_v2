@@ -19,20 +19,22 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import { useTableState } from '../lib/hooks/useTableState';
+import { fetcher, swrConfig } from '../lib/swr';
 import { formatDate } from '../lib/utils';
 
 import MaterialMasterForm from './forms/MaterialMasterForm';
-import type { MaterialMasterItem } from './shared/materialMasterData';
-import type { MaterialMasterInput } from '@/types/materials';
 import { getActiveTaxRates } from './shared/masterData';
+import type { MaterialMasterItem } from './shared/materialMasterData';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -41,7 +43,6 @@ import {
   DialogTrigger,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -62,6 +63,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import type { MaterialMasterInput } from '@/types/materials';
 
 type MaterialAdvancedFilterState = {
   units: string[];
@@ -127,9 +129,9 @@ interface MaterialsPageProps {
 }
 
 export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
-  // Material Master state
-  const [materialMasterData, setMaterialMasterData] = useState<MaterialMasterItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [limit] = useState<number>(50);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [masterCategoryFilter, setMasterCategoryFilter] = useState<string>('all');
   const [masterStatusFilter, setMasterStatusFilter] = useState<string>('all');
@@ -137,16 +139,13 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
   const [isMaterialDialogOpen, setIsMaterialDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialMasterItem | null>(null);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
-  // Pagination state
-  const [page, setPage] = useState<number>(1);
-  const [limit] = useState<number>(50);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalMaterials, setTotalMaterials] = useState<number>(0);
   const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<MaterialAdvancedFilterState>(
     () => createDefaultMaterialAdvancedFilters(),
   );
-  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<MaterialAdvancedFilterState>(() =>
-    createDefaultMaterialAdvancedFilters(),
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<MaterialAdvancedFilterState>(
+    () => createDefaultMaterialAdvancedFilters(),
   );
 
   // Use shared state hooks
@@ -156,88 +155,87 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
     initialItemsPerPage: 10,
   });
 
-  // Calculate summary statistics
+  // Fetch materials using SWR with pagination
+  const {
+    data: materialsData,
+    error: materialsError,
+    isLoading,
+    mutate: mutateMaterials,
+  } = useSWR<{
+    materials: MaterialMasterItem[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>(`/api/materials?page=${page}&limit=${limit}`, fetcher, swrConfig);
 
-  const fetchMaterials = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      // Add pagination params to API call
-      const response = await fetch(`/api/materials?page=${page}&limit=${limit}`);
-      const payload = (await response.json().catch(() => ({}))) as {
-        materials?: MaterialMasterItem[];
-        pagination?: {
-          page: number;
-          limit: number;
-          total: number;
-          totalPages: number;
-        };
-        error?: string;
-      };
+  // Normalize materials data
+  const materialMasterData = useMemo(() => {
+    if (!materialsData?.materials) return [];
 
-      if (!response.ok) {
-        throw new Error(payload.error || 'Failed to load materials.');
+    return materialsData.materials.map((material) => {
+      // If material has site allocations but no direct siteId/siteName, use the first allocation's site info
+      let displaySiteId = material.siteId ?? null;
+      let displaySiteName = material.siteName ?? null;
+
+      if (
+        !displaySiteId &&
+        !displaySiteName &&
+        material.siteAllocations &&
+        material.siteAllocations.length > 0
+      ) {
+        displaySiteId = material.siteAllocations[0].siteId;
+        displaySiteName = material.siteAllocations[0].siteName;
       }
 
-      const materials = payload.materials ?? [];
-      const normalized: MaterialMasterItem[] = materials.map((material) => {
-        // If material has site allocations but no direct siteId/siteName, use the first allocation's site info
-        // This ensures materials with OB allocated via site allocations show their site information
-        let displaySiteId = material.siteId ?? null;
-        let displaySiteName = material.siteName ?? null;
-        
-        if (!displaySiteId && !displaySiteName && material.siteAllocations && material.siteAllocations.length > 0) {
-          // Use the first site allocation's info for display
-          displaySiteId = material.siteAllocations[0].siteId;
-          displaySiteName = material.siteAllocations[0].siteName;
-        }
-        
-        const base = {
-          id: material.id,
-          name: material.name,
-          category: material.category,
-          unit: material.unit,
-          siteId: displaySiteId,
-          siteName: displaySiteName,
-          quantity: material.quantity,
-          consumedQuantity: material.consumedQuantity,
-          standardRate: material.standardRate,
-          isActive: material.isActive,
-          hsn: material.hsn,
-          taxRate: material.taxRate,
-          createdDate: material.createdDate ?? material.createdAt?.split('T')[0] ?? '',
-          lastUpdated: material.lastUpdated ?? material.updatedAt?.split('T')[0] ?? '',
-        } as MaterialMasterItem;
-        // Add optional fields if they exist
-        if (material.openingBalance !== undefined && material.openingBalance !== null) {
-          base.openingBalance = material.openingBalance;
-        }
-        if (material.taxRateId) {
-          base.taxRateId = material.taxRateId;
-        }
-        if (material.siteAllocations) {
-          base.siteAllocations = material.siteAllocations;
-        }
-        return base;
-      });
-      setMaterialMasterData(normalized);
-      
-      // Update pagination state
-      if (payload.pagination) {
-        setTotalPages(payload.pagination.totalPages);
-        setTotalMaterials(payload.pagination.total);
-      }
-    } catch (error) {
-      console.error('Error fetching materials', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to load materials.');
-      setMaterialMasterData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, limit]);
+      const base = {
+        id: material.id,
+        name: material.name,
+        category: material.category,
+        unit: material.unit,
+        siteId: displaySiteId,
+        siteName: displaySiteName,
+        quantity: material.quantity,
+        consumedQuantity: material.consumedQuantity,
+        standardRate: material.standardRate,
+        isActive: material.isActive,
+        hsn: material.hsn,
+        taxRate: material.taxRate,
+        createdDate: material.createdDate ?? material.createdAt?.split('T')[0] ?? '',
+        lastUpdated: material.lastUpdated ?? material.updatedAt?.split('T')[0] ?? '',
+      } as MaterialMasterItem;
 
+      if (material.openingBalance !== undefined && material.openingBalance !== null) {
+        base.openingBalance = material.openingBalance;
+      }
+      if (material.taxRateId) {
+        base.taxRateId = material.taxRateId;
+      }
+      if (material.siteAllocations) {
+        base.siteAllocations = material.siteAllocations;
+      }
+      return base;
+    });
+  }, [materialsData]);
+
+  // Update pagination state when data changes
   useEffect(() => {
-    void fetchMaterials();
-  }, [fetchMaterials, page]);
+    if (materialsData?.pagination) {
+      setTotalPages(materialsData.pagination.totalPages);
+      setTotalMaterials(materialsData.pagination.total);
+    }
+  }, [materialsData]);
+
+  // Show error toast if fetch fails
+  useEffect(() => {
+    if (materialsError) {
+      toast.error(
+        materialsError instanceof Error ? materialsError.message : 'Failed to load materials.',
+      );
+    }
+  }, [materialsError]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -368,7 +366,14 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
 
         return 0;
       });
-  }, [appliedAdvancedFilters, scopedMaterials, masterCategoryFilter, masterStatusFilter, searchQuery, tableState]);
+  }, [
+    appliedAdvancedFilters,
+    scopedMaterials,
+    masterCategoryFilter,
+    masterStatusFilter,
+    searchQuery,
+    tableState,
+  ]);
 
   // Material Master functions
   const handleMaterialSubmit = useCallback(
@@ -409,8 +414,10 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
 
         // Reset to first page after create/update to see the new/updated material
         setPage(1);
-        await fetchMaterials();
-        toast.success(isEditing ? 'Material updated successfully.' : 'Material added successfully.');
+        await mutateMaterials(); // Refresh materials data
+        toast.success(
+          isEditing ? 'Material updated successfully.' : 'Material added successfully.',
+        );
         setEditingMaterial(null);
         setIsMaterialDialogOpen(false);
       } catch (error) {
@@ -420,7 +427,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         setIsSaving(false);
       }
     },
-    [editingMaterial, fetchMaterials],
+    [editingMaterial, mutateMaterials],
   );
 
   const handleEditMaterial = (material: MaterialMasterItem) => {
@@ -461,7 +468,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           throw new Error(payload.error || 'Failed to delete material.');
         }
 
-        setMaterialMasterData((prev) => prev.filter((material) => material.id !== materialId));
+        await mutateMaterials(); // Refresh materials data
         toast.success('Material deleted successfully.');
       } catch (error) {
         console.error('Failed to delete material', error);
@@ -496,18 +503,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           throw new Error(payload.error || 'Failed to update material status.');
         }
 
-        setMaterialMasterData((prev) =>
-          prev.map((item) =>
-            item.id === materialId
-              ? {
-                  ...item,
-                  isActive: payload.material!.isActive,
-                  quantity: payload.material!.quantity ?? item.quantity,
-                  lastUpdated: payload.material!.lastUpdated ?? item.lastUpdated,
-                }
-              : item,
-          ),
-        );
+        await mutateMaterials(); // Refresh materials data
       } catch (error) {
         console.error('Failed to update material status', error);
         toast.error(error instanceof Error ? error.message : 'Failed to update status.');
@@ -568,9 +564,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Active Materials</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {activeMaterials}
-                      </p>
+                      <p className="text-2xl font-bold text-green-600">{activeMaterials}</p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
                       <TrendingUp className="h-6 w-6 text-green-600" />
@@ -583,9 +577,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Categories</p>
-                      <p className="text-2xl font-bold text-orange-600">
-                        {totalCategories}
-                      </p>
+                      <p className="text-2xl font-bold text-orange-600">{totalCategories}</p>
                     </div>
                     <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
                       <Building2 className="h-6 w-6 text-orange-600" />
@@ -676,13 +668,15 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
                           onClick={() => {
-                            setDraftAdvancedFilters(cloneMaterialAdvancedFilters(appliedAdvancedFilters));
+                            setDraftAdvancedFilters(
+                              cloneMaterialAdvancedFilters(appliedAdvancedFilters),
+                            );
                             setIsFilterSheetOpen(true);
                           }}
                         >
                           <Filter className="h-4 w-4" />
                           <span className="hidden sm:inline">Filter</span>
-                        {hasActiveAdvancedFilters ? (
+                          {hasActiveAdvancedFilters ? (
                             <Badge variant="secondary" className="ml-2">
                               {activeAdvancedFilterCount}
                             </Badge>
@@ -694,20 +688,20 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2 transition-all hover:shadow-md"
-                  disabled={!hasActiveAdvancedFilters}
-                  onClick={() => {
-                    const resetFilters = createDefaultMaterialAdvancedFilters();
-                    setAppliedAdvancedFilters(resetFilters);
-                    setDraftAdvancedFilters(resetFilters);
-                  }}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  <span className="hidden sm:inline">Clear filters</span>
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 transition-all hover:shadow-md"
+                    disabled={!hasActiveAdvancedFilters}
+                    onClick={() => {
+                      const resetFilters = createDefaultMaterialAdvancedFilters();
+                      setAppliedAdvancedFilters(resetFilters);
+                      setDraftAdvancedFilters(resetFilters);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Clear filters</span>
+                  </Button>
                   <Dialog
                     open={isMaterialDialogOpen}
                     onOpenChange={(open) => {
@@ -737,7 +731,10 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                             : 'Create a new material entry in the master database'}
                         </DialogDescription>
                       </DialogHeader>
-                      <ScrollArea className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+                      <ScrollArea
+                        className="flex-1 min-h-0 overflow-y-auto"
+                        style={{ maxHeight: 'calc(90vh - 140px)' }}
+                      >
                         <div className="px-6 py-6">
                           <MaterialMasterForm
                             onSubmit={handleMaterialSubmit}
@@ -752,12 +749,17 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                                     standardRate: editingMaterial.standardRate,
                                     isActive: editingMaterial.isActive,
                                     hsn: editingMaterial.hsn,
-                                    taxRateId: editingMaterial.taxRateId ?? (editingMaterial.taxRate && typeof editingMaterial.taxRate === 'number' ? 
-                                      (() => {
-                                        const taxRate = getActiveTaxRates().find((tr) => tr.rate === editingMaterial.taxRate);
-                                        return taxRate?.code || 'GST18';
-                                      })() 
-                                      : 'GST18'),
+                                    taxRateId:
+                                      editingMaterial.taxRateId ??
+                                      (editingMaterial.taxRate &&
+                                      typeof editingMaterial.taxRate === 'number'
+                                        ? (() => {
+                                            const taxRate = getActiveTaxRates().find(
+                                              (tr) => tr.rate === editingMaterial.taxRate,
+                                            );
+                                            return taxRate?.code || 'GST18';
+                                          })()
+                                        : 'GST18'),
                                     openingBalance: editingMaterial.openingBalance,
                                     siteAllocations: editingMaterial.siteAllocations,
                                   }
@@ -1117,13 +1119,26 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                       // If filterBySite is provided, use site-specific OB from allocations
                       // Otherwise, use total OB
                       let availableQuantity: number;
-                      if (filterBySite && material.siteAllocations && material.siteAllocations.length > 0) {
+                      if (
+                        filterBySite &&
+                        material.siteAllocations &&
+                        material.siteAllocations.length > 0
+                      ) {
                         // Find site-specific allocation
-                        const normalizedFilterSiteId = String(filterBySite || '').trim().toLowerCase();
+                        const normalizedFilterSiteId = String(filterBySite || '')
+                          .trim()
+                          .toLowerCase();
                         const siteAllocation = material.siteAllocations.find((alloc) => {
-                          const allocSiteId = String(alloc.siteId || '').trim().toLowerCase();
-                          const allocSiteName = String(alloc.siteName || '').trim().toLowerCase();
-                          return allocSiteId === normalizedFilterSiteId || allocSiteName === normalizedFilterSiteId;
+                          const allocSiteId = String(alloc.siteId || '')
+                            .trim()
+                            .toLowerCase();
+                          const allocSiteName = String(alloc.siteName || '')
+                            .trim()
+                            .toLowerCase();
+                          return (
+                            allocSiteId === normalizedFilterSiteId ||
+                            allocSiteName === normalizedFilterSiteId
+                          );
                         });
                         // Use site-specific OB if found, otherwise 0
                         availableQuantity = siteAllocation?.quantity ?? 0;
@@ -1131,13 +1146,13 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                         // No site filter or no allocations - use total OB
                         availableQuantity = material.openingBalance ?? material.quantity ?? 0;
                       }
-                      
+
                       // Get tax rate info from masters
                       const taxRateId = material.taxRateId;
-                      const taxRateInfo = taxRateId 
+                      const taxRateInfo = taxRateId
                         ? getActiveTaxRates().find((tr) => tr.code === taxRateId)
                         : null;
-                      const taxRateDisplay = taxRateInfo 
+                      const taxRateDisplay = taxRateInfo
                         ? `${taxRateInfo.name} (${taxRateInfo.rate}%)`
                         : `${material.taxRate ?? 0}%`;
 
@@ -1284,7 +1299,8 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-4 py-3">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalMaterials)} of {totalMaterials} materials
+                    Showing {(page - 1) * limit + 1} to {Math.min(page * limit, totalMaterials)} of{' '}
+                    {totalMaterials} materials
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

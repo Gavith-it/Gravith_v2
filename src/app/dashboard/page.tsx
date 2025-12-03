@@ -24,6 +24,8 @@ export default function DashboardPage() {
     };
 
     const route = routeMap[action] || '/';
+    // Prefetch before navigation for instant page switching
+    router.prefetch(route);
     router.push(route);
   };
 

@@ -14,20 +14,23 @@ import {
   Filter,
   RotateCcw,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
-import { useRouter } from 'next/navigation';
 
 import { DataTable } from './common/DataTable';
 import { MaterialReceiptForm } from './forms/MaterialReceiptForm';
 import { PurchaseTabs } from './layout/PurchaseTabs';
+
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -37,8 +40,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { FilterSheet } from '@/components/filters/FilterSheet';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -57,7 +58,10 @@ interface MaterialReceiptsPageProps {
   showTabs?: boolean;
 }
 
-export function MaterialReceiptsPage({ filterBySite, showTabs = true }: MaterialReceiptsPageProps = {}) {
+export function MaterialReceiptsPage({
+  filterBySite,
+  showTabs = true,
+}: MaterialReceiptsPageProps = {}) {
   const router = useRouter();
   const {
     receipts,
@@ -67,11 +71,7 @@ export function MaterialReceiptsPage({ filterBySite, showTabs = true }: Material
     linkReceiptToPurchase,
     unlinkReceipt,
   } = useMaterialReceipts();
-  const {
-    materials,
-    isLoading: isMaterialsLoading,
-    refresh: refreshMaterials,
-  } = useMaterials();
+  const { materials, isLoading: isMaterialsLoading, refresh: refreshMaterials } = useMaterials();
 
   const scopedReceipts = useMemo(() => {
     if (!filterBySite) {
@@ -173,7 +173,7 @@ export function MaterialReceiptsPage({ filterBySite, showTabs = true }: Material
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Calculate summary statistics
-const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => {
+  const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => {
     const receiptCount = scopedReceipts.length;
     const netWeightSum = scopedReceipts.reduce((sum, receipt) => sum + (receipt.netWeight ?? 0), 0);
     const linked = scopedReceipts.filter((r) => r.linkedPurchaseId).length;
@@ -386,6 +386,7 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
       activeTab="receipts"
       onTabChange={(value) => {
         if (value === 'bills') {
+          router.prefetch('/purchase');
           router.push('/purchase');
         }
       }}
@@ -521,7 +522,9 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
                           onClick={() => {
-                            setDraftAdvancedFilters(cloneReceiptAdvancedFilters(appliedAdvancedFilters));
+                            setDraftAdvancedFilters(
+                              cloneReceiptAdvancedFilters(appliedAdvancedFilters),
+                            );
                             setIsFilterSheetOpen(true);
                           }}
                         >
@@ -615,7 +618,10 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                         `Date: ${appliedAdvancedFilters.dateFrom ?? 'Any'} → ${appliedAdvancedFilters.dateTo ?? 'Any'}`,
                       );
                     }
-                    if (appliedAdvancedFilters.netWeightMin || appliedAdvancedFilters.netWeightMax) {
+                    if (
+                      appliedAdvancedFilters.netWeightMin ||
+                      appliedAdvancedFilters.netWeightMax
+                    ) {
                       chips.push(
                         `Net wt: ${appliedAdvancedFilters.netWeightMin || 'Any'}kg - ${appliedAdvancedFilters.netWeightMax || 'Any'}kg`,
                       );
@@ -814,7 +820,7 @@ const { totalReceipts, totalNetWeight, linkedCount, openCount } = useMemo(() => 
                                   e.stopPropagation();
                                   handleDelete(receipt.id);
                                 }}
-                                  disabled={processingId === receipt.id}
+                                disabled={processingId === receipt.id}
                                 className="h-8 w-8 p-0 transition-all hover:bg-destructive/10"
                               >
                                 <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />

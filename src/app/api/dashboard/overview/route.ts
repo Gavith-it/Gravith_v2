@@ -445,7 +445,12 @@ export async function GET() {
       activeSites,
     };
 
-    return NextResponse.json(payload);
+    const response = NextResponse.json(payload);
+
+    // Add cache headers: cache for 30 seconds, revalidate in background
+    response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+
+    return response;
   } catch (error) {
     console.error('Dashboard overview failed', error);
     return NextResponse.json(emptyDashboard);

@@ -172,7 +172,13 @@ export async function GET() {
     }
 
     const records = (data ?? []).map((row) => mapRowToUsage(row as VehicleUsageRow));
-    return NextResponse.json({ records });
+
+    const response = NextResponse.json({ records });
+
+    // Add cache headers: cache for 60 seconds, revalidate in background
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching usage records', error);
     return NextResponse.json({ error: 'Unexpected error loading usage records.' }, { status: 500 });

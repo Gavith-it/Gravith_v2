@@ -194,7 +194,12 @@ export async function GET(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Vehicle not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ vehicle: mapRowToVehicle(data as VehicleRow) });
+    const response = NextResponse.json({ vehicle: mapRowToVehicle(data as VehicleRow) });
+
+    // Add cache headers: cache for 30 seconds, revalidate in background
+    response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error fetching vehicle', error);
     return NextResponse.json({ error: 'Unexpected error loading vehicle.' }, { status: 500 });

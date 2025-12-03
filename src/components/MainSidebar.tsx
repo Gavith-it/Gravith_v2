@@ -18,6 +18,7 @@ import {
   FileText,
 } from 'lucide-react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 import {
   Sidebar,
@@ -116,6 +117,14 @@ const navigationItems = [
 
 export function MainSidebar({ currentPage, onNavigate }: MainSidebarProps) {
   const { state } = useSidebar();
+  const router = useRouter();
+
+  // Prefetch route on hover for instant navigation
+  const handleMouseEnter = (pageId: string) => {
+    if (pageId !== currentPage) {
+      router.prefetch(`/${pageId}`);
+    }
+  };
 
   return (
     <TooltipProvider>
@@ -150,6 +159,7 @@ export function MainSidebar({ currentPage, onNavigate }: MainSidebarProps) {
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       onClick={() => onNavigate(item.id)}
+                      onMouseEnter={() => handleMouseEnter(item.id)}
                       isActive={currentPage === item.id}
                       tooltip={item.title}
                       className={`h-11 px-3 rounded-lg transition-all duration-200 ${

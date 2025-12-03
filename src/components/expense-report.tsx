@@ -1,22 +1,21 @@
 'use client';
 
 import { Download, FileText, Calendar, Building2, Filter, Loader2 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { formatDate } from '@/lib/utils';
-import type { Expense } from '@/types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import useSWR from 'swr';
+
+import { fetcher, swrConfig } from '../lib/swr';
+
+import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { DatePicker } from './ui/date-picker';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
 import { Label } from './ui/label';
-import { Badge } from './ui/badge';
-import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+
+import { formatDate } from '@/lib/utils';
+import type { Expense } from '@/types';
 
 interface ExpenseReportProps {
   className?: string;
@@ -46,8 +45,14 @@ const EXPENSE_CATEGORIES: Expense['category'][] = [
 ];
 
 export function ExpenseReport({ className }: ExpenseReportProps) {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
+  // Fetch sites using SWR (first page should be enough for dropdown)
+  const { data: sitesData, isLoading: isLoadingSites } = useSWR<{ sites: Site[] }>(
+    '/api/sites?page=1&limit=100',
+    fetcher,
+    swrConfig,
+  );
+
+  const sites = useMemo(() => sitesData?.sites ?? [], [sitesData]);
   const [selectedSite, setSelectedSite] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -56,61 +61,6 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
   const [reportData, setReportData] = useState<ExpenseReportData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState<boolean>(false);
-
-  // Fetch sites
-  useEffect(() => {
-    const fetchSites = async () => {
-      setIsLoadingSites(true);
-      try {
-        // Fetch all sites by paginating through pages
-        const allSites: Site[] = [];
-        let page = 1;
-        let hasMore = true;
-        const limit = 100; // API max limit
-
-        while (hasMore) {
-          const response = await fetch(`/api/sites?page=${page}&limit=${limit}`, {
-            cache: 'no-store',
-          });
-          const payload = (await response.json().catch(() => ({}))) as {
-            sites?: Site[];
-            pagination?: {
-              totalPages: number;
-              page: number;
-            };
-            error?: string;
-          };
-
-          if (!response.ok) {
-            throw new Error(payload.error || 'Failed to load sites.');
-          }
-
-          if (payload.sites && payload.sites.length > 0) {
-            allSites.push(...payload.sites);
-          }
-
-          // Check if there are more pages
-          if (payload.pagination) {
-            hasMore = page < payload.pagination.totalPages;
-            page++;
-          } else {
-            // If no pagination info, stop after first page
-            hasMore = false;
-          }
-        }
-
-        setSites(allSites);
-      } catch (error) {
-        console.error('Failed to load sites:', error);
-        toast.error('Failed to load sites.');
-        setSites([]);
-      } finally {
-        setIsLoadingSites(false);
-      }
-    };
-
-    void fetchSites();
-  }, []);
 
   // Fetch report data
   const fetchReportData = async () => {
@@ -132,9 +82,7 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
         }
       }
 
-      const response = await fetch(`/api/expenses/report?${params.toString()}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(`/api/expenses/report?${params.toString()}`);
       const payload = (await response.json().catch(() => ({}))) as ExpenseReportData & {
         error?: string;
       };
@@ -196,7 +144,9 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
       yPos += 6;
 
       const selectedSiteName =
-        selectedSite === 'all' ? 'All Sites' : sites.find((s) => s.id === selectedSite)?.name || 'Unknown';
+        selectedSite === 'all'
+          ? 'All Sites'
+          : sites.find((s) => s.id === selectedSite)?.name || 'Unknown';
       doc.text(`Site: ${selectedSiteName}`, margin + 5, yPos);
       yPos += 5;
 
@@ -225,7 +175,11 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
       doc.setFont('helvetica', 'normal');
       doc.text(`Total Expenses: ${reportData.summary.totalCount}`, margin + 5, yPos);
       yPos += 5;
-      doc.text(`Total Amount: ₹${reportData.summary.totalAmount.toLocaleString('en-IN')}`, margin + 5, yPos);
+      doc.text(
+        `Total Amount: ₹${reportData.summary.totalAmount.toLocaleString('en-IN')}`,
+        margin + 5,
+        yPos,
+      );
       yPos += 8;
 
       // Category Breakdown
@@ -328,7 +282,11 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
             {/* Site Selection */}
             <div className="space-y-2">
               <Label htmlFor="site-select">Site</Label>
-              <Select value={selectedSite} onValueChange={setSelectedSite} disabled={isLoadingSites}>
+              <Select
+                value={selectedSite}
+                onValueChange={setSelectedSite}
+                disabled={isLoadingSites}
+              >
                 <SelectTrigger id="site-select">
                   <Building2 className="h-4 w-4 mr-2" />
                   <SelectValue placeholder={isLoadingSites ? 'Loading sites...' : 'Select Site'}>
@@ -425,7 +383,11 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="date-from">From Date</Label>
-                <DatePicker date={dateFrom} onSelect={setDateFrom} placeholder="Select start date" />
+                <DatePicker
+                  date={dateFrom}
+                  onSelect={setDateFrom}
+                  placeholder="Select start date"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="date-to">To Date</Label>
@@ -457,20 +419,22 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
                   <CardContent className="p-4">
                     <div className="text-sm text-muted-foreground mb-2">Category Breakdown</div>
                     <div className="space-y-1">
-                      {Object.entries(reportData.summary.categoryBreakdown).map(([category, amount]) => {
-                        const percentage =
-                          reportData.summary.totalAmount > 0
-                            ? ((amount / reportData.summary.totalAmount) * 100).toFixed(1)
-                            : '0';
-                        return (
-                          <div key={category} className="flex justify-between text-sm">
-                            <span>{category}:</span>
-                            <span className="font-medium">
-                              ₹{amount.toLocaleString('en-IN')} ({percentage}%)
-                            </span>
-                          </div>
-                        );
-                      })}
+                      {Object.entries(reportData.summary.categoryBreakdown).map(
+                        ([category, amount]) => {
+                          const percentage =
+                            reportData.summary.totalAmount > 0
+                              ? ((amount / reportData.summary.totalAmount) * 100).toFixed(1)
+                              : '0';
+                          return (
+                            <div key={category} className="flex justify-between text-sm">
+                              <span>{category}:</span>
+                              <span className="font-medium">
+                                ₹{amount.toLocaleString('en-IN')} ({percentage}%)
+                              </span>
+                            </div>
+                          );
+                        },
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -525,7 +489,9 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-lg font-bold">₹{expense.amount.toLocaleString('en-IN')}</div>
+                            <div className="text-lg font-bold">
+                              ₹{expense.amount.toLocaleString('en-IN')}
+                            </div>
                             <Badge
                               variant={
                                 expense.status === 'paid'
@@ -552,4 +518,3 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
     </div>
   );
 }
-

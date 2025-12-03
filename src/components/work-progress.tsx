@@ -27,12 +27,18 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
+
+import { fetcher, swrConfig } from '../lib/swr';
 
 import { DataTable } from '@/components/common/DataTable';
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
   DialogContent,
@@ -41,13 +47,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FilterSheet } from '@/components/filters/FilterSheet';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -59,11 +62,11 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMaterials, useWorkProgress } from '@/lib/contexts';
-import type { WorkProgressEntry as WorkProgressEntity } from '@/types/entities';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDateShort } from '@/lib/utils';
 import { formatDateOnly } from '@/lib/utils/date';
+import type { WorkProgressEntry as WorkProgressEntity } from '@/types/entities';
 
 interface SiteOption {
   id: string;
@@ -141,8 +144,6 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [workTypeFilter, setWorkTypeFilter] = useState<string>('all');
-  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
-  const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
   type WorkAdvancedFilterState = {
@@ -173,9 +174,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     hasMaterials: 'all',
   });
 
-  const cloneWorkAdvancedFilters = (
-    filters: WorkAdvancedFilterState,
-  ): WorkAdvancedFilterState => ({
+  const cloneWorkAdvancedFilters = (filters: WorkAdvancedFilterState): WorkAdvancedFilterState => ({
     ...filters,
     sites: [...filters.sites],
     workTypes: [...filters.workTypes],
@@ -216,10 +215,12 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
-    useState<WorkAdvancedFilterState>(createDefaultWorkAdvancedFilters());
-  const [draftAdvancedFilters, setDraftAdvancedFilters] =
-    useState<WorkAdvancedFilterState>(createDefaultWorkAdvancedFilters());
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<WorkAdvancedFilterState>(
+    createDefaultWorkAdvancedFilters(),
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<WorkAdvancedFilterState>(
+    createDefaultWorkAdvancedFilters(),
+  );
 
   // Auto-open dialog if openDialog URL parameter is present
   useEffect(() => {
@@ -229,54 +230,21 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  useEffect(() => {
-    const loadSites = async () => {
-      try {
-        setIsSitesLoading(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Array<{
-            id: string;
-            name: string;
-            location?: string;
-            status?: SiteOption['status'];
-            progress?: number | null;
-          }>;
-          error?: string;
-        };
+  // Fetch sites using SWR
+  const { data: sitesData, isLoading: isSitesLoading } = useSWR<{ sites: SiteOption[] }>(
+    '/api/sites',
+    fetcher,
+    swrConfig,
+  );
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load sites.');
-        }
-
-        const mappedSites =
-          payload.sites?.map((site) => ({
-            id: site.id,
-            name: site.name,
-            location: site.location,
-            status: site.status ?? 'Active',
-            progress: site.progress ?? undefined,
-          })) ?? [];
-
-        setSiteOptions(mappedSites);
-      } catch (error) {
-        console.error('Failed to load sites list', error);
-        toast.error('Failed to load sites list.');
-        setSiteOptions([]);
-      } finally {
-        setIsSitesLoading(false);
-      }
-    };
-
-    void loadSites();
-  }, []);
+  const siteOptions = useMemo(() => sitesData?.sites ?? [], [sitesData]);
 
   const siteOptionsWithFilter = useMemo(() => {
     if (!filterBySite) {
       return siteOptions;
     }
 
-    const existingSite = siteOptions.find((site) => site.name === filterBySite);
+    const existingSite = siteOptions.find((site: SiteOption) => site.name === filterBySite);
     if (existingSite) {
       return siteOptions;
     }
@@ -298,7 +266,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
   const resolvedSite = useMemo(
     () =>
       filterBySite
-        ? siteOptionsWithFilter.find((site) => site.name === filterBySite)
+        ? siteOptionsWithFilter.find((site: SiteOption) => site.name === filterBySite)
         : undefined,
     [filterBySite, siteOptionsWithFilter],
   );
@@ -321,7 +289,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
           const fallbackPurchaseId =
             material.purchaseId ??
             (material.materialId
-              ? materials.find((m) => m.materialId === material.materialId)?.id ?? ''
+              ? (materials.find((m) => m.materialId === material.materialId)?.id ?? '')
               : '');
 
           return {
@@ -441,10 +409,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       }
       const ordered = item.quantity ?? 0;
       const consumed =
-        item.consumedQuantity ??
-        Math.max(0, ordered - (item.remainingQuantity ?? ordered));
-      const remaining =
-        item.remainingQuantity ?? Math.max(0, ordered - consumed);
+        item.consumedQuantity ?? Math.max(0, ordered - (item.remainingQuantity ?? ordered));
+      const remaining = item.remainingQuantity ?? Math.max(0, ordered - consumed);
 
       const existing = totals.get(item.materialId) ?? { remaining: 0, consumed: 0 };
       existing.remaining += remaining;
@@ -530,13 +496,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       ? Number(appliedAdvancedFilters.progressMax)
       : undefined;
   const laborMin =
-    appliedAdvancedFilters.laborMin !== ''
-      ? Number(appliedAdvancedFilters.laborMin)
-      : undefined;
+    appliedAdvancedFilters.laborMin !== '' ? Number(appliedAdvancedFilters.laborMin) : undefined;
   const laborMax =
-    appliedAdvancedFilters.laborMax !== ''
-      ? Number(appliedAdvancedFilters.laborMax)
-      : undefined;
+    appliedAdvancedFilters.laborMax !== '' ? Number(appliedAdvancedFilters.laborMax) : undefined;
 
   const filteredEntries = workProgressEntries.filter((entry) => {
     const matchesSite = !filterBySite || entry.siteName === filterBySite;
@@ -636,7 +598,11 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     const masterBaseTotals = buildMasterTotals();
     const masterAdjustments = new Map<string, { remainingDelta: number; consumedDelta: number }>();
 
-    const accumulateMasterAdjustment = (masterId: string | undefined, consumedDelta: number, remainingDelta: number) => {
+    const accumulateMasterAdjustment = (
+      masterId: string | undefined,
+      consumedDelta: number,
+      remainingDelta: number,
+    ) => {
       if (!masterId) return;
       const existing = masterAdjustments.get(masterId) ?? { consumedDelta: 0, remainingDelta: 0 };
       existing.consumedDelta += consumedDelta;
@@ -684,10 +650,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
           const previousRemaining =
             purchase.remainingQuantity ?? Math.max(0, ordered - previousConsumed);
 
-          const updatedConsumed = Math.min(
-            ordered,
-            Math.max(0, previousConsumed + delta),
-          );
+          const updatedConsumed = Math.min(ordered, Math.max(0, previousConsumed + delta));
           const consumedDelta = updatedConsumed - previousConsumed;
           const updatedRemaining = Math.max(0, ordered - updatedConsumed);
           const remainingDelta = updatedRemaining - previousRemaining;
@@ -734,14 +697,10 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
               consumedQuantity: newConsumedQuantity,
               remainingQuantity: newRemainingQuantity,
             });
-            accumulateMasterAdjustment(
-              existingMaterial.materialId,
-              consumedDelta,
-              remainingDelta,
-            );
+            accumulateMasterAdjustment(existingMaterial.materialId, consumedDelta, remainingDelta);
           } catch (error) {
-              console.error('Failed to update material consumption', error);
-              toast.error('Failed to update material consumption.');
+            console.error('Failed to update material consumption', error);
+            toast.error('Failed to update material consumption.');
           }
         }
       }
@@ -873,9 +832,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     } catch (error) {
       console.error('Failed to delete work progress entry', error);
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Unable to delete work progress entry right now.',
+        error instanceof Error ? error.message : 'Unable to delete work progress entry right now.',
       );
     }
   };
@@ -1019,7 +976,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
                           onClick={() => {
-                            setDraftAdvancedFilters(cloneWorkAdvancedFilters(appliedAdvancedFilters));
+                            setDraftAdvancedFilters(
+                              cloneWorkAdvancedFilters(appliedAdvancedFilters),
+                            );
                             setIsFilterSheetOpen(true);
                           }}
                         >
@@ -1090,494 +1049,524 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                       <div className="flex-1 min-h-0 overflow-y-auto">
                         <Card className="w-full border-0 shadow-none">
                           <CardContent className="pt-6 px-6">
-                            <form id="work-progress-form" onSubmit={handleFormSubmit} className="space-y-4">
+                            <form
+                              id="work-progress-form"
+                              onSubmit={handleFormSubmit}
+                              className="space-y-4"
+                            >
                               <div className="space-y-4">
-                          {/* Basic Information */}
-                          <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-foreground">
-                              Basic Information
-                            </h3>
+                                {/* Basic Information */}
+                                <div className="space-y-4">
+                                  <h3 className="text-sm font-semibold text-foreground">
+                                    Basic Information
+                                  </h3>
 
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label>Work Type</Label>
-                                <Select
-                                  value={workProgressForm.workType}
-                                  onValueChange={(value) =>
-                                    setWorkProgressForm((prev) => ({ ...prev, workType: value }))
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select work type" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Foundation">Foundation</SelectItem>
-                                    <SelectItem value="Plumbing">Plumbing</SelectItem>
-                                    <SelectItem value="Electrical">Electrical</SelectItem>
-                                    <SelectItem value="Painting">Painting</SelectItem>
-                                    <SelectItem value="Roofing">Roofing</SelectItem>
-                                    <SelectItem value="Flooring">Flooring</SelectItem>
-                                    <SelectItem value="Masonry">Masonry</SelectItem>
-                                    <SelectItem value="Plastering">Plastering</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Date</Label>
-                                <DatePicker
-                                  date={
-                                    workProgressForm.date
-                                      ? new Date(workProgressForm.date)
-                                      : undefined
-                                  }
-                                  onSelect={(date) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      date: date ? formatDateOnly(date) : '',
-                                    }))
-                                  }
-                                  placeholder="Select work date"
-                                />
-                              </div>
-                            </div>
+                                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label>Work Type</Label>
+                                      <Select
+                                        value={workProgressForm.workType}
+                                        onValueChange={(value) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            workType: value,
+                                          }))
+                                        }
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select work type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="Foundation">Foundation</SelectItem>
+                                          <SelectItem value="Plumbing">Plumbing</SelectItem>
+                                          <SelectItem value="Electrical">Electrical</SelectItem>
+                                          <SelectItem value="Painting">Painting</SelectItem>
+                                          <SelectItem value="Roofing">Roofing</SelectItem>
+                                          <SelectItem value="Flooring">Flooring</SelectItem>
+                                          <SelectItem value="Masonry">Masonry</SelectItem>
+                                          <SelectItem value="Plastering">Plastering</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Date</Label>
+                                      <DatePicker
+                                        date={
+                                          workProgressForm.date
+                                            ? new Date(workProgressForm.date)
+                                            : undefined
+                                        }
+                                        onSelect={(date) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            date: date ? formatDateOnly(date) : '',
+                                          }))
+                                        }
+                                        placeholder="Select work date"
+                                      />
+                                    </div>
+                                  </div>
 
-                            <div className="space-y-2">
-                              <Label>Site</Label>
-                              <Select
-                                value={workProgressForm.siteId}
-                                disabled={
-                                  Boolean(resolvedSite) ||
-                                  isSitesLoading ||
-                                  siteOptionsWithFilter.length === 0
-                                }
-                                onValueChange={(value) => {
-                                  const site = siteOptionsWithFilter.find((s) => s.id === value);
-                                  setWorkProgressForm((prev) => ({
-                                    ...prev,
-                                    siteId: value,
-                                    siteName: site?.name || '',
-                                    materialsUsed: [], // Reset materials when site changes
-                                  }));
-                                  setSelectedMaterial('');
-                                  setMaterialQuantity(0);
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue
-                                    placeholder={
-                                      resolvedSite
-                                        ? resolvedSite.name
-                                        : isSitesLoading
-                                          ? 'Loading sites...'
-                                          : siteOptionsWithFilter.length === 0
-                                            ? 'No sites available'
-                                            : 'Select site'
-                                    }
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {isSitesLoading ? (
-                                    <SelectItem value="__loading" disabled>
-                                      Loading sites...
-                                    </SelectItem>
-                                  ) : siteOptionsWithFilter.length === 0 ? (
-                                    <SelectItem value="__none" disabled>
-                                      No sites available. Create a site first.
-                                    </SelectItem>
-                                  ) : (
-                                    siteOptionsWithFilter.map((site) => (
-                                      <SelectItem key={site.id} value={site.id}>
-                                        {site.name}
-                                      </SelectItem>
-                                    ))
-                                  )}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>Description</Label>
-                              <Textarea
-                                placeholder="Describe the work performed"
-                                value={workProgressForm.description}
-                                onChange={(e) =>
-                                  setWorkProgressForm((prev) => ({
-                                    ...prev,
-                                    description: e.target.value,
-                                  }))
-                                }
-                                required
-                                rows={3}
-                              />
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          {/* Measurements */}
-                          <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-foreground">Measurements</h3>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label>Unit</Label>
-                                <Select
-                                  value={workProgressForm.unit}
-                                  onValueChange={(value) =>
-                                    setWorkProgressForm((prev) => ({ ...prev, unit: value }))
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select unit" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="cum">Cubic Meter (cum)</SelectItem>
-                                    <SelectItem value="sqm">Square Meter (sqm)</SelectItem>
-                                    <SelectItem value="rmt">Running Meter (rmt)</SelectItem>
-                                    <SelectItem value="nos">Numbers (nos)</SelectItem>
-                                    <SelectItem value="sqft">Square Feet (sqft)</SelectItem>
-                                    <SelectItem value="cft">Cubic Feet (cft)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Total Quantity</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="0.00"
-                                  value={workProgressForm.totalQuantity || ''}
-                                  onChange={(e) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      totalQuantity: parseFloat(e.target.value) || 0,
-                                    }))
-                                  }
-                                  required
-                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                              <div className="space-y-2">
-                                <Label>Length (m)</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="0.00"
-                                  value={workProgressForm.length || ''}
-                                  onChange={(e) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      length: parseFloat(e.target.value) || 0,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Breadth (m)</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="0.00"
-                                  value={workProgressForm.breadth || ''}
-                                  onChange={(e) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      breadth: parseFloat(e.target.value) || 0,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Thickness (m)</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="0.00"
-                                  value={workProgressForm.thickness || ''}
-                                  onChange={(e) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      thickness: parseFloat(e.target.value) || 0,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          {/* Material Consumption */}
-                          <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-foreground">
-                              Material Consumption
-                            </h3>
-
-                            {!workProgressForm.siteId ? (
-                              <div className="p-4 bg-muted rounded-lg text-center">
-                                <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                                <p className="text-sm text-muted-foreground">
-                                  Please select a site first to add materials
-                                </p>
-                              </div>
-                            ) : getAvailableMaterials().length === 0 ? (
-                              <div className="p-4 bg-muted rounded-lg text-center">
-                                <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                                <p className="text-sm text-muted-foreground">
-                                  No materials available for this site
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                <div className="flex flex-col gap-3 md:flex-row">
-                                  <div className="flex-1 space-y-2">
-                                    <Label>Select Material</Label>
+                                  <div className="space-y-2">
+                                    <Label>Site</Label>
                                     <Select
-                                      value={selectedMaterial}
-                                      onValueChange={setSelectedMaterial}
+                                      value={workProgressForm.siteId}
+                                      disabled={
+                                        Boolean(resolvedSite) ||
+                                        isSitesLoading ||
+                                        siteOptionsWithFilter.length === 0
+                                      }
+                                      onValueChange={(value) => {
+                                        const site = siteOptionsWithFilter.find(
+                                          (s: SiteOption) => s.id === value,
+                                        );
+                                        setWorkProgressForm((prev) => ({
+                                          ...prev,
+                                          siteId: value,
+                                          siteName: site?.name || '',
+                                          materialsUsed: [], // Reset materials when site changes
+                                        }));
+                                        setSelectedMaterial('');
+                                        setMaterialQuantity(0);
+                                      }}
                                     >
                                       <SelectTrigger>
-                                        <SelectValue placeholder="Choose material" />
+                                        <SelectValue
+                                          placeholder={
+                                            resolvedSite
+                                              ? resolvedSite.name
+                                              : isSitesLoading
+                                                ? 'Loading sites...'
+                                                : siteOptionsWithFilter.length === 0
+                                                  ? 'No sites available'
+                                                  : 'Select site'
+                                          }
+                                        />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {getAvailableMaterials().map((material) => (
-                                          <SelectItem key={material.id} value={material.id}>
-                                            {material.materialName} (Balance:{' '}
-                                            {material.remainingQuantity} {material.unit})
+                                        {isSitesLoading ? (
+                                          <SelectItem value="__loading" disabled>
+                                            Loading sites...
                                           </SelectItem>
-                                        ))}
+                                        ) : siteOptionsWithFilter.length === 0 ? (
+                                          <SelectItem value="__none" disabled>
+                                            No sites available. Create a site first.
+                                          </SelectItem>
+                                        ) : (
+                                          siteOptionsWithFilter.map((site: SiteOption) => (
+                                            <SelectItem key={site.id} value={site.id}>
+                                              {site.name}
+                                            </SelectItem>
+                                          ))
+                                        )}
                                       </SelectContent>
                                     </Select>
                                   </div>
-                                  <div className="md:w-32 space-y-2">
-                                    <Label>Quantity</Label>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      placeholder="0"
-                                      value={materialQuantity || ''}
+
+                                  <div className="space-y-2">
+                                    <Label>Description</Label>
+                                    <Textarea
+                                      placeholder="Describe the work performed"
+                                      value={workProgressForm.description}
                                       onChange={(e) =>
-                                        setMaterialQuantity(parseFloat(e.target.value) || 0)
+                                        setWorkProgressForm((prev) => ({
+                                          ...prev,
+                                          description: e.target.value,
+                                        }))
                                       }
-                                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                                      required
+                                      rows={3}
                                     />
                                   </div>
-                                  <div className="flex items-end">
-                                    <Button
-                                      type="button"
-                                      onClick={handleAddMaterial}
-                                      size="sm"
-                                      className="h-10"
-                                    >
-                                      <Plus className="h-4 w-4" />
-                                    </Button>
+                                </div>
+
+                                <Separator />
+
+                                {/* Measurements */}
+                                <div className="space-y-4">
+                                  <h3 className="text-sm font-semibold text-foreground">
+                                    Measurements
+                                  </h3>
+
+                                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label>Unit</Label>
+                                      <Select
+                                        value={workProgressForm.unit}
+                                        onValueChange={(value) =>
+                                          setWorkProgressForm((prev) => ({ ...prev, unit: value }))
+                                        }
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select unit" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="cum">Cubic Meter (cum)</SelectItem>
+                                          <SelectItem value="sqm">Square Meter (sqm)</SelectItem>
+                                          <SelectItem value="rmt">Running Meter (rmt)</SelectItem>
+                                          <SelectItem value="nos">Numbers (nos)</SelectItem>
+                                          <SelectItem value="sqft">Square Feet (sqft)</SelectItem>
+                                          <SelectItem value="cft">Cubic Feet (cft)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Total Quantity</Label>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={workProgressForm.totalQuantity || ''}
+                                        onChange={(e) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            totalQuantity: parseFloat(e.target.value) || 0,
+                                          }))
+                                        }
+                                        required
+                                        style={{
+                                          appearance: 'textfield',
+                                          MozAppearance: 'textfield',
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <div className="space-y-2">
+                                      <Label>Length (m)</Label>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={workProgressForm.length || ''}
+                                        onChange={(e) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            length: parseFloat(e.target.value) || 0,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Breadth (m)</Label>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={workProgressForm.breadth || ''}
+                                        onChange={(e) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            breadth: parseFloat(e.target.value) || 0,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Thickness (m)</Label>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={workProgressForm.thickness || ''}
+                                        onChange={(e) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            thickness: parseFloat(e.target.value) || 0,
+                                          }))
+                                        }
+                                      />
+                                    </div>
                                   </div>
                                 </div>
 
-                                {selectedMaterial && (
-                                  <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800">
-                                    <p className="text-sm text-blue-900 dark:text-blue-100">
-                                      <span className="font-medium">Balance Stock:</span>{' '}
-                                      {(projectedBalance ??
-                                        selectedMaterialDetails?.remainingQuantity ??
-                                        0
-                                      )
-                                        .toLocaleString(undefined, {
-                                          maximumFractionDigits: 2,
-                                        })}{' '}
-                                      {selectedMaterialDetails?.unit}
-                                      {projectedBalance !== undefined &&
-                                      selectedMaterialDetails?.remainingQuantity !== undefined
-                                        ? ` (after this entry)`
-                                        : ''}
-                                    </p>
-                                  </div>
-                                )}
+                                <Separator />
 
-                                {workProgressForm.materialsUsed.length > 0 && (
-                                  <div className="space-y-2">
-                                    <Label>Added Materials</Label>
-                                    <div className="space-y-2">
-                                      {workProgressForm.materialsUsed.map((material, index) => (
-                                        <div
-                                          key={index}
-                                          className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                                        >
-                                          <div className="flex-1">
-                                            <p className="text-sm font-medium">
-                                              {material.materialName}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                              Quantity: {material.quantity} {material.unit} |
-                                              Balance after: {material.balanceStock} {material.unit}
-                                            </p>
-                                          </div>
+                                {/* Material Consumption */}
+                                <div className="space-y-4">
+                                  <h3 className="text-sm font-semibold text-foreground">
+                                    Material Consumption
+                                  </h3>
+
+                                  {!workProgressForm.siteId ? (
+                                    <div className="p-4 bg-muted rounded-lg text-center">
+                                      <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                                      <p className="text-sm text-muted-foreground">
+                                        Please select a site first to add materials
+                                      </p>
+                                    </div>
+                                  ) : getAvailableMaterials().length === 0 ? (
+                                    <div className="p-4 bg-muted rounded-lg text-center">
+                                      <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                                      <p className="text-sm text-muted-foreground">
+                                        No materials available for this site
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <div className="flex flex-col gap-3 md:flex-row">
+                                        <div className="flex-1 space-y-2">
+                                          <Label>Select Material</Label>
+                                          <Select
+                                            value={selectedMaterial}
+                                            onValueChange={setSelectedMaterial}
+                                          >
+                                            <SelectTrigger>
+                                              <SelectValue placeholder="Choose material" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {getAvailableMaterials().map((material) => (
+                                                <SelectItem key={material.id} value={material.id}>
+                                                  {material.materialName} (Balance:{' '}
+                                                  {material.remainingQuantity} {material.unit})
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="md:w-32 space-y-2">
+                                          <Label>Quantity</Label>
+                                          <Input
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0"
+                                            value={materialQuantity || ''}
+                                            onChange={(e) =>
+                                              setMaterialQuantity(parseFloat(e.target.value) || 0)
+                                            }
+                                            style={{
+                                              appearance: 'textfield',
+                                              MozAppearance: 'textfield',
+                                            }}
+                                          />
+                                        </div>
+                                        <div className="flex items-end">
                                           <Button
                                             type="button"
-                                            variant="ghost"
+                                            onClick={handleAddMaterial}
                                             size="sm"
-                                            onClick={() => handleRemoveMaterial(index)}
-                                            className="h-8 w-8 p-0"
+                                            className="h-10"
                                           >
-                                            <X className="h-4 w-4 text-destructive" />
+                                            <Plus className="h-4 w-4" />
                                           </Button>
                                         </div>
-                                      ))}
+                                      </div>
+
+                                      {selectedMaterial && (
+                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800">
+                                          <p className="text-sm text-blue-900 dark:text-blue-100">
+                                            <span className="font-medium">Balance Stock:</span>{' '}
+                                            {(
+                                              projectedBalance ??
+                                              selectedMaterialDetails?.remainingQuantity ??
+                                              0
+                                            ).toLocaleString(undefined, {
+                                              maximumFractionDigits: 2,
+                                            })}{' '}
+                                            {selectedMaterialDetails?.unit}
+                                            {projectedBalance !== undefined &&
+                                            selectedMaterialDetails?.remainingQuantity !== undefined
+                                              ? ` (after this entry)`
+                                              : ''}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {workProgressForm.materialsUsed.length > 0 && (
+                                        <div className="space-y-2">
+                                          <Label>Added Materials</Label>
+                                          <div className="space-y-2">
+                                            {workProgressForm.materialsUsed.map(
+                                              (material, index) => (
+                                                <div
+                                                  key={index}
+                                                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                                                >
+                                                  <div className="flex-1">
+                                                    <p className="text-sm font-medium">
+                                                      {material.materialName}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                      Quantity: {material.quantity} {material.unit}{' '}
+                                                      | Balance after: {material.balanceStock}{' '}
+                                                      {material.unit}
+                                                    </p>
+                                                  </div>
+                                                  <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleRemoveMaterial(index)}
+                                                    className="h-8 w-8 p-0"
+                                                  >
+                                                    <X className="h-4 w-4 text-destructive" />
+                                                  </Button>
+                                                </div>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <Separator />
+
+                                {/* Labor & Progress */}
+                                <div className="space-y-4">
+                                  <h3 className="text-sm font-semibold text-foreground">
+                                    Labor & Progress
+                                  </h3>
+
+                                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label>Labor Hours</Label>
+                                      <Input
+                                        type="number"
+                                        step="0.5"
+                                        placeholder="0"
+                                        value={workProgressForm.laborHours || ''}
+                                        onChange={(e) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            laborHours: parseFloat(e.target.value) || 0,
+                                          }))
+                                        }
+                                        style={{
+                                          appearance: 'textfield',
+                                          MozAppearance: 'textfield',
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Progress Percentage</Label>
+                                      <Input
+                                        type="number"
+                                        placeholder="0"
+                                        min="0"
+                                        max="100"
+                                        value={workProgressForm.progressPercentage || ''}
+                                        onChange={(e) =>
+                                          setWorkProgressForm((prev) => ({
+                                            ...prev,
+                                            progressPercentage: parseFloat(e.target.value) || 0,
+                                          }))
+                                        }
+                                        style={{
+                                          appearance: 'textfield',
+                                          MozAppearance: 'textfield',
+                                        }}
+                                      />
                                     </div>
                                   </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
 
-                          <Separator />
+                                  <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <Select
+                                      value={workProgressForm.status}
+                                      onValueChange={(value) =>
+                                        setWorkProgressForm((prev) => ({
+                                          ...prev,
+                                          status: value as WorkProgressFormEntry['status'],
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="In Progress">In Progress</SelectItem>
+                                        <SelectItem value="Completed">Completed</SelectItem>
+                                        <SelectItem value="On Hold">On Hold</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
 
-                          {/* Labor & Progress */}
-                          <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-foreground">
-                              Labor & Progress
-                            </h3>
+                                <Separator />
 
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label>Labor Hours</Label>
-                                <Input
-                                  type="number"
-                                  step="0.5"
-                                  placeholder="0"
-                                  value={workProgressForm.laborHours || ''}
-                                  onChange={(e) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      laborHours: parseFloat(e.target.value) || 0,
-                                    }))
-                                  }
-                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Progress Percentage</Label>
-                                <Input
-                                  type="number"
-                                  placeholder="0"
-                                  min="0"
-                                  max="100"
-                                  value={workProgressForm.progressPercentage || ''}
-                                  onChange={(e) =>
-                                    setWorkProgressForm((prev) => ({
-                                      ...prev,
-                                      progressPercentage: parseFloat(e.target.value) || 0,
-                                    }))
-                                  }
-                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                                />
-                              </div>
-                            </div>
+                                {/* Photo Attachments */}
+                                <div className="space-y-4">
+                                  <h3 className="text-sm font-semibold text-foreground">
+                                    Photo Attachments
+                                  </h3>
 
-                            <div className="space-y-2">
-                              <Label>Status</Label>
-                              <Select
-                                value={workProgressForm.status}
-                                onValueChange={(value) =>
-                                  setWorkProgressForm((prev) => ({
-                                    ...prev,
-                                    status: value as WorkProgressFormEntry['status'],
-                                  }))
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="In Progress">In Progress</SelectItem>
-                                  <SelectItem value="Completed">Completed</SelectItem>
-                                  <SelectItem value="On Hold">On Hold</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          {/* Photo Attachments */}
-                          <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-foreground">
-                              Photo Attachments
-                            </h3>
-
-                            <div className="space-y-3">
-                              <div className="flex items-center gap-2">
-                                <Label
-                                  htmlFor="photo-upload"
-                                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md cursor-pointer hover:bg-primary/90 transition-colors"
-                                >
-                                  <Upload className="h-4 w-4" />
-                                  <span>Upload Photos</span>
-                                </Label>
-                                <Input
-                                  id="photo-upload"
-                                  type="file"
-                                  accept="image/*"
-                                  multiple
-                                  onChange={handlePhotoUpload}
-                                  className="hidden"
-                                />
-                              </div>
-
-                              {workProgressForm.photos.length > 0 && (
-                                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                                  {workProgressForm.photos.map((photo, index) => (
-                                    <div key={index} className="relative group">
-                                      <div className="relative w-full h-24 rounded-lg border overflow-hidden">
-                                        <Image
-                                          src={photo}
-                                          alt={`Work progress ${index + 1}`}
-                                          fill
-                                          className="object-cover"
-                                        />
-                                      </div>
-                                      <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={() => handleRemovePhoto(index)}
-                                        className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <Label
+                                        htmlFor="photo-upload"
+                                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md cursor-pointer hover:bg-primary/90 transition-colors"
                                       >
-                                        <X className="h-3 w-3" />
-                                      </Button>
+                                        <Upload className="h-4 w-4" />
+                                        <span>Upload Photos</span>
+                                      </Label>
+                                      <Input
+                                        id="photo-upload"
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        onChange={handlePhotoUpload}
+                                        className="hidden"
+                                      />
                                     </div>
-                                  ))}
+
+                                    {workProgressForm.photos.length > 0 && (
+                                      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                                        {workProgressForm.photos.map((photo, index) => (
+                                          <div key={index} className="relative group">
+                                            <div className="relative w-full h-24 rounded-lg border overflow-hidden">
+                                              <Image
+                                                src={photo}
+                                                alt={`Work progress ${index + 1}`}
+                                                fill
+                                                className="object-cover"
+                                              />
+                                            </div>
+                                            <Button
+                                              type="button"
+                                              variant="destructive"
+                                              size="sm"
+                                              onClick={() => handleRemovePhoto(index)}
+                                              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </Button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {workProgressForm.photos.length === 0 && (
+                                      <div className="p-6 bg-muted rounded-lg text-center">
+                                        <ImageIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                                        <p className="text-sm text-muted-foreground">
+                                          No photos attached. Upload images to document work
+                                          progress.
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
 
-                              {workProgressForm.photos.length === 0 && (
-                                <div className="p-6 bg-muted rounded-lg text-center">
-                                  <ImageIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                                  <p className="text-sm text-muted-foreground">
-                                    No photos attached. Upload images to document work progress.
-                                  </p>
+                                <Separator />
+
+                                {/* Notes */}
+                                <div className="space-y-2">
+                                  <Label>Additional Notes</Label>
+                                  <Textarea
+                                    placeholder="Additional notes or observations"
+                                    value={workProgressForm.notes}
+                                    onChange={(e) =>
+                                      setWorkProgressForm((prev) => ({
+                                        ...prev,
+                                        notes: e.target.value,
+                                      }))
+                                    }
+                                    rows={3}
+                                  />
                                 </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          {/* Notes */}
-                          <div className="space-y-2">
-                            <Label>Additional Notes</Label>
-                            <Textarea
-                              placeholder="Additional notes or observations"
-                              value={workProgressForm.notes}
-                              onChange={(e) =>
-                                setWorkProgressForm((prev) => ({ ...prev, notes: e.target.value }))
-                              }
-                              rows={3}
-                            />
-                          </div>
                               </div>
                             </form>
                           </CardContent>
@@ -1591,18 +1580,16 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                               >
                                 Cancel
                               </Button>
-                              <Button
-                                type="submit"
-                                form="work-progress-form"
-                                disabled={isSaving}
-                              >
+                              <Button type="submit" form="work-progress-form" disabled={isSaving}>
                                 {isSaving ? (
                                   <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                     {dialog.editingItem ? 'Saving...' : 'Adding...'}
                                   </>
+                                ) : dialog.editingItem ? (
+                                  'Update Entry'
                                 ) : (
-                                  dialog.editingItem ? 'Update Entry' : 'Add Entry'
+                                  'Add Entry'
                                 )}
                               </Button>
                             </div>
@@ -1644,7 +1631,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                     }
                     if (appliedAdvancedFilters.hasPhotos !== 'all') {
                       chips.push(
-                        appliedAdvancedFilters.hasPhotos === 'with' ? 'With photos' : 'Without photos',
+                        appliedAdvancedFilters.hasPhotos === 'with'
+                          ? 'With photos'
+                          : 'Without photos',
                       );
                     }
                     if (appliedAdvancedFilters.hasNotes !== 'all') {
@@ -1856,7 +1845,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                 )
               ) : (
                 <div className="grid gap-2">
-                  {siteOptions.map((site) => {
+                  {siteOptions.map((site: SiteOption) => {
                     const isChecked = draftAdvancedFilters.sites.includes(site.name);
                     return (
                       <Label key={site.id} className="flex items-center gap-3 text-sm font-normal">
@@ -1879,7 +1868,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                       </Label>
                     );
                   })}
-    </div>
+                </div>
               ),
           },
           {

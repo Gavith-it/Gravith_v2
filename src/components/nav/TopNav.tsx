@@ -93,6 +93,7 @@ function BreadcrumbNav({ breadcrumbs }: { breadcrumbs: Breadcrumb[] }) {
           onClick={() => {
             const previousBreadcrumb = breadcrumbs[breadcrumbs.length - 2];
             if (previousBreadcrumb?.href) {
+              router.prefetch(previousBreadcrumb.href);
               router.push(previousBreadcrumb.href);
             }
           }}
@@ -132,6 +133,7 @@ function BreadcrumbNav({ breadcrumbs }: { breadcrumbs: Breadcrumb[] }) {
  * Tab navigation with keyboard support and horizontal scroll on mobile
  */
 function TabNav({ tabs }: { tabs: Tab[] }) {
+  const router = useRouter();
   const tabListRef = React.useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = React.useState(
     tabs.findIndex((tab) => tab.isActive) || 0,
@@ -179,12 +181,19 @@ function TabNav({ tabs }: { tabs: Tab[] }) {
           <Link
             key={index}
             href={tab.href}
+            prefetch={true}
             role="tab"
             aria-selected={isActive}
             aria-current={isActive ? 'page' : undefined}
             tabIndex={isActive ? 0 : -1}
             onKeyDown={(e) => handleKeyDown(e, index)}
             onFocus={() => setFocusedIndex(index)}
+            onMouseEnter={() => {
+              // Prefetch on hover for even faster navigation
+              if (!isActive) {
+                router.prefetch(tab.href);
+              }
+            }}
             className={cn(
               // Base styles from shadcn TabsTrigger
               'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all',

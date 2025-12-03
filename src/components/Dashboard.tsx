@@ -16,15 +16,18 @@ import {
   PieChart,
   type LucideIcon,
 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import useSWR from 'swr';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
-import { formatCurrency, formatDate, formatIndianCurrencyShort, formatPercentage } from '../lib/utils';
-import type {
-  DashboardActiveSite,
-  DashboardData,
-  DashboardRecentActivity,
-} from '@/types/dashboard';
+import { fetcher, swrConfig } from '../lib/swr';
+import {
+  formatCurrency,
+  formatDate,
+  formatIndianCurrencyShort,
+  formatPercentage,
+} from '../lib/utils';
+
 
 import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
@@ -40,6 +43,12 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+
+import type {
+  DashboardActiveSite,
+  DashboardData,
+  DashboardRecentActivity,
+} from '@/types/dashboard';
 
 // Form data types
 import type { MaterialMasterInput } from '@/types/materials';
@@ -120,9 +129,7 @@ type PresentedActivity = DashboardRecentActivity & {
   color: string;
 };
 
-function mapActivitiesWithPresentation(
-  activities: DashboardRecentActivity[],
-): PresentedActivity[] {
+function mapActivitiesWithPresentation(activities: DashboardRecentActivity[]): PresentedActivity[] {
   const iconMap: Record<DashboardRecentActivity['type'], { icon: LucideIcon; color: string }> = {
     purchase: { icon: ShoppingCart, color: 'text-blue-600' },
     expense: { icon: DollarSign, color: 'text-green-600' },
@@ -145,43 +152,18 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const [dashboardData, setDashboardData] = useState<DashboardData>(emptyDashboardData);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: dashboardData = emptyDashboardData,
+    error: swrError,
+    isLoading,
+  } = useSWR<DashboardData>('/api/dashboard/overview', fetcher, swrConfig);
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const loadDashboard = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const response = await fetch('/api/dashboard/overview', { signal: controller.signal });
-
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => ({}))) as { error?: string };
-          throw new Error(payload.error || 'Failed to load dashboard data');
-        }
-
-        const payload = (await response.json()) as DashboardData;
-        setDashboardData(payload);
-      } catch (fetchError) {
-        if (controller.signal.aborted) return;
-        console.error('Dashboard load failed', fetchError);
-        setError('Unable to load dashboard data right now.');
-        setDashboardData(emptyDashboardData);
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadDashboard();
-
-    return () => controller.abort();
-  }, []);
+  // Convert SWR error to string for display
+  const error = swrError
+    ? swrError instanceof Error
+      ? swrError.message
+      : 'Unable to load dashboard data right now.'
+    : null;
 
   const { quickStats, recentActivities, alerts, activeSites } = dashboardData;
   const presentedActivities = useMemo(
@@ -369,69 +351,69 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                     const remainingBudget = Math.max(allocated - spent, 0);
 
                     return (
-                <div key={site.id} className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{site.name}</h4>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                                {site.location || '—'}
-                      </div>
-                    </div>
-                    <StatusBadge status={site.status} />
-                  </div>
+                      <div key={site.id} className="p-4 border rounded-lg space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium">{site.name}</h4>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <MapPin className="h-3 w-3" />
+                              {site.location || '—'}
+                            </div>
+                          </div>
+                          <StatusBadge status={site.status} />
+                        </div>
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Progress</span>
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span>Progress</span>
                             <span>{safeProgress}%</span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full"
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
                               style={{ width: `${Math.min(safeProgress, 100)}%` }}
-                      />
-                    </div>
-                  </div>
+                            />
+                          </div>
+                        </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Next Milestone</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Next Milestone</p>
                             <p className="font-medium">{site.nextMilestone || 'Not set'}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Due Date</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Due Date</p>
                             <p className="font-medium">
                               {site.dueDate ? formatDate(site.dueDate) : 'Not scheduled'}
                             </p>
-                    </div>
-                  </div>
+                          </div>
+                        </div>
 
-                  <div className="flex justify-between text-sm pt-2 border-t">
-                    <div>
-                      <span className="text-muted-foreground">Budget: </span>
-                      <span className="font-medium">
+                        <div className="flex justify-between text-sm pt-2 border-t">
+                          <div>
+                            <span className="text-muted-foreground">Budget: </span>
+                            <span className="font-medium">
                               ₹{formatPercentage(spent / 100000, 1)}L / ₹
                               {formatPercentage(allocated / 100000, 1)}L
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                                    className={`font-medium cursor-help ${budgetUsed > 90 ? 'text-red-600' : 'text-green-600'}`}
-                            >
-                                    {formatPercentage(budgetUsed, 0)}% used
                             </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="text-xs">Percentage of allocated budget spent</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                  </div>
+                          </div>
+                          <div className="text-right">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className={`font-medium cursor-help ${budgetUsed > 90 ? 'text-red-600' : 'text-green-600'}`}
+                                  >
+                                    {formatPercentage(budgetUsed, 0)}% used
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs">Percentage of allocated budget spent</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
 
                         <div className="text-sm text-muted-foreground">
                           Remaining budget:&nbsp;
@@ -439,7 +421,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                             ₹{formatCurrency(remainingBudget)}
                           </span>
                         </div>
-                </div>
+                      </div>
                     );
                   })}
             </div>
@@ -593,7 +575,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                             {activity.timestamp ? formatDate(activity.timestamp) : '—'}
                           </p>
                           {activity.amount !== null && (
-                            <p className="text-sm font-medium">₹{formatCurrency(activity.amount)}</p>
+                            <p className="text-sm font-medium">
+                              ₹{formatCurrency(activity.amount)}
+                            </p>
                           )}
                         </div>
                       </div>

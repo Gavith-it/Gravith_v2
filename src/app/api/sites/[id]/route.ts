@@ -98,7 +98,12 @@ export async function GET(_: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Site not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ site: mapRowToSite(data as SiteRow) });
+    const response = NextResponse.json({ site: mapRowToSite(data as SiteRow) });
+
+    // Add cache headers: cache for 30 seconds, revalidate in background
+    response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error retrieving site', error);
     return NextResponse.json({ error: 'Unexpected error retrieving site.' }, { status: 500 });
@@ -214,10 +219,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
 
     if (purchaseCheckError) {
       console.error('Error checking purchase dependencies', purchaseCheckError);
-      return NextResponse.json(
-        { error: 'Unable to verify site dependencies.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Unable to verify site dependencies.' }, { status: 500 });
     }
 
     // 2. Check expenses
@@ -229,10 +231,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
 
     if (expenseCheckError) {
       console.error('Error checking expense dependencies', expenseCheckError);
-      return NextResponse.json(
-        { error: 'Unable to verify site dependencies.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Unable to verify site dependencies.' }, { status: 500 });
     }
 
     // 3. Check payments
@@ -244,10 +243,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
 
     if (paymentCheckError) {
       console.error('Error checking payment dependencies', paymentCheckError);
-      return NextResponse.json(
-        { error: 'Unable to verify site dependencies.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Unable to verify site dependencies.' }, { status: 500 });
     }
 
     // 4. Check vehicle usage
@@ -259,10 +255,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
 
     if (vehicleUsageCheckError) {
       console.error('Error checking vehicle usage dependencies', vehicleUsageCheckError);
-      return NextResponse.json(
-        { error: 'Unable to verify site dependencies.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Unable to verify site dependencies.' }, { status: 500 });
     }
 
     // 5. Check work progress
@@ -274,10 +267,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
 
     if (workProgressCheckError) {
       console.error('Error checking work progress dependencies', workProgressCheckError);
-      return NextResponse.json(
-        { error: 'Unable to verify site dependencies.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Unable to verify site dependencies.' }, { status: 500 });
     }
 
     // 6. Check material masters (optional - sites can be null)
@@ -289,10 +279,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
 
     if (materialCheckError) {
       console.error('Error checking material master dependencies', materialCheckError);
-      return NextResponse.json(
-        { error: 'Unable to verify site dependencies.' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Unable to verify site dependencies.' }, { status: 500 });
     }
 
     const totalTransactions =
@@ -308,8 +295,10 @@ export async function DELETE(_: NextRequest, { params }: Params) {
       if ((purchaseCount ?? 0) > 0) dependencies.push(`${purchaseCount} purchase(s)`);
       if ((expenseCount ?? 0) > 0) dependencies.push(`${expenseCount} expense(s)`);
       if ((paymentCount ?? 0) > 0) dependencies.push(`${paymentCount} payment(s)`);
-      if ((vehicleUsageCount ?? 0) > 0) dependencies.push(`${vehicleUsageCount} vehicle usage record(s)`);
-      if ((workProgressCount ?? 0) > 0) dependencies.push(`${workProgressCount} work progress entry/entries`);
+      if ((vehicleUsageCount ?? 0) > 0)
+        dependencies.push(`${vehicleUsageCount} vehicle usage record(s)`);
+      if ((workProgressCount ?? 0) > 0)
+        dependencies.push(`${workProgressCount} work progress entry/entries`);
       if ((materialCount ?? 0) > 0) dependencies.push(`${materialCount} material(s)`);
 
       return NextResponse.json(

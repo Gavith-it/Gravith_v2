@@ -1,18 +1,11 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  Loader2,
-  Plus,
-  Trash2,
-  Pencil,
-  Calendar,
-  Flag,
-  AlertTriangle,
-  Users,
-} from 'lucide-react';
+import { Loader2, Plus, Trash2, Pencil, Calendar, Flag, AlertTriangle, Users } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 import { z } from 'zod';
 
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +20,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -36,13 +36,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { formatDateOnly } from '@/lib/utils/date';
 import { useScheduling } from '@/lib/contexts';
+import { fetcher, swrConfig } from '@/lib/swr';
 import { formatDate } from '@/lib/utils';
+import { formatDateOnly } from '@/lib/utils/date';
 import type { ProjectActivity, ProjectMilestone } from '@/types';
-import { toast } from 'sonner';
 
 type SiteOption = { id: string; name: string };
 
@@ -86,7 +93,8 @@ function deriveActivityStats(activities: ProjectActivity[]) {
   const averageProgress =
     activities.length > 0
       ? Math.round(
-          activities.reduce((sum, activity) => sum + (activity.progress ?? 0), 0) / activities.length,
+          activities.reduce((sum, activity) => sum + (activity.progress ?? 0), 0) /
+            activities.length,
         )
       : 0;
 
@@ -134,8 +142,6 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
   const [editingActivity, setEditingActivity] = useState<ProjectActivity | null>(null);
   const [isMilestoneDialogOpen, setMilestoneDialogOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
-  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
   const [isSubmittingActivity, setIsSubmittingActivity] = useState<boolean>(false);
   const [isSubmittingMilestone, setIsSubmittingMilestone] = useState<boolean>(false);
 
@@ -171,30 +177,12 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     },
   });
 
-  useEffect(() => {
-    const loadSites = async () => {
-      try {
-        setIsLoadingSites(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Array<{ id: string; name: string }>;
-        };
+  // Fetch sites using SWR
+  const { data: sitesData, isLoading: isLoadingSites } = useSWR<{
+    sites: Array<{ id: string; name: string }>;
+  }>('/api/sites', fetcher, swrConfig);
 
-        if (response.ok) {
-          setSiteOptions(payload.sites ?? []);
-        } else {
-          setSiteOptions([]);
-        }
-      } catch (error) {
-        console.error('Failed to load sites for scheduling', error);
-        setSiteOptions([]);
-      } finally {
-        setIsLoadingSites(false);
-      }
-    };
-
-    void loadSites();
-  }, []);
+  const siteOptions = useMemo(() => sitesData?.sites ?? [], [sitesData]);
 
   useEffect(() => {
     if (!isActivityDialogOpen) {
@@ -222,7 +210,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         milestones: editingActivity.milestones ?? false,
       });
     } else if (filterBySite) {
-      const siteMatch = siteOptions.find((site) => site.name === filterBySite);
+      const siteMatch = siteOptions.find((site: SiteOption) => site.name === filterBySite);
       activityForm.setValue('siteId', siteMatch?.id ?? '');
       activityForm.setValue('siteName', siteMatch?.name ?? filterBySite);
     }
@@ -239,14 +227,15 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     if (editingMilestone) {
       milestoneForm.reset({
         siteId: editingMilestone.siteId,
-        siteName: siteOptions.find((site) => site.id === editingMilestone.siteId)?.name ?? '',
+        siteName:
+          siteOptions.find((site: SiteOption) => site.id === editingMilestone.siteId)?.name ?? '',
         name: editingMilestone.name,
         description: editingMilestone.description,
         date: editingMilestone.date ? new Date(editingMilestone.date) : undefined,
         status: editingMilestone.status,
       });
     } else if (filterBySite) {
-      const siteMatch = siteOptions.find((site) => site.name === filterBySite);
+      const siteMatch = siteOptions.find((site: SiteOption) => site.name === filterBySite);
       milestoneForm.setValue('siteId', siteMatch?.id ?? '');
       milestoneForm.setValue('siteName', siteMatch?.name ?? filterBySite);
     }
@@ -255,7 +244,9 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
   const filteredActivities = useMemo(() => {
     let result = activities;
     if (filterBySite) {
-      result = result.filter((activity) => activity.siteName === filterBySite || activity.siteId === filterBySite);
+      result = result.filter(
+        (activity) => activity.siteName === filterBySite || activity.siteId === filterBySite,
+      );
     }
     return result.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
   }, [activities, filterBySite]);
@@ -268,8 +259,14 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     return result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [milestones, filterBySite]);
 
-  const activityStats = useMemo(() => deriveActivityStats(filteredActivities), [filteredActivities]);
-  const groupedActivities = useMemo(() => groupActivitiesBySite(filteredActivities), [filteredActivities]);
+  const activityStats = useMemo(
+    () => deriveActivityStats(filteredActivities),
+    [filteredActivities],
+  );
+  const groupedActivities = useMemo(
+    () => groupActivitiesBySite(filteredActivities),
+    [filteredActivities],
+  );
   const nextMilestone = useMemo(() => findNextMilestone(filteredMilestones), [filteredMilestones]);
 
   const handleActivitySubmit = async (data: ActivityFormData) => {
@@ -279,7 +276,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
 
     try {
       setIsSubmittingActivity(true);
-      const site = siteOptions.find((option) => option.id === data.siteId);
+      const site = siteOptions.find((option: SiteOption) => option.id === data.siteId);
       const startDate = data.startDate;
       const endDate = data.endDate;
 
@@ -301,11 +298,18 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         progress: data.progress,
         status: data.status,
         dependencies:
-          data.dependencies?.split(',').map((item) => item.trim()).filter(Boolean) ?? [],
+          data.dependencies
+            ?.split(',')
+            .map((item) => item.trim())
+            .filter(Boolean) ?? [],
         assignedTeam: data.assignedTeam ?? '',
         priority: data.priority,
         category: data.category,
-        resources: data.resources?.split(',').map((item) => item.trim()).filter(Boolean) ?? [],
+        resources:
+          data.resources
+            ?.split(',')
+            .map((item) => item.trim())
+            .filter(Boolean) ?? [],
         milestones: Boolean(data.milestones),
       } satisfies Parameters<typeof addActivity>[0];
 
@@ -333,7 +337,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
 
     try {
       setIsSubmittingMilestone(true);
-      const site = siteOptions.find((option) => option.id === data.siteId);
+      const site = siteOptions.find((option: SiteOption) => option.id === data.siteId);
 
       const payload = {
         siteId: data.siteId,
@@ -431,9 +435,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Completed
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-green-600">{activityStats.completed}</p>
@@ -441,9 +443,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              In Progress
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-blue-600">{activityStats.inProgress}</p>
@@ -451,9 +451,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Delayed
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Delayed</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -505,7 +503,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
             <div className="space-y-6">
               {Object.entries(groupedActivities).map(([siteId, siteActivities]) => {
                 const siteName =
-                  siteOptions.find((site) => site.id === siteId)?.name ||
+                  siteOptions.find((site: SiteOption) => site.id === siteId)?.name ||
                   siteActivities[0]?.siteName ||
                   'Unknown site';
 
@@ -547,8 +545,8 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
                               <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
                                 <span>
                                   <Calendar className="mr-1 inline h-3 w-3" />
-                                  {formatDate(activity.startDate)} → {formatDate(activity.endDate)} (
-                                  {activity.duration} days)
+                                  {formatDate(activity.startDate)} → {formatDate(activity.endDate)}{' '}
+                                  ({activity.duration} days)
                                 </span>
                                 <span>
                                   <Users className="mr-1 inline h-3 w-3" />
@@ -682,7 +680,8 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
         <CardContent>
           {criticalActivities.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No critical activities identified. Mark important tasks as critical to track them here.
+              No critical activities identified. Mark important tasks as critical to track them
+              here.
             </p>
           ) : (
             <ul className="space-y-3">
@@ -758,7 +757,9 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
                         value={field.value}
                         onValueChange={(value) => {
                           field.onChange(value);
-                          const site = siteOptions.find((option) => option.id === value);
+                          const site = siteOptions.find(
+                            (option: SiteOption) => option.id === value,
+                          );
                           activityForm.setValue('siteName', site?.name ?? '');
                         }}
                         disabled={isLoadingSites || siteOptions.length === 0}
@@ -777,7 +778,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {siteOptions.map((site) => (
+                          {siteOptions.map((site: SiteOption) => (
                             <SelectItem key={site.id} value={site.id}>
                               {site.name}
                             </SelectItem>
@@ -1007,19 +1008,19 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
               />
 
               <DialogFooter>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => setActivityDialogOpen(false)}
                   disabled={isSubmittingActivity}
                 >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmittingActivity}>
-                  {isSubmittingActivity 
-                    ? 'Saving...' 
-                    : editingActivity 
-                      ? 'Save Changes' 
+                  {isSubmittingActivity
+                    ? 'Saving...'
+                    : editingActivity
+                      ? 'Save Changes'
                       : 'Create Activity'}
                 </Button>
               </DialogFooter>
@@ -1040,7 +1041,10 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
             </DialogDescription>
           </DialogHeader>
           <Form {...milestoneForm}>
-            <form onSubmit={milestoneForm.handleSubmit(handleMilestoneSubmit)} className="space-y-4">
+            <form
+              onSubmit={milestoneForm.handleSubmit(handleMilestoneSubmit)}
+              className="space-y-4"
+            >
               <FormField
                 control={milestoneForm.control}
                 name="siteId"
@@ -1070,7 +1074,7 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {siteOptions.map((site) => (
+                        {siteOptions.map((site: SiteOption) => (
                           <SelectItem key={site.id} value={site.id}>
                             {site.name}
                           </SelectItem>
@@ -1147,19 +1151,19 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
               />
 
               <DialogFooter>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => setMilestoneDialogOpen(false)}
                   disabled={isSubmittingMilestone}
                 >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmittingMilestone}>
-                  {isSubmittingMilestone 
-                    ? 'Saving...' 
-                    : editingMilestone 
-                      ? 'Save Changes' 
+                  {isSubmittingMilestone
+                    ? 'Saving...'
+                    : editingMilestone
+                      ? 'Save Changes'
                       : 'Create Milestone'}
                 </Button>
               </DialogFooter>
@@ -1170,4 +1174,3 @@ export function SchedulingPage({ filterBySite }: { filterBySite?: string } = {})
     </div>
   );
 }
-

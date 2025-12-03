@@ -6,7 +6,10 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import useSWR from 'swr';
 import * as z from 'zod';
+
+import { fetcher, swrConfig } from '../../lib/swr';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -21,9 +24,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useMaterialReceipts, useVendors } from '@/lib/contexts';
+import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 import type { MaterialMaster, MaterialReceipt } from '@/types/entities';
 import type { Site } from '@/types/sites';
-import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 
 interface MaterialReceiptFormProps {
   editingReceipt?: MaterialReceipt | null;
@@ -65,11 +68,20 @@ export function MaterialReceiptForm({
   const isEditMode = Boolean(editingReceipt);
   const formId = isEditMode ? 'receipt-edit-form' : 'receipt-new-form';
   const [isClient, setIsClient] = useState(false);
-  const [materialOptions, setMaterialOptions] = useState<MaterialMaster[]>([]);
-  const [isLoadingMaterials, setIsLoadingMaterials] = useState<boolean>(true);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(true);
   const [lineItemOBs, setLineItemOBs] = useState<Record<number, number | null>>({});
+
+  // Fetch materials and sites using SWR
+  const { data: materialsData, isLoading: isLoadingMaterials } = useSWR<{
+    materials: MaterialMaster[];
+  }>('/api/materials', fetcher, swrConfig);
+  const { data: sitesData, isLoading: isLoadingSites } = useSWR<{ sites: Site[] }>(
+    '/api/sites',
+    fetcher,
+    swrConfig,
+  );
+
+  const materialOptions = materialsData?.materials ?? [];
+  const sites = sitesData?.sites ?? [];
 
   const form = useForm<ReceiptFormData>({
     resolver: zodResolver(receiptFormSchema),
@@ -113,63 +125,22 @@ export function MaterialReceiptForm({
     setIsClient(true);
   }, []);
 
+  // Show error toasts if fetch fails
   useEffect(() => {
-    const loadMaterials = async () => {
-      try {
-        setIsLoadingMaterials(true);
-        const response = await fetch('/api/materials', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          materials?: MaterialMaster[];
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load materials.');
-        }
-
-        setMaterialOptions(payload.materials ?? []);
-      } catch (error) {
-        console.error('Failed to load materials list', error);
-        toast.error('Unable to load materials. Add materials first.', {
-          description: 'Please create materials in the Materials page before recording receipts.',
-        });
-        setMaterialOptions([]);
-      } finally {
-        setIsLoadingMaterials(false);
-      }
-    };
-
-    void loadMaterials();
-  }, []);
+    if (materialsData === undefined && !isLoadingMaterials) {
+      toast.error('Unable to load materials. Add materials first.', {
+        description: 'Please create materials in the Materials page before recording receipts.',
+      });
+    }
+  }, [materialsData, isLoadingMaterials]);
 
   useEffect(() => {
-    const loadSites = async () => {
-      try {
-        setIsLoadingSites(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Site[];
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load sites.');
-        }
-
-        setSites(payload.sites ?? []);
-      } catch (error) {
-        console.error('Failed to load sites list', error);
-        toast.error('Unable to load sites. Add sites first.', {
-          description: 'Please create sites in the Sites page before recording receipts.',
-        });
-        setSites([]);
-      } finally {
-        setIsLoadingSites(false);
-      }
-    };
-
-    void loadSites();
-  }, []);
+    if (sitesData === undefined && !isLoadingSites) {
+      toast.error('Unable to load sites. Add sites first.', {
+        description: 'Please create sites in the Sites page before recording receipts.',
+      });
+    }
+  }, [sitesData, isLoadingSites]);
 
   // Fetch current OB when material and site are selected
   const lineItems = form.watch('lineItems');
@@ -177,20 +148,15 @@ export function MaterialReceiptForm({
   useEffect(() => {
     const fetchOBs = async () => {
       const newOBs: Record<number, number | null> = {};
-      
+
       for (let index = 0; index < lineItems.length; index++) {
         const item = lineItems[index];
         const siteId = topLevelSiteId; // Use top-level site
         if (item.materialId && siteId) {
           try {
-            const response = await fetch('/api/materials', { cache: 'no-store' });
-            const payload = (await response.json().catch(() => ({}))) as {
-              materials?: MaterialMaster[];
-              error?: string;
-            };
-
-            if (response.ok && payload.materials) {
-              const material = payload.materials.find((m) => m.id === item.materialId);
+            // Use cached materials data from SWR
+            if (materialsData?.materials) {
+              const material = materialsData.materials.find((m) => m.id === item.materialId);
               if (siteId === 'unallocated') {
                 newOBs[index] = material?.openingBalance ?? null;
               } else if (material?.siteAllocations) {
@@ -208,7 +174,7 @@ export function MaterialReceiptForm({
           newOBs[index] = null;
         }
       }
-      
+
       setLineItemOBs(newOBs);
     };
 
@@ -219,7 +185,7 @@ export function MaterialReceiptForm({
   useEffect(() => {
     if (!isEditMode && materialOptions.length > 0) {
       const lineItems = form.getValues('lineItems');
-      
+
       lineItems.forEach((item, index) => {
         if (!item.materialId && materialOptions.length > 0) {
           const [first] = materialOptions;
@@ -270,7 +236,7 @@ export function MaterialReceiptForm({
             siteName: data.siteName,
           };
           await updateReceipt(editingReceipt.id, receiptData);
-          
+
           // Create new receipts for additional line items
           if (data.lineItems.length > 1) {
             const additionalReceipts = data.lineItems.slice(1).map((item) => {
@@ -292,7 +258,7 @@ export function MaterialReceiptForm({
                 siteName: data.siteName,
               };
             });
-            
+
             if (addReceipts) {
               await addReceipts(additionalReceipts);
             } else {
@@ -301,7 +267,7 @@ export function MaterialReceiptForm({
               }
             }
           }
-          
+
           toast.success('Material receipt(s) updated successfully!');
           onSubmit?.(receiptData);
         } else {
@@ -368,7 +334,7 @@ export function MaterialReceiptForm({
       const filledWeight = item.filledWeight;
       const emptyWeight = item.emptyWeight;
       const currentQuantity = item.quantity;
-      
+
       // Check if both weights are valid numbers
       if (
         typeof filledWeight === 'number' &&
@@ -379,7 +345,7 @@ export function MaterialReceiptForm({
         emptyWeight >= 0
       ) {
         const netWeight = filledWeight - emptyWeight;
-        
+
         // Only update if net weight is positive and quantity is empty or different
         if (netWeight > 0) {
           // Update if quantity is undefined, null, or doesn't match net weight
@@ -538,7 +504,7 @@ export function MaterialReceiptForm({
                   const selectedSiteId = field.value;
                   const selectedMaterialId = form.watch('lineItems.0.materialId');
                   const currentOB = selectedSiteId && selectedMaterialId ? lineItemOBs[0] : null;
-                  
+
                   return (
                     <Field data-invalid={fieldState.invalid}>
                       <FieldLabel>
@@ -577,10 +543,7 @@ export function MaterialReceiptForm({
                           ))}
                         </SelectContent>
                       </Select>
-                      <input
-                        type="hidden"
-                        {...form.register('siteName')}
-                      />
+                      <input type="hidden" {...form.register('siteName')} />
                       {currentOB !== null && currentOB !== undefined && (
                         <span className="text-xs text-muted-foreground mt-1 block">
                           Current OB: {currentOB.toLocaleString()}
@@ -600,9 +563,7 @@ export function MaterialReceiptForm({
               control={form.control}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor={`${formId}-receiptNumber`}>
-                    Receipt Number
-                  </FieldLabel>
+                  <FieldLabel htmlFor={`${formId}-receiptNumber`}>Receipt Number</FieldLabel>
                   <Input
                     {...field}
                     id={`${formId}-receiptNumber`}
@@ -662,11 +623,7 @@ export function MaterialReceiptForm({
                                 <FieldLabel>
                                   Vehicle Number <span className="text-destructive">*</span>
                                 </FieldLabel>
-                                <Input
-                                  {...field}
-                                  placeholder="KA-01-AB-1234"
-                                  autoComplete="off"
-                                />
+                                <Input {...field} placeholder="KA-01-AB-1234" autoComplete="off" />
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                               </Field>
                             )}
@@ -701,11 +658,12 @@ export function MaterialReceiptForm({
                                   type="hidden"
                                   {...form.register(`lineItems.${index}.materialName`)}
                                 />
-                                {lineItemOBs[index] !== null && lineItemOBs[index] !== undefined && (
-                                  <span className="text-xs text-muted-foreground mt-1 block">
-                                    Current OB: {lineItemOBs[index]?.toLocaleString()}
-                                  </span>
-                                )}
+                                {lineItemOBs[index] !== null &&
+                                  lineItemOBs[index] !== undefined && (
+                                    <span className="text-xs text-muted-foreground mt-1 block">
+                                      Current OB: {lineItemOBs[index]?.toLocaleString()}
+                                    </span>
+                                  )}
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                               </Field>
                             )}
@@ -731,18 +689,30 @@ export function MaterialReceiptForm({
                                       const value = event.target.value;
                                       const numValue = value === '' ? undefined : Number(value);
                                       field.onChange(numValue);
-                                      
+
                                       // Auto-update quantity with net weight
-                                      if (numValue !== undefined && typeof emptyWeight === 'number' && !isNaN(emptyWeight)) {
+                                      if (
+                                        numValue !== undefined &&
+                                        typeof emptyWeight === 'number' &&
+                                        !isNaN(emptyWeight)
+                                      ) {
                                         const netWeight = numValue - emptyWeight;
                                         if (netWeight > 0) {
-                                          form.setValue(`lineItems.${index}.quantity`, Number(netWeight.toFixed(2)), {
-                                            shouldValidate: false,
-                                          });
+                                          form.setValue(
+                                            `lineItems.${index}.quantity`,
+                                            Number(netWeight.toFixed(2)),
+                                            {
+                                              shouldValidate: false,
+                                            },
+                                          );
                                         }
                                       }
                                     }}
-                                    value={field.value === 0 || field.value === undefined ? '' : field.value}
+                                    value={
+                                      field.value === 0 || field.value === undefined
+                                        ? ''
+                                        : field.value
+                                    }
                                     style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                   />
                                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -771,18 +741,30 @@ export function MaterialReceiptForm({
                                       const value = event.target.value;
                                       const numValue = value === '' ? undefined : Number(value);
                                       field.onChange(numValue);
-                                      
+
                                       // Auto-update quantity with net weight
-                                      if (numValue !== undefined && typeof filledWeight === 'number' && !isNaN(filledWeight)) {
+                                      if (
+                                        numValue !== undefined &&
+                                        typeof filledWeight === 'number' &&
+                                        !isNaN(filledWeight)
+                                      ) {
                                         const netWeight = filledWeight - numValue;
                                         if (netWeight > 0) {
-                                          form.setValue(`lineItems.${index}.quantity`, Number(netWeight.toFixed(2)), {
-                                            shouldValidate: false,
-                                          });
+                                          form.setValue(
+                                            `lineItems.${index}.quantity`,
+                                            Number(netWeight.toFixed(2)),
+                                            {
+                                              shouldValidate: false,
+                                            },
+                                          );
                                         }
                                       }
                                     }}
-                                    value={field.value === 0 || field.value === undefined ? '' : field.value}
+                                    value={
+                                      field.value === 0 || field.value === undefined
+                                        ? ''
+                                        : field.value
+                                    }
                                     style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                   />
                                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -810,7 +792,11 @@ export function MaterialReceiptForm({
                                     const value = event.target.value;
                                     field.onChange(value === '' ? undefined : Number(value));
                                   }}
-                                  value={field.value === 0 || field.value === undefined ? '' : field.value}
+                                  value={
+                                    field.value === 0 || field.value === undefined
+                                      ? ''
+                                      : field.value
+                                  }
                                   style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -837,7 +823,7 @@ export function MaterialReceiptForm({
                     </Card>
                   );
                 })}
-                
+
                 {/* Add Line Item Button - appears after each line item */}
                 <div className="flex justify-center pt-2">
                   <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
@@ -848,7 +834,13 @@ export function MaterialReceiptForm({
               </div>
 
               {form.formState.errors.lineItems && (
-                <FieldError errors={Array.isArray(form.formState.errors.lineItems) ? form.formState.errors.lineItems : [form.formState.errors.lineItems]} />
+                <FieldError
+                  errors={
+                    Array.isArray(form.formState.errors.lineItems)
+                      ? form.formState.errors.lineItems
+                      : [form.formState.errors.lineItems]
+                  }
+                />
               )}
             </div>
           </FieldGroup>

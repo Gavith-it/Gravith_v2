@@ -85,6 +85,7 @@ export function Login({ onCreateOrganization }: LoginProps) {
           setError(loginError.message || 'Failed to sign in. Please try again.');
         }
       } else {
+        router.prefetch('/dashboard');
         router.push('/dashboard');
       }
     } catch (err) {

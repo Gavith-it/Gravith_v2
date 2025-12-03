@@ -1,49 +1,34 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import MilestoneForm from '@/components/forms/MilestoneForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
+import { fetcher, swrConfig } from '@/lib/swr';
 import type { ProjectMilestone, Site } from '@/types';
 
 export default function MilestonePage() {
   const router = useRouter();
-  const [sites, setSites] = useState<Site[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchSites = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Site[];
-          error?: string;
-        };
+  // Fetch sites using SWR
+  const { data: sitesData, isLoading } = useSWR<{ sites: Site[] }>(
+    '/api/sites',
+    fetcher,
+    swrConfig,
+  );
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load sites');
-        }
+  const sites = useMemo(() => sitesData?.sites ?? [], [sitesData]);
 
-        const fetchedSites = payload.sites ?? [];
-        setSites(fetchedSites);
-        // Auto-select first site if available
-        if (fetchedSites.length > 0) {
-          setSelectedSiteId(fetchedSites[0].id);
-        }
-      } catch (error) {
-        console.error('Error fetching sites:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load sites');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void fetchSites();
-  }, []);
+  // Auto-select first site if available
+  React.useEffect(() => {
+    if (sites.length > 0 && !selectedSiteId) {
+      setSelectedSiteId(sites[0].id);
+    }
+  }, [sites, selectedSiteId]);
 
   const handleSubmit = async (data: { name: string; date: string; description: string }) => {
     try {

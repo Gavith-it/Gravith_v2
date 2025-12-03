@@ -14,7 +14,13 @@ import {
   Loader2,
   FileText,
 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import useSWR from 'swr';
+
+import { useTableState } from '../lib/hooks/useTableState';
+import { fetcher, swrConfig } from '../lib/swr';
+import { formatDate } from '../lib/utils';
+
 import {
   XAxis,
   YAxis,
@@ -28,11 +34,8 @@ import {
   AreaChart,
   Legend,
 } from './charts/LazyRecharts';
-
-import { useTableState } from '../lib/hooks/useTableState';
-import { formatDate } from '../lib/utils';
-
 import { DataTable } from './common/DataTable';
+import { ExpenseReport } from './expense-report';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -44,7 +47,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './ui/tooltip';
-import { ExpenseReport } from './expense-report';
 
 type MonthlyExpensePoint = {
   key: string;
@@ -171,46 +173,21 @@ const calculateSiteProgress = (site: SitePerformanceEntry) => {
 
 export function ReportsPage() {
   const [activeSegment, setActiveSegment] = useState<number | null>(null);
-  const [overview, setOverview] = useState<ReportsOverview | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [fetchVersion, setFetchVersion] = useState(0);
 
-  useEffect(() => {
-    let isMounted = true;
+  // Fetch reports overview using SWR
+  const {
+    data: overview,
+    error: swrError,
+    isLoading,
+    mutate: mutateReports,
+  } = useSWR<ReportsOverview>('/api/reports/overview', fetcher, swrConfig);
 
-    const fetchOverview = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await fetch('/api/reports/overview', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as ReportsOverview & {
-          error?: string;
-        };
-        if (!response.ok || !payload || (payload as { error?: string }).error) {
-          throw new Error(payload?.error || 'Failed to load reports overview.');
-        }
-        if (isMounted) {
-          setOverview(payload);
-        }
-      } catch (fetchError) {
-        if (isMounted) {
-          setOverview((prev) => prev); // keep previous data if available
-          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load reports overview.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void fetchOverview();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [fetchVersion]);
+  // Convert SWR error to string for display
+  const error = swrError
+    ? swrError instanceof Error
+      ? swrError.message
+      : 'Failed to load reports overview.'
+    : null;
 
   const metrics = overview?.metrics ?? {
     totalSites: 0,
@@ -231,7 +208,7 @@ export function ReportsPage() {
     color: PIE_COLOR_MAP[slice.name] ?? DEFAULT_COLORS[index % DEFAULT_COLORS.length],
   }));
 
-  const handleRefresh = () => setFetchVersion((prev) => prev + 1);
+  const handleRefresh = () => mutateReports();
 
   // Shared table state (must be declared before conditional returns to keep hook order)
   const tableState = useTableState({
@@ -331,7 +308,9 @@ export function ReportsPage() {
                 </div>
                 <p className="text-2xl font-semibold">{formatCroreValue(metrics.totalBudget)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {metrics.totalSites > 0 ? `Across ${metrics.totalSites} sites` : 'Awaiting site data'}
+                  {metrics.totalSites > 0
+                    ? `Across ${metrics.totalSites} sites`
+                    : 'Awaiting site data'}
                 </p>
               </div>
             </div>

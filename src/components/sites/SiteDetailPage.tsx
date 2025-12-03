@@ -24,7 +24,9 @@ import {
 import { useRouter } from 'next/navigation';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
 
+import { fetcher, swrConfig } from '../../lib/swr';
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
@@ -363,395 +365,189 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const expenseDialog = useDialogState();
   const materialDialog = useDialogState();
   const [isLoading, setIsLoading] = useState(false);
-  const [site, setSite] = useState<Site | null>(null);
-  const [sitePurchases, setSitePurchases] = useState<SitePurchase[]>([]);
-  const [siteExpenses, setSiteExpenses] = useState<Expense[]>([]);
-  const [siteWorkProgress, setSiteWorkProgress] = useState<SiteWorkProgress[]>([]);
-  const [siteMaterialMasters, setSiteMaterialMasters] = useState<SiteMaterialMaster[]>([]);
-  const [isDataLoading, setIsDataLoading] = useState(true);
 
-  // Fetch site data
+  // Fetch site data using SWR
+  const {
+    data: siteData,
+    isLoading: isDataLoading,
+    error: siteError,
+  } = useSWR<{ site: Site }>(siteId ? `/api/sites/${siteId}` : null, fetcher, swrConfig);
+
+  const site = siteData?.site;
+
+  // Show error toast if fetch fails
   useEffect(() => {
-    const fetchSiteData = async () => {
-      try {
-        setIsDataLoading(true);
-        const response = await fetch(`/api/sites/${siteId}`, { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          site?: Site;
-          error?: string;
-        };
-
-        if (!response.ok || !payload.site) {
-          throw new Error(payload.error || 'Failed to load site');
-        }
-
-        setSite(payload.site);
-      } catch (error) {
-        console.error('Error fetching site:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load site');
-      } finally {
-        setIsDataLoading(false);
-      }
-    };
-
-    void fetchSiteData();
-  }, [siteId]);
-
-  // Fetch purchases for the site
-  useEffect(() => {
-    if (!siteId || isAuthLoading) {
-      return;
+    if (siteError) {
+      toast.error(siteError instanceof Error ? siteError.message : 'Failed to load site');
     }
+  }, [siteError]);
 
-    const fetchPurchases = async () => {
-      try {
-        const response = await fetch('/api/purchases', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          materials?: MaterialPurchase[];
-          error?: string;
-        };
+  // Fetch expenses using SWR
+  const { data: expensesData } = useSWR<{ expenses: Expense[] }>(
+    siteId ? '/api/expenses' : null,
+    fetcher,
+    swrConfig,
+  );
 
-        if (!response.ok) {
-          // Handle 401 Unauthorized specifically - just return empty array
-          if (response.status === 401) {
-            console.error('Authentication required. Please log in.');
-            setSitePurchases([]);
-            return;
-          }
-          throw new Error(payload.error || 'Failed to load purchases');
-        }
-
-        const purchases = (payload.materials ?? []).filter((p) => p.siteId === siteId);
-        const mappedPurchases: SitePurchase[] = purchases.map((p) => ({
-          id: p.id,
-          materialName: p.materialName,
-          quantity: p.quantity,
-          unit: p.unit,
-          unitRate: p.unitRate,
-          totalAmount: p.totalAmount,
-          vendor: p.vendorName || '',
-          purchaseDate: p.purchaseDate,
-          invoiceNumber: p.vendorInvoiceNumber,
-        }));
-        setSitePurchases(mappedPurchases);
-      } catch (error) {
-        console.error('Error fetching purchases:', error);
-      }
-    };
-
-    void fetchPurchases();
-  }, [siteId, isAuthLoading]);
-
-  // Fetch expenses for the site
-  useEffect(() => {
-    const fetchExpenses = async () => {
-      try {
-        const response = await fetch('/api/expenses', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          expenses?: Expense[];
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load expenses');
-        }
-
-        const expenses = (payload.expenses ?? []).filter((e) => e.siteId === siteId);
-        setSiteExpenses(expenses);
-      } catch (error) {
-        console.error('Error fetching expenses:', error);
-      }
-    };
-
-    if (siteId) {
-      void fetchExpenses();
-    }
-  }, [siteId]);
+  // Filter expenses for the site
+  const siteExpenses = useMemo(() => {
+    if (!expensesData?.expenses || !siteId) return [];
+    return expensesData.expenses.filter((e) => e.siteId === siteId);
+  }, [expensesData, siteId]);
 
   // Memoize site name to prevent infinite loops
   const siteName = useMemo(() => site?.name || '', [site?.name]);
 
-  // Fetch work progress for the site
-  useEffect(() => {
-    // Only fetch if we have both siteId and site name
-    if (!siteId || !siteName) {
-      return;
-    }
+  // Fetch work progress using SWR
+  const { data: workProgressData } = useSWR<{ entries: WorkProgressEntry[] }>(
+    siteId && siteName ? '/api/work-progress' : null,
+    fetcher,
+    swrConfig,
+  );
 
-    let isCancelled = false;
+  // Filter and map work progress for the site
+  const siteWorkProgress = useMemo(() => {
+    if (!workProgressData?.entries || !siteId || !siteName) return [];
 
-    const fetchWorkProgress = async () => {
-      try {
-        const response = await fetch('/api/work-progress', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          entries?: WorkProgressEntry[];
-          error?: string;
-        };
+    // Filter by siteId OR siteName (case-insensitive, trimmed)
+    const siteNameNormalized = siteName.trim().toLowerCase();
+    const allEntries = workProgressData.entries;
+    const entries = allEntries.filter((e) => {
+      const matchesSiteId = e.siteId === siteId;
+      const entrySiteNameNormalized = e.siteName?.trim().toLowerCase() || '';
+      const matchesSiteName = entrySiteNameNormalized === siteNameNormalized;
+      return matchesSiteId || matchesSiteName;
+    });
 
-        if (isCancelled) return;
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load work progress');
-        }
-
-        // Filter by siteId OR siteName (case-insensitive, trimmed)
-        // Some work progress entries might have siteId as null, so we match by name
-        const siteNameNormalized = siteName.trim().toLowerCase();
-        const allEntries = payload.entries ?? [];
-
-        const entries = allEntries.filter((e) => {
-          const matchesSiteId = e.siteId === siteId;
-          const entrySiteNameNormalized = e.siteName?.trim().toLowerCase() || '';
-          const matchesSiteName = entrySiteNameNormalized === siteNameNormalized;
-          return matchesSiteId || matchesSiteName;
-        });
-
-        // ALWAYS log for debugging (remove condition)
-        if (typeof window !== 'undefined') {
-          window.console.group('🔍 Work Progress Filtering');
-          window.console.log('Looking for site:', {
-            siteId,
-            siteName: siteName,
-            siteNameNormalized,
-          });
-          window.console.log('Total entries from API:', allEntries.length);
-          window.console.log('Matched entries:', entries.length);
-
-          // Show why each entry matched or didn't match
-          allEntries.forEach((e) => {
-            const entrySiteNameNorm = e.siteName?.trim().toLowerCase() || '';
-            const matchesId = e.siteId === siteId;
-            const matchesName = entrySiteNameNorm === siteNameNormalized;
-            const matches = matchesId || matchesName;
-
-            if (!matches) {
-              window.console.warn('❌ Entry NOT matched:', {
-                id: e.id,
-                entrySiteId: e.siteId,
-                entrySiteName: e.siteName,
-                entrySiteNameNormalized: entrySiteNameNorm,
-                matchesId,
-                matchesName,
-                reason: !matchesId && !matchesName ? 'Neither ID nor name matches' : 'No match',
-              });
-            } else {
-              window.console.log('✅ Entry matched:', {
-                id: e.id,
-                entrySiteId: e.siteId,
-                entrySiteName: e.siteName,
-                matchedBy: matchesId ? 'siteId' : 'siteName',
-                progressPercentage: e.progressPercentage,
-              });
-            }
-          });
-          window.console.groupEnd();
-        }
-
-        const mappedProgress: SiteWorkProgress[] = entries.map((e) => {
-          const statusMap: Record<string, SiteWorkProgress['status']> = {
-            completed: 'completed',
-            on_hold: 'on-hold',
-            in_progress: 'in-progress',
-          };
-          const mappedStatus: SiteWorkProgress['status'] = statusMap[e.status] || 'in-progress';
-
-          const mapped: SiteWorkProgress = {
-            id: e.id,
-            activityName: e.workType,
-            category: e.workType,
-            description: e.description || '',
-            startDate: e.workDate,
-            endDate: e.workDate,
-            status: mappedStatus,
-            progress: e.progressPercentage || 0,
-            assignedTo: '',
-          };
-          return mapped;
-        });
-
-        if (!isCancelled) {
-          setSiteWorkProgress(mappedProgress);
-        }
-      } catch (error) {
-        if (!isCancelled) {
-          console.error('Error fetching work progress:', error);
-        }
-      }
+    const statusMap: Record<string, SiteWorkProgress['status']> = {
+      completed: 'completed',
+      on_hold: 'on-hold',
+      in_progress: 'in-progress',
     };
 
-    void fetchWorkProgress();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [siteId, siteName]); // Depend on siteId and memoized site name
-
-  // Fetch material masters for the site - extracted as reusable function
-  const fetchMaterials = React.useCallback(async () => {
-    try {
-      // Add prominent log - DO NOT CLEAR CONSOLE
-      console.log('🔍 ===== OB DEBUG START =====');
-      console.log('🔍 ===== OB DEBUG START =====');
-      console.log('🔍 ===== OB DEBUG START =====');
-      console.log('📍 Current Site ID:', siteId);
-      console.log('📍 Site ID Type:', typeof siteId);
-      console.log('📍 Site ID Length:', siteId?.length);
-      console.log('📍 Site ID Normalized:', String(siteId || '').trim());
-
-      const response = await fetch('/api/materials', { cache: 'no-store' });
-      const payload = (await response.json().catch(() => ({}))) as {
-        materials?: Array<{
-          id: string;
-          name: string;
-          category: string;
-          unit: string;
-          siteId?: string | null;
-          quantity: number;
-          consumedQuantity: number;
-          siteAllocations?: Array<{
-            siteId: string;
-            siteName: string;
-            quantity: number;
-          }>;
-        }>;
-        error?: string;
+    return entries.map((e) => {
+      const mappedStatus: SiteWorkProgress['status'] = statusMap[e.status] || 'in-progress';
+      return {
+        id: e.id,
+        activityName: e.workType,
+        category: e.workType,
+        description: e.description || '',
+        startDate: e.workDate,
+        endDate: e.workDate,
+        status: mappedStatus,
+        progress: e.progressPercentage || 0,
+        assignedTo: '',
       };
+    });
+  }, [workProgressData, siteId, siteName]);
 
-      if (!response.ok) {
-        throw new Error(payload.error || 'Failed to load materials');
+  // Fetch materials using SWR
+  const { data: materialsData, mutate: mutateMaterials } = useSWR<{
+    materials: Array<{
+      id: string;
+      name: string;
+      category: string;
+      unit: string;
+      siteId?: string | null;
+      quantity: number;
+      consumedQuantity: number;
+      siteAllocations?: Array<{
+        siteId: string;
+        siteName: string;
+        quantity: number;
+      }>;
+    }>;
+  }>(siteId ? '/api/materials' : null, fetcher, swrConfig);
+
+  // Filter and map materials for the site
+  const siteMaterialMasters = useMemo(() => {
+    if (!materialsData?.materials || !siteId) return [];
+
+    // Filter materials that either:
+    // 1. Have siteId matching the current site (backward compatibility)
+    // 2. Have site allocations for the current site (OB allocated via material_site_allocations)
+    const normalizedSiteId = String(siteId || '').trim();
+    const materials = materialsData.materials.filter((m) => {
+      // Check if material has direct siteId match (normalize for comparison)
+      const materialSiteId = String(m.siteId || '').trim();
+      if (materialSiteId === normalizedSiteId) {
+        return true;
+      }
+      // Check if material has site allocations for this site
+      if (m.siteAllocations && m.siteAllocations.length > 0) {
+        return m.siteAllocations.some((alloc) => {
+          const allocSiteId = String(alloc.siteId || '').trim();
+          return allocSiteId === normalizedSiteId;
+        });
+      }
+      return false;
+    });
+
+    return materials.map((m) => {
+      // Find the site allocation for this specific site
+      const normalizedSiteId = String(siteId || '').trim();
+      const siteAllocation = m.siteAllocations?.find((alloc) => {
+        const allocSiteId = String(alloc.siteId || '').trim();
+        return allocSiteId === normalizedSiteId;
+      });
+
+      // Determine allocated OB
+      let allocatedOB: number;
+      if (m.siteAllocations && m.siteAllocations.length > 0) {
+        allocatedOB = siteAllocation ? siteAllocation.quantity : 0;
+      } else {
+        // Material doesn't have site allocations - use total quantity (backward compatibility)
+        allocatedOB = m.quantity;
       }
 
-      // Filter materials that either:
-      // 1. Have siteId matching the current site (backward compatibility)
-      // 2. Have site allocations for the current site (OB allocated via material_site_allocations)
-      const normalizedSiteId = String(siteId || '').trim();
-      const materials = (payload.materials ?? []).filter((m) => {
-        // Check if material has direct siteId match (normalize for comparison)
-        const materialSiteId = String(m.siteId || '').trim();
-        if (materialSiteId === normalizedSiteId) {
-          return true;
-        }
-        // Check if material has site allocations for this site
-        if (m.siteAllocations && m.siteAllocations.length > 0) {
-          return m.siteAllocations.some((alloc) => {
-            const allocSiteId = String(alloc.siteId || '').trim();
-            return allocSiteId === normalizedSiteId;
-          });
-        }
-        return false;
-      });
+      const siteStock = allocatedOB - m.consumedQuantity;
 
-      const mappedMaterials: SiteMaterialMaster[] = materials.map((m) => {
-        // Find the site allocation for this specific site
-        // Use strict comparison and also handle potential string/UUID format differences
-        const normalizedSiteId = String(siteId || '').trim();
+      return {
+        id: m.id,
+        siteId: siteId,
+        materialName: m.name,
+        category: m.category,
+        unit: m.unit,
+        siteStock: siteStock,
+        allocated: allocatedOB,
+        reserved: 0,
+        status: siteStock > 0 ? (siteStock < allocatedOB * 0.2 ? 'low' : 'available') : 'critical',
+      };
+    });
+  }, [materialsData, siteId]);
 
-        // Debug logging - ALWAYS log for materials with allocations
-        if (m.siteAllocations && m.siteAllocations.length > 0) {
-          console.log('📦 Material:', m.name, `(${m.id})`);
-          console.log('🔎 Looking for siteId:', `"${normalizedSiteId}"`);
-          console.log('📋 All Site Allocations:', m.siteAllocations);
-          console.log(
-            '📋 Allocation Details:',
-            m.siteAllocations.map((a) => ({
-              siteId: a.siteId,
-              siteIdType: typeof a.siteId,
-              siteIdNormalized: String(a.siteId || '').trim(),
-              siteName: a.siteName,
-              quantity: a.quantity,
-              matches: String(a.siteId || '').trim() === normalizedSiteId,
-            })),
-          );
-        } else {
-          console.log('📦 Material:', m.name, '- NO site allocations');
-        }
+  // Fetch purchases using SWR
+  const { data: purchasesData } = useSWR<{
+    purchases: Array<{ site: string; [key: string]: unknown }>;
+  }>('/api/purchases', fetcher, swrConfig);
 
-        const siteAllocation = m.siteAllocations?.find((alloc) => {
-          // Normalize both IDs for comparison (trim and convert to string)
-          const allocSiteId = String(alloc.siteId || '').trim();
-          const currentSiteId = String(siteId || '').trim();
-          const matches = allocSiteId === currentSiteId;
+  // Filter purchases for the site (from API)
+  const sitePurchases = useMemo(() => {
+    if (!purchasesData?.purchases || !siteId || !site?.name) return [];
 
-          if (m.siteAllocations && m.siteAllocations.length > 0 && !matches) {
-            console.log(
-              `[OB Debug] Comparing: "${allocSiteId}" === "${currentSiteId}" = ${matches}`,
-            );
-          }
-
-          return matches;
-        });
-
-        // If material has site allocations, we MUST use the site-specific allocation
-        // If no site allocation found but material has allocations array, use 0 (shouldn't happen if filtering works)
-        // Otherwise, fall back to material's quantity (for backward compatibility with materials without site allocations)
-        let allocatedOB: number;
-        if (m.siteAllocations && m.siteAllocations.length > 0) {
-          // Material has site allocations - use site-specific OB or 0 if not found
-          if (siteAllocation) {
-            allocatedOB = siteAllocation.quantity;
-            console.log('✅ MATCH FOUND! Using site-specific OB:', allocatedOB);
-            console.log('✅ Allocation Details:', {
-              siteId: siteAllocation.siteId,
-              siteName: siteAllocation.siteName,
-              quantity: siteAllocation.quantity,
-            });
-          } else {
-            // This shouldn't happen if filtering works correctly, but log for debugging
-            console.error('❌ NO MATCH FOUND!');
-            console.error('❌ Material:', m.name, `(${m.id})`);
-            console.error('❌ Looking for siteId:', `"${normalizedSiteId}"`);
-            console.error(
-              '❌ Available siteIds:',
-              m.siteAllocations.map((a) => `"${String(a.siteId || '').trim()}"`),
-            );
-            console.error('❌ Using 0 instead of total quantity');
-            allocatedOB = 0; // Use 0 - material shouldn't appear if no allocation matches
-          }
-        } else {
-          // Material doesn't have site allocations - use total quantity (backward compatibility)
-          allocatedOB = m.quantity;
-          console.log('⚠️ No site allocations, using total quantity:', allocatedOB);
-        }
-
-        console.log('💰 Final allocatedOB for', m.name, ':', allocatedOB);
-        console.log('---');
-
-        const siteStock = allocatedOB - m.consumedQuantity;
-
-        return {
-          id: m.id,
-          siteId: siteId,
-          materialName: m.name,
-          category: m.category,
-          unit: m.unit,
-          siteStock: siteStock,
-          allocated: allocatedOB,
-          reserved: 0,
-          status:
-            siteStock > 0 ? (siteStock < allocatedOB * 0.2 ? 'low' : 'available') : 'critical',
-        };
-      });
-      console.log('📊 Final Mapped Materials:', mappedMaterials);
-      console.log('📊 Materials Summary:');
-      mappedMaterials.forEach((m) => {
-        console.log(`  - ${m.materialName}: Allocated=${m.allocated}, On Site=${m.siteStock}`);
-      });
-      console.log('🔍 ===== OB DEBUG END =====');
-      setSiteMaterialMasters(mappedMaterials);
-    } catch (error) {
-      console.error('❌ Error fetching materials:', error);
-    }
-  }, [siteId]);
-
-  // Fetch materials when siteId changes
-  useEffect(() => {
-    if (siteId) {
-      console.log('✅ siteId exists:', siteId, '- calling fetchMaterials()');
-      void fetchMaterials();
-    } else {
-      console.error('❌ No siteId provided! Cannot fetch materials.');
-    }
-  }, [siteId, fetchMaterials]);
+    // Filter by site name (API returns site name in 'site' field)
+    const normalizedSiteName = site.name.trim().toLowerCase();
+    return purchasesData.purchases
+      .filter((p) => {
+        const purchaseSiteName = String(p.site || '')
+          .trim()
+          .toLowerCase();
+        return purchaseSiteName === normalizedSiteName;
+      })
+      .map(
+        (p): SitePurchase => ({
+          id: String(p.id || ''),
+          materialName: String(p.materialName || ''),
+          quantity: Number(p.quantity || 0),
+          unit: String(p.unit || ''),
+          unitRate: Number(p.unitRate || 0),
+          totalAmount: Number(p.totalAmount || 0),
+          vendor: String(p.vendor || ''),
+          purchaseDate: String(p.purchaseDate || ''),
+          invoiceNumber: String(p.invoiceNumber || ''),
+        }),
+      );
+  }, [purchasesData, siteId, site?.name]);
 
   // Use mock data for vehicles and labour (not yet implemented in API)
   const siteVehicles = mockVehicles;
@@ -766,7 +562,10 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
   const materialMasterTableState = useTableState({ initialItemsPerPage: 5 });
 
   // Calculate statistics
-  const totalPurchaseValue = sitePurchases.reduce((sum, p) => sum + p.totalAmount, 0);
+  const totalPurchaseValue = sitePurchases.reduce(
+    (sum: number, p: SitePurchase) => sum + (p.totalAmount || 0),
+    0,
+  );
   const totalExpenses = siteExpenses.reduce((sum, e) => sum + e.amount, 0);
   const totalSpent = totalPurchaseValue + totalExpenses;
   const totalVehicleCost = siteVehicles.reduce(
@@ -821,7 +620,13 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
     return (
       <div className="p-6">
         <PageHeader title="Site Not Found" description="The requested site could not be found." />
-        <Button onClick={() => router.push('/sites')} className="mt-4">
+        <Button
+          onClick={() => {
+            router.prefetch('/sites');
+            router.push('/sites');
+          }}
+          className="mt-4"
+        >
           Back to Sites
         </Button>
       </div>
@@ -912,7 +717,10 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => router.push(`/sites/${siteId}/edit`)}
+                  onClick={() => {
+                    router.prefetch(`/sites/${siteId}/edit`);
+                    router.push(`/sites/${siteId}/edit`);
+                  }}
                   className="gap-2"
                   aria-label="Edit site"
                 >
@@ -1543,7 +1351,9 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
       {/* Add Material Dialog */}
       <FormDialog
         title="Add Material Master"
-        description={`Create a new material master${site ? ` for ${site.name}` : ''}`}
+        description={
+          site ? `Create a new material master for ${site.name}` : 'Create a new material master'
+        }
         isOpen={materialDialog.isDialogOpen}
         onOpenChange={(open) => (open ? materialDialog.openDialog() : materialDialog.closeDialog())}
         maxWidth="max-w-4xl"
@@ -1594,7 +1404,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
               materialDialog.closeDialog();
 
               // Refresh the materials list immediately
-              await fetchMaterials();
+              await mutateMaterials(); // Refresh materials data
             } catch (error) {
               console.error('Error creating material:', error);
               toast.error(error instanceof Error ? error.message : 'Failed to create material');

@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
 
-const EXPENSE_CATEGORIES = ['Labour', 'Materials', 'Equipment', 'Transport', 'Utilities', 'Other'] as const;
+const EXPENSE_CATEGORIES = [
+  'Labour',
+  'Materials',
+  'Equipment',
+  'Transport',
+  'Utilities',
+  'Other',
+] as const;
 type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -142,7 +149,13 @@ export async function GET() {
         .limit(10),
     ]);
 
-    if (sitesRes.error || expensesRes.error || materialsRes.error || purchasesRes.error || workProgressRes.error) {
+    if (
+      sitesRes.error ||
+      expensesRes.error ||
+      materialsRes.error ||
+      purchasesRes.error ||
+      workProgressRes.error
+    ) {
       console.error('Reports overview errors', {
         sitesError: sitesRes.error,
         expensesError: expensesRes.error,
@@ -161,10 +174,10 @@ export async function GET() {
 
     // Metrics
     const totalBudget = siteRows.reduce((sum, site) => sum + Number(site.budget ?? 0), 0);
-    
+
     // Calculate totalSpent from actual expenses instead of sites.spent (which may not be updated)
     const totalSpent = expenseRows.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
-    
+
     // Calculate avgProgress from actual site progress values, or use timeline progress as fallback
     const progressValues = siteRows.map((site) => {
       const siteProgress = Number(site.progress ?? 0);
@@ -174,7 +187,7 @@ export async function GET() {
       }
       return siteProgress;
     });
-    
+
     const avgProgress =
       progressValues.length > 0
         ? Math.round(progressValues.reduce((sum, p) => sum + p, 0) / progressValues.length)
@@ -296,17 +309,15 @@ export async function GET() {
         }`,
         timestamp: purchase.created_at ?? purchase.purchase_date ?? new Date().toISOString(),
       })),
-      ...expenseRows
-        .slice(-5)
-        .map((expense) => ({
-          id: `expense-${expense.id}`,
-          type: 'expense' as const,
-          title: `Expense • ${expense.category}`,
-          description: `₹${Number(expense.amount ?? 0).toLocaleString()} ${
-            expense.description ? `• ${expense.description}` : ''
-          }`,
-          timestamp: expense.created_at ?? expense.date,
-        })),
+      ...expenseRows.slice(-5).map((expense) => ({
+        id: `expense-${expense.id}`,
+        type: 'expense' as const,
+        title: `Expense • ${expense.category}`,
+        description: `₹${Number(expense.amount ?? 0).toLocaleString()} ${
+          expense.description ? `• ${expense.description}` : ''
+        }`,
+        timestamp: expense.created_at ?? expense.date,
+      })),
       ...workRows.map((entry) => ({
         id: `work-${entry.id}`,
         type: 'work' as const,
@@ -319,10 +330,11 @@ export async function GET() {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 6);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       metrics: {
         totalSites: siteRows.length,
-        activeSites: siteRows.filter((site) => (site.status ?? '').toLowerCase() === 'active').length,
+        activeSites: siteRows.filter((site) => (site.status ?? '').toLowerCase() === 'active')
+          .length,
         totalBudget,
         totalSpent,
         avgProgress,
@@ -333,9 +345,16 @@ export async function GET() {
       lowStockMaterials,
       recentActivity,
     });
+
+    // Add cache headers: cache for 60 seconds, revalidate in background
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error generating reports overview', error);
-    return NextResponse.json({ error: 'Unexpected error generating reports overview.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Unexpected error generating reports overview.' },
+      { status: 500 },
+    );
   }
 }
-

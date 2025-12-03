@@ -1,13 +1,15 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { use, useEffect, useState } from 'react';
+import { use } from 'react';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import MaterialMasterForm from '@/components/forms/MaterialMasterForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
-import type { MaterialMasterInput } from '@/types/materials';
+import { fetcher, swrConfig } from '@/lib/swr';
 import type { MaterialMaster } from '@/types/entities';
+import type { MaterialMasterInput } from '@/types/materials';
 
 interface MaterialMasterEditPageProps {
   params: Promise<{
@@ -18,64 +20,52 @@ interface MaterialMasterEditPageProps {
 export default function MaterialMasterEditPage({ params }: MaterialMasterEditPageProps) {
   const router = useRouter();
   const resolvedParams = use(params);
-  const [materialData, setMaterialData] = useState<MaterialMasterInput | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchMaterialData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/materials/${resolvedParams.id}`, {
-          cache: 'no-store',
-        });
-        const payload = (await response.json().catch(() => ({}))) as {
-          material?: MaterialMaster;
-          error?: string;
-        };
+  // Fetch material data using SWR
+  const {
+    data: materialResponse,
+    isLoading: loading,
+    error,
+  } = useSWR<{ material: MaterialMaster }>(
+    resolvedParams.id ? `/api/materials/${resolvedParams.id}` : null,
+    fetcher,
+    swrConfig,
+  );
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load material');
-        }
-
-        if (payload.material) {
-          const material = payload.material;
-          // Convert taxRate to taxRateId if needed
-          const getTaxRateIdFromRate = (rate: number): string => {
-            const taxRateMap: Record<number, string> = {
-              0: 'GST0',
-              5: 'GST5',
-              12: 'GST12',
-              18: 'GST18',
-              28: 'GST28',
-            };
-            return taxRateMap[rate] || 'GST18';
+  // Convert material to form data format
+  const materialData = materialResponse?.material
+    ? (() => {
+        const material = materialResponse.material;
+        // Convert taxRate to taxRateId if needed
+        const getTaxRateIdFromRate = (rate: number): string => {
+          const taxRateMap: Record<number, string> = {
+            0: 'GST0',
+            5: 'GST5',
+            12: 'GST12',
+            18: 'GST18',
+            28: 'GST28',
           };
-          setMaterialData({
-            name: material.name,
-            category: material.category,
-            unit: material.unit,
-            siteId: material.siteId ?? undefined,
-            standardRate: material.standardRate,
-            isActive: material.isActive,
-            hsn: material.hsn,
-            taxRateId: material.taxRateId ?? getTaxRateIdFromRate(material.taxRate),
-            openingBalance: material.openingBalance,
-            siteAllocations: material.siteAllocations,
-          });
-        } else {
-          throw new Error('Material not found');
-        }
-      } catch (error) {
-        console.error('Error fetching material:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load material');
-        setMaterialData(null);
-      } finally {
-        setLoading(false);
-      }
-    };
+          return taxRateMap[rate] || 'GST18';
+        };
+        return {
+          name: material.name,
+          category: material.category,
+          unit: material.unit,
+          siteId: material.siteId ?? undefined,
+          standardRate: material.standardRate,
+          isActive: material.isActive,
+          hsn: material.hsn,
+          taxRateId: material.taxRateId ?? getTaxRateIdFromRate(material.taxRate),
+          openingBalance: material.openingBalance,
+          siteAllocations: material.siteAllocations,
+        };
+      })()
+    : null;
 
-    void fetchMaterialData();
-  }, [resolvedParams.id]);
+  // Show error toast if fetch fails
+  if (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to load material');
+  }
 
   const handleSubmit = async (data: MaterialMasterInput) => {
     try {

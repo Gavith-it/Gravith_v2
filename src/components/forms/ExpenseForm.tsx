@@ -3,7 +3,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import useSWR from 'swr';
 import { z } from 'zod';
+
+import { fetcher, swrConfig } from '../../lib/swr';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -95,7 +98,7 @@ export function ExpenseForm({
     const loadSites = async () => {
       try {
         setIsLoadingSites(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
+        const response = await fetch('/api/sites');
         const payload = (await response.json().catch(() => ({}))) as {
           sites?: Array<{ id: string; name: string }>;
           error?: string;

@@ -4,13 +4,13 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import React from 'react';
 
+import { ContextProviders } from './ContextProviders';
 import { MainSidebar } from './MainSidebar';
 import { SaaSHomepage } from './SaaSHomepage';
-import { SidebarProvider, SidebarTrigger } from './ui/sidebar';
 import { ThemeToggle } from './theme-toggle';
+import { SidebarProvider, SidebarTrigger } from './ui/sidebar';
 
 import { useAuth } from '@/lib/auth-context';
-import { ContextProviders } from './ContextProviders';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -49,6 +49,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleLogout = async () => {
     await logout();
+    // No need to prefetch logout route
     router.push('/');
     router.refresh();
   };
@@ -95,11 +96,11 @@ export function AppShell({ children }: AppShellProps) {
   ) {
     // Determine required contexts based on current page
     // Sites page includes Work Progress tab, so it needs work-progress context
-    const requiredContexts = 
-      currentPage === 'sites' 
+    const requiredContexts =
+      currentPage === 'sites'
         ? [currentPage, 'work-progress', 'materials', 'expenses', 'purchase', 'scheduling']
         : [currentPage];
-    
+
     return (
       <ContextProviders requiredContexts={requiredContexts}>
         <SidebarProvider>
@@ -107,8 +108,10 @@ export function AppShell({ children }: AppShellProps) {
             <MainSidebar
               currentPage={currentPage}
               onNavigate={(page: string) => {
-                // Use Next.js client-side navigation for better UX
-                router.push(`/${page}`);
+                // Prefetch the route before navigation for instant page switching
+                const route = `/${page}`;
+                router.prefetch(route);
+                router.push(route);
               }}
               onLogout={handleLogout}
             />

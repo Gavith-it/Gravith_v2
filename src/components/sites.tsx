@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
+
+import { fetcher, swrConfig } from '../lib/swr';
 
 import { ExpensesPage } from './expenses';
 import { MaterialsPage } from './materials';
@@ -33,12 +36,13 @@ import { PurchasePage } from './purchase';
 import { SchedulingPage } from './scheduling';
 import { WorkProgressPage } from './work-progress';
 
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import SiteForm from '@/components/forms/SiteForm';
-import type { Site, SiteInput } from '@/types/sites';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
@@ -49,8 +53,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { FilterSheet } from '@/components/filters/FilterSheet';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -66,8 +68,9 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { formatDate, formatDateShort } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
+import { formatDate, formatDateShort } from '@/lib/utils';
+import type { Site, SiteInput } from '@/types/sites';
 
 interface SiteManagementProps {
   selectedSite?: string;
@@ -76,10 +79,8 @@ interface SiteManagementProps {
 
 export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: SiteManagementProps) {
   const { isLoading: isAuthLoading } = useAuth();
-  const [sites, setSites] = useState<Site[]>([]);
   const initialSelectedSite = propSelectedSite ?? null;
   const [selectedSite, setSelectedSite] = useState<string | null>(initialSelectedSite);
-  const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
   const [isSiteDialogOpen, setIsSiteDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -147,8 +148,8 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<SiteAdvancedFilterState>(() =>
-    createDefaultSiteAdvancedFilters(),
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<SiteAdvancedFilterState>(
+    () => createDefaultSiteAdvancedFilters(),
   );
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<SiteAdvancedFilterState>(() =>
     createDefaultSiteAdvancedFilters(),
@@ -177,87 +178,73 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
     }
   }, []);
 
-  const fetchSites = useCallback(
-    async (focusId?: string) => {
-      try {
-        setIsSitesLoading(true);
-        const response = await fetch('/api/sites');
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Site[];
-          error?: string;
-        };
-
-        if (!response.ok) {
-          // Handle 401 Unauthorized specifically
-          if (response.status === 401) {
-            console.error('Authentication required. Please log in.');
-            setIsSitesLoading(false);
-            setSites([]);
-            return [];
-          }
-          throw new Error(payload.error || 'Failed to load sites.');
-        }
-
-        const fetchedSites = payload.sites ?? [];
-        setSites(fetchedSites);
-
-        // Check which sites have transactions (in batches to avoid overwhelming server)
-        const sitesWithTx = new Set<string>();
-        const batchSize = 5;
-        for (let i = 0; i < fetchedSites.length; i += batchSize) {
-          const batch = fetchedSites.slice(i, i + batchSize);
-          const transactionChecks = await Promise.all(
-            batch.map(async (site) => ({
-              siteId: site.id,
-              hasTransactions: await checkSiteHasTransactions(site.id),
-            })),
-          );
-          transactionChecks.forEach(({ siteId, hasTransactions }) => {
-            if (hasTransactions) {
-              sitesWithTx.add(siteId);
-            }
-          });
-        }
-        setSitesWithTransactions(sitesWithTx);
-
-        // Use ref to get current selectedSite value without causing dependency loop
-        const currentSelectedSite = selectedSiteRef.current;
-        const nextSelection =
-          (focusId && fetchedSites.some((site) => site.id === focusId) && focusId) ||
-          (propSelectedSite &&
-            fetchedSites.some((site) => site.id === propSelectedSite) &&
-            propSelectedSite) ||
-          (currentSelectedSite && fetchedSites.some((site) => site.id === currentSelectedSite) && currentSelectedSite) ||
-          (fetchedSites.length ? fetchedSites[0].id : null);
-
-        // Only update if selection actually changed
-        if (nextSelection !== currentSelectedSite) {
-          selectedSiteRef.current = nextSelection;
-          setSelectedSite(nextSelection);
-        }
-        return fetchedSites;
-      } catch (error) {
-        console.error('Failed to load sites', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load sites.');
-        setSites([]);
-        selectedSiteRef.current = null;
-        setSelectedSite(null);
-        return [];
-      } finally {
-        setIsSitesLoading(false);
-      }
-    },
-    [propSelectedSite, checkSiteHasTransactions],
+  // Fetch sites using SWR
+  const {
+    data: sitesData,
+    error: sitesError,
+    isLoading: isSitesLoading,
+    mutate: mutateSites,
+  } = useSWR<{ sites: Site[] }>(
+    !isAuthLoading ? '/api/sites' : null, // Only fetch when auth is ready
+    fetcher,
+    swrConfig,
   );
 
-  // Initial fetch on mount
+  const sites = sitesData?.sites ?? [];
+
+  // Check which sites have transactions when sites data changes
   useEffect(() => {
-    // Wait for auth to finish loading before fetching
-    if (!isAuthLoading) {
-      void fetchSites();
+    if (!sites.length || isSitesLoading) return;
+
+    const checkTransactions = async () => {
+      const sitesWithTx = new Set<string>();
+      const batchSize = 5;
+      for (let i = 0; i < sites.length; i += batchSize) {
+        const batch = sites.slice(i, i + batchSize);
+        const transactionChecks = await Promise.all(
+          batch.map(async (site) => ({
+            siteId: site.id,
+            hasTransactions: await checkSiteHasTransactions(site.id),
+          })),
+        );
+        transactionChecks.forEach(({ siteId, hasTransactions }) => {
+          if (hasTransactions) {
+            sitesWithTx.add(siteId);
+          }
+        });
+      }
+      setSitesWithTransactions(sitesWithTx);
+    };
+
+    void checkTransactions();
+  }, [sites, isSitesLoading, checkSiteHasTransactions]);
+
+  // Handle site selection when sites load
+  useEffect(() => {
+    if (isSitesLoading || !sites.length) return;
+
+    const currentSelectedSite = selectedSiteRef.current;
+    const nextSelection =
+      (propSelectedSite &&
+        sites.some((site) => site.id === propSelectedSite) &&
+        propSelectedSite) ||
+      (currentSelectedSite &&
+        sites.some((site) => site.id === currentSelectedSite) &&
+        currentSelectedSite) ||
+      (sites.length ? sites[0].id : null);
+
+    if (nextSelection !== currentSelectedSite) {
+      selectedSiteRef.current = nextSelection;
+      setSelectedSite(nextSelection);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthLoading]); // Re-fetch when auth loading state changes
+  }, [sites, propSelectedSite, isSitesLoading]);
+
+  // Show error toast if fetch fails
+  useEffect(() => {
+    if (sitesError) {
+      toast.error(sitesError instanceof Error ? sitesError.message : 'Failed to load sites.');
+    }
+  }, [sitesError]);
 
   // Handle propSelectedSite changes from parent
   useEffect(() => {
@@ -367,7 +354,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
   }, [sites, statusFilter, searchQuery, appliedAdvancedFilters]);
 
   const currentSite = selectedSite
-    ? sites.find((site) => site.id === selectedSite) ?? null
+    ? (sites.find((site) => site.id === selectedSite) ?? null)
     : null;
 
   const currentSiteMetrics = useMemo(() => {
@@ -419,7 +406,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
           throw new Error(payload.error || 'Failed to save site.');
         }
 
-        await fetchSites(payload.site.id);
+        await mutateSites(); // Refresh sites data
         toast.success(isEditing ? 'Site updated successfully.' : 'Site created successfully.');
         setEditingSite(null);
         setIsSiteDialogOpen(false);
@@ -428,7 +415,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         toast.error(error instanceof Error ? error.message : 'Failed to save site.');
       }
     },
-    [editingSite, fetchSites],
+    [editingSite, mutateSites],
   );
 
   const handleEditSite = (site: Site) => {
@@ -483,16 +470,16 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
           return;
         }
 
-        // Remove from local state
-        setSites((prev) => prev.filter((s) => s.id !== site.id));
-        
+        // Refresh sites data
+        await mutateSites();
+
         // Remove from sites with transactions
         setSitesWithTransactions((prev) => {
           const next = new Set(prev);
           next.delete(site.id);
           return next;
         });
-        
+
         // Clear selection if deleted site was selected
         if (selectedSite === site.id) {
           selectedSiteRef.current = null;
@@ -673,7 +660,11 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                       }
                       return chips;
                     })().map((chip) => (
-                      <Badge key={chip} variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      <Badge
+                        key={chip}
+                        variant="outline"
+                        className="rounded-full px-3 py-1 text-xs"
+                      >
                         {chip}
                       </Badge>
                     ))}
@@ -696,7 +687,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   onClick={() => {
                     const container = scrollContainerRef.current;
                     if (!container) return;
-                    
+
                     const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
                     const scrollAmount = cardWidth * 4; // Scroll by 4 cards
                     const currentScroll = container.scrollLeft;
@@ -742,7 +733,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   onClick={() => {
                     const container = scrollContainerRef.current;
                     if (!container) return;
-                    
+
                     const cardWidth = 320 + 16; // w-80 (320px) + gap (16px)
                     const scrollAmount = cardWidth * 4; // Scroll by 4 cards
                     const currentScroll = container.scrollLeft;
@@ -763,7 +754,9 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   disabled={(() => {
                     const container = scrollContainerRef.current;
                     if (!container) return true;
-                    return container.scrollLeft >= (container.scrollWidth - container.clientWidth - 1);
+                    return (
+                      container.scrollLeft >= container.scrollWidth - container.clientWidth - 1
+                    );
                   })()}
                   className="h-8 w-8"
                 >
@@ -775,7 +768,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
               <div
                 ref={scrollContainerRef}
                 className="flex gap-4 overflow-x-auto pb-4 scroll-smooth pr-6"
-                style={{ 
+                style={{
                   width: '100%',
                   scrollbarWidth: 'thin',
                   scrollbarGutter: 'stable',
@@ -802,136 +795,112 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                   }, 50);
                 }}
               >
-              {!isSitesLoading && filteredSites.length === 0 ? (
-                <Card className="border-dashed border-2 border-border/70 bg-muted/10 w-full">
-                  <CardContent className="p-8 text-center space-y-3">
-                    <Building2 className="h-8 w-8 mx-auto text-muted-foreground" />
-                    <h3 className="text-lg font-semibold">No sites found</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Try adjusting your filters or create a new construction site to get started.
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                filteredSites.map((site) => {
-                  const getStatusConfig = () => {
-                    switch (site.status) {
-                      case 'Active':
-                        return {
-                          color: 'bg-green-500',
-                          bgLight: 'bg-green-50 dark:bg-green-950/30',
-                          textColor: 'text-green-700 dark:text-green-400',
-                          icon: CheckCircle2,
-                        };
-                      case 'Stopped':
-                        return {
-                          color: 'bg-yellow-500',
-                          bgLight: 'bg-yellow-50 dark:bg-yellow-950/30',
-                          textColor: 'text-yellow-700 dark:text-yellow-400',
-                          icon: Pause,
-                        };
-                      case 'Completed':
-                        return {
-                          color: 'bg-blue-500',
-                          bgLight: 'bg-blue-50 dark:bg-blue-950/30',
-                          textColor: 'text-blue-700 dark:text-blue-400',
-                          icon: CheckCircle2,
-                        };
-                      case 'Canceled':
-                        return {
-                          color: 'bg-red-500',
-                          bgLight: 'bg-red-50 dark:bg-red-950/30',
-                          textColor: 'text-red-700 dark:text-red-400',
-                          icon: XCircle,
-                        };
-                      default:
-                        return {
-                          color: 'bg-muted-foreground',
-                          bgLight: 'bg-muted/30',
-                          textColor: 'text-muted-foreground',
-                          icon: Clock,
-                        };
-                    }
-                  };
+                {!isSitesLoading && filteredSites.length === 0 ? (
+                  <Card className="border-dashed border-2 border-border/70 bg-muted/10 w-full">
+                    <CardContent className="p-8 text-center space-y-3">
+                      <Building2 className="h-8 w-8 mx-auto text-muted-foreground" />
+                      <h3 className="text-lg font-semibold">No sites found</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Try adjusting your filters or create a new construction site to get started.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  filteredSites.map((site) => {
+                    const getStatusConfig = () => {
+                      switch (site.status) {
+                        case 'Active':
+                          return {
+                            color: 'bg-green-500',
+                            bgLight: 'bg-green-50 dark:bg-green-950/30',
+                            textColor: 'text-green-700 dark:text-green-400',
+                            icon: CheckCircle2,
+                          };
+                        case 'Stopped':
+                          return {
+                            color: 'bg-yellow-500',
+                            bgLight: 'bg-yellow-50 dark:bg-yellow-950/30',
+                            textColor: 'text-yellow-700 dark:text-yellow-400',
+                            icon: Pause,
+                          };
+                        case 'Completed':
+                          return {
+                            color: 'bg-blue-500',
+                            bgLight: 'bg-blue-50 dark:bg-blue-950/30',
+                            textColor: 'text-blue-700 dark:text-blue-400',
+                            icon: CheckCircle2,
+                          };
+                        case 'Canceled':
+                          return {
+                            color: 'bg-red-500',
+                            bgLight: 'bg-red-50 dark:bg-red-950/30',
+                            textColor: 'text-red-700 dark:text-red-400',
+                            icon: XCircle,
+                          };
+                        default:
+                          return {
+                            color: 'bg-muted-foreground',
+                            bgLight: 'bg-muted/30',
+                            textColor: 'text-muted-foreground',
+                            icon: Clock,
+                          };
+                      }
+                    };
 
-                  const statusConfig = getStatusConfig();
-                  const StatusIcon = statusConfig.icon;
-                  const budgetValue = Number(site.budget ?? 0);
-                  const spentValue = Number(site.spent ?? 0);
-                  const progressValue = Number(site.progress ?? 0);
-                  const budgetUsagePercent = budgetValue > 0 ? (spentValue / budgetValue) * 100 : 0;
-                  const isOverBudget = budgetUsagePercent > 90;
-                  const budgetCrDisplay = (budgetValue / 10000000).toFixed(1);
-                  const spentCrDisplay = (spentValue / 10000000).toFixed(1);
-                  const startDateLabel = site.startDate ? formatDateShort(site.startDate) : '—';
-                  const endDateLabel = site.expectedEndDate
-                    ? formatDateShort(site.expectedEndDate)
-                    : '—';
+                    const statusConfig = getStatusConfig();
+                    const StatusIcon = statusConfig.icon;
+                    const budgetValue = Number(site.budget ?? 0);
+                    const spentValue = Number(site.spent ?? 0);
+                    const progressValue = Number(site.progress ?? 0);
+                    const budgetUsagePercent =
+                      budgetValue > 0 ? (spentValue / budgetValue) * 100 : 0;
+                    const isOverBudget = budgetUsagePercent > 90;
+                    const budgetCrDisplay = (budgetValue / 10000000).toFixed(1);
+                    const spentCrDisplay = (spentValue / 10000000).toFixed(1);
+                    const startDateLabel = site.startDate ? formatDateShort(site.startDate) : '—';
+                    const endDateLabel = site.expectedEndDate
+                      ? formatDateShort(site.expectedEndDate)
+                      : '—';
 
-                  return (
-                    <Card
-                      key={site.id}
-                      className={`group relative cursor-pointer transition-all duration-300 overflow-visible flex-shrink-0 w-80 ${
-                        selectedSite === site.id
-                          ? 'border-primary border-2 shadow-lg ring-2 ring-primary/30'
-                          : 'border border-border hover:border-primary/40 hover:shadow-md'
-                      }`}
-                      onClick={() => {
-                        // Update ref immediately to prevent race conditions
-                        selectedSiteRef.current = site.id;
-                        setSelectedSite(site.id);
-                        onSiteSelect?.(site.id);
-                      }}
-                    >
-                      <CardContent className="p-5">
-                      <div className="mb-4 h-32 rounded-lg overflow-hidden border border-border/60 bg-gradient-to-br from-muted/40 to-muted/10 flex items-center justify-center">
-                        <Building2 className="h-10 w-10 text-muted-foreground" />
-                      </div>
-                        {/* Header Section */}
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1 min-w-0 pr-3">
-                            <h4 className="font-semibold text-lg leading-tight mb-2 truncate group-hover:text-primary transition-colors">
-                              {site.name}
-                            </h4>
-                            <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                              <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                              <span className="line-clamp-1">{site.location}</span>
-                            </div>
+                    return (
+                      <Card
+                        key={site.id}
+                        className={`group relative cursor-pointer transition-all duration-300 overflow-visible flex-shrink-0 w-80 ${
+                          selectedSite === site.id
+                            ? 'border-primary border-2 shadow-lg ring-2 ring-primary/30'
+                            : 'border border-border hover:border-primary/40 hover:shadow-md'
+                        }`}
+                        onClick={() => {
+                          // Update ref immediately to prevent race conditions
+                          selectedSiteRef.current = site.id;
+                          setSelectedSite(site.id);
+                          onSiteSelect?.(site.id);
+                        }}
+                      >
+                        <CardContent className="p-5">
+                          <div className="mb-4 h-32 rounded-lg overflow-hidden border border-border/60 bg-gradient-to-br from-muted/40 to-muted/10 flex items-center justify-center">
+                            <Building2 className="h-10 w-10 text-muted-foreground" />
                           </div>
+                          {/* Header Section */}
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1 min-w-0 pr-3">
+                              <h4 className="font-semibold text-lg leading-tight mb-2 truncate group-hover:text-primary transition-colors">
+                                {site.name}
+                              </h4>
+                              <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
+                                <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                                <span className="line-clamp-1">{site.location}</span>
+                              </div>
+                            </div>
 
-                          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                            <Badge
-                              className={`${statusConfig.bgLight} ${statusConfig.textColor} border-0 flex items-center gap-1.5 px-2.5 py-1`}
-                            >
-                              <StatusIcon className="h-3 w-3" />
-                              <span className="font-medium">{site.status}</span>
-                            </Badge>
-                            <div className="flex items-center gap-1">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        handleEditSite(site);
-                                      }}
-                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
-                                      aria-label="Edit site"
-                                    >
-                                      <span>
-                                        <Edit className="h-4 w-4" />
-                                      </span>
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Edit site details</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              {!sitesWithTransactions.has(site.id) && (
+                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                              <Badge
+                                className={`${statusConfig.bgLight} ${statusConfig.textColor} border-0 flex items-center gap-1.5 px-2.5 py-1`}
+                              >
+                                <StatusIcon className="h-3 w-3" />
+                                <span className="font-medium">{site.status}</span>
+                              </Badge>
+                              <div className="flex items-center gap-1">
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -941,131 +910,156 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           e.preventDefault();
-                                          handleDeleteSite(site);
+                                          handleEditSite(site);
                                         }}
-                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
-                                        aria-label="Delete site"
+                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
+                                        aria-label="Edit site"
                                       >
                                         <span>
-                                          <Trash2 className="h-4 w-4" />
+                                          <Edit className="h-4 w-4" />
                                         </span>
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Delete site</p>
+                                      <p>Edit site details</p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
-                              )}
+                                {!sitesWithTransactions.has(site.id) && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            handleDeleteSite(site);
+                                          }}
+                                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                          aria-label="Delete site"
+                                        >
+                                          <span>
+                                            <Trash2 className="h-4 w-4" />
+                                          </span>
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Delete site</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Progress Section */}
-                        <div className="space-y-2 mb-4">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-medium text-muted-foreground">
-                              Project Progress
-                            </span>
-                            <span className="text-sm font-bold text-foreground">
-                              {progressValue}%
-                            </span>
-                          </div>
-                          <Progress
-                            value={Math.min(Math.max(progressValue, 0), 100)}
-                            className="h-2.5"
-                          />
-                        </div>
-
-                        {/* Financial Overview */}
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div className="rounded-lg bg-primary/5 p-3 border border-primary/10">
-                            <div className="flex items-center gap-2 mb-1">
-                              <DollarSign className="h-3.5 w-3.5 text-primary" />
-                              <p className="text-xs font-medium text-muted-foreground">Budget</p>
-                            </div>
-                            <p className="font-bold text-base text-primary">
-                              ₹{budgetCrDisplay}Cr
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-green-500/5 p-3 border border-green-500/10">
-                            <div className="flex items-center gap-2 mb-1">
-                              <TrendingUp className="h-3.5 w-3.5 text-green-600" />
-                              <p className="text-xs font-medium text-muted-foreground">Spent</p>
-                            </div>
-                            <p className="font-bold text-base text-green-600">
-                              ₹{spentCrDisplay}Cr
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Timeline & Budget Usage */}
-                        <div className="space-y-2.5 pt-3 border-t border-border/50">
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <Calendar className="h-3.5 w-3.5" />
-                              <span>
-                                {startDateLabel} - {endDateLabel}
+                          {/* Progress Section */}
+                          <div className="space-y-2 mb-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Project Progress
+                              </span>
+                              <span className="text-sm font-bold text-foreground">
+                                {progressValue}%
                               </span>
                             </div>
+                            <Progress
+                              value={Math.min(Math.max(progressValue, 0), 100)}
+                              className="h-2.5"
+                            />
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-muted-foreground">
-                              Budget Utilization
-                            </span>
-                            <Badge
-                              variant={isOverBudget ? 'destructive' : 'secondary'}
-                              className="text-xs font-semibold"
-                            >
-                              {budgetUsagePercent.toFixed(1)}%
-                            </Badge>
-                          </div>
-                        </div>
-                      </CardContent>
 
-                      {/* Hover Effect Overlay */}
-                      <div className="absolute inset-0 border-2 border-primary/0 group-hover:border-primary/20 rounded-lg transition-colors pointer-events-none" />
-                    </Card>
-                  );
-                })
-              )}
-            </div>
-            {/* Scroll Indicators */}
-            {filteredSites.length > 4 && (
-              <div className="flex justify-center gap-2 mt-4">
-                {Array.from({ length: Math.ceil(filteredSites.length / 4) }).map((_, index) => {
-                  const cardWidth = 320 + 16;
-                  const currentPage = Math.round(scrollPosition / (cardWidth * 4));
-                  const isActive = currentPage === index;
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        if (scrollContainerRef.current) {
-                          const newPosition = index * cardWidth * 4;
-                          scrollContainerRef.current.scrollTo({
-                            left: newPosition,
-                            behavior: 'smooth',
-                          });
-                          // Update position after animation
-                          setTimeout(() => {
-                            if (scrollContainerRef.current) {
-                              setScrollPosition(scrollContainerRef.current.scrollLeft);
-                            }
-                          }, 500);
-                        }
-                      }}
-                      className={`h-2 rounded-full transition-all cursor-pointer ${
-                        isActive
-                          ? 'w-8 bg-primary'
-                          : 'w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                      }`}
-                      aria-label={`Go to page ${index + 1}`}
-                    />
-                  );
-                })}
+                          {/* Financial Overview */}
+                          <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="rounded-lg bg-primary/5 p-3 border border-primary/10">
+                              <div className="flex items-center gap-2 mb-1">
+                                <DollarSign className="h-3.5 w-3.5 text-primary" />
+                                <p className="text-xs font-medium text-muted-foreground">Budget</p>
+                              </div>
+                              <p className="font-bold text-base text-primary">
+                                ₹{budgetCrDisplay}Cr
+                              </p>
+                            </div>
+                            <div className="rounded-lg bg-green-500/5 p-3 border border-green-500/10">
+                              <div className="flex items-center gap-2 mb-1">
+                                <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+                                <p className="text-xs font-medium text-muted-foreground">Spent</p>
+                              </div>
+                              <p className="font-bold text-base text-green-600">
+                                ₹{spentCrDisplay}Cr
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Timeline & Budget Usage */}
+                          <div className="space-y-2.5 pt-3 border-t border-border/50">
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5 text-muted-foreground">
+                                <Calendar className="h-3.5 w-3.5" />
+                                <span>
+                                  {startDateLabel} - {endDateLabel}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Budget Utilization
+                              </span>
+                              <Badge
+                                variant={isOverBudget ? 'destructive' : 'secondary'}
+                                className="text-xs font-semibold"
+                              >
+                                {budgetUsagePercent.toFixed(1)}%
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+
+                        {/* Hover Effect Overlay */}
+                        <div className="absolute inset-0 border-2 border-primary/0 group-hover:border-primary/20 rounded-lg transition-colors pointer-events-none" />
+                      </Card>
+                    );
+                  })
+                )}
               </div>
-            )}
+              {/* Scroll Indicators */}
+              {filteredSites.length > 4 && (
+                <div className="flex justify-center gap-2 mt-4">
+                  {Array.from({ length: Math.ceil(filteredSites.length / 4) }).map((_, index) => {
+                    const cardWidth = 320 + 16;
+                    const currentPage = Math.round(scrollPosition / (cardWidth * 4));
+                    const isActive = currentPage === index;
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => {
+                          if (scrollContainerRef.current) {
+                            const newPosition = index * cardWidth * 4;
+                            scrollContainerRef.current.scrollTo({
+                              left: newPosition,
+                              behavior: 'smooth',
+                            });
+                            // Update position after animation
+                            setTimeout(() => {
+                              if (scrollContainerRef.current) {
+                                setScrollPosition(scrollContainerRef.current.scrollLeft);
+                              }
+                            }, 500);
+                          }
+                        }}
+                        className={`h-2 rounded-full transition-all cursor-pointer ${
+                          isActive
+                            ? 'w-8 bg-primary'
+                            : 'w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                        }`}
+                        aria-label={`Go to page ${index + 1}`}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1150,7 +1144,8 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                               Total Budget
                             </p>
                             <p className="text-2xl font-bold text-primary">
-                              ₹{currentSiteMetrics ? currentSiteMetrics.budgetCr.toFixed(1) : '0.0'}Cr
+                              ₹{currentSiteMetrics ? currentSiteMetrics.budgetCr.toFixed(1) : '0.0'}
+                              Cr
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
@@ -1167,7 +1162,8 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                               Amount Spent
                             </p>
                             <p className="text-2xl font-bold text-green-600">
-                              ₹{currentSiteMetrics ? currentSiteMetrics.spentCr.toFixed(1) : '0.0'}Cr
+                              ₹{currentSiteMetrics ? currentSiteMetrics.spentCr.toFixed(1) : '0.0'}
+                              Cr
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
@@ -1430,7 +1426,10 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                     {locationOptions.map((location) => {
                       const isChecked = draftAdvancedFilters.locations.includes(location);
                       return (
-                        <Label key={location} className="flex items-center gap-3 text-sm font-normal">
+                        <Label
+                          key={location}
+                          className="flex items-center gap-3 text-sm font-normal"
+                        >
                           <Checkbox
                             checked={isChecked}
                             onCheckedChange={(checked) => {

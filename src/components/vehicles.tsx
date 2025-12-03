@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
+
+import { fetcher, swrConfig } from '../lib/swr';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -189,55 +192,28 @@ export function VehiclesPage({
   const [isSavingVehicle, setIsSavingVehicle] = useState(false);
   const [isSavingRefueling, setIsSavingRefueling] = useState(false);
   const [isSavingUsage, setIsSavingUsage] = useState(false);
-  const [siteOptions, setSiteOptions] = useState<Array<{ id: string; name: string }>>([]);
-  const [isSitesLoading, setIsSitesLoading] = useState(false);
   const [scrollContainerRef, setScrollContainerRef] = useState<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   // Pagination state
   const [page, setPage] = useState<number>(1);
   const [limit] = useState<number>(50);
-  useEffect(() => {
-    let isMounted = true;
-    const fetchSites = async () => {
-      try {
-        setIsSitesLoading(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Array<{ id: string; name?: string | null }>;
-          error?: string;
-        };
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load sites.');
-        }
+  // Fetch sites using SWR
+  const { data: sitesData, isLoading: isSitesLoading } = useSWR<{
+    sites: Array<{ id: string; name?: string | null }>;
+  }>('/api/sites', fetcher, swrConfig);
 
-        const normalized = (payload.sites ?? []).map((site) => ({
-          id: site.id,
-          name: site.name?.trim() || 'Unnamed site',
-        }));
-
-        normalized.sort((a, b) => a.name.localeCompare(b.name));
-        if (isMounted) {
-          setSiteOptions(normalized);
-        }
-      } catch (error) {
-        console.error('Error loading sites', error);
-        if (isMounted) {
-          setSiteOptions([]);
-        }
-      } finally {
-        if (isMounted) {
-          setIsSitesLoading(false);
-        }
-      }
-    };
-
-    void fetchSites();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  // Normalize and sort site options
+  const siteOptions = useMemo(() => {
+    if (!sitesData?.sites) return [];
+    const normalized = sitesData.sites.map((site) => ({
+      id: site.id,
+      name: site.name?.trim() || 'Unnamed site',
+    }));
+    normalized.sort((a, b) => a.name.localeCompare(b.name));
+    return normalized;
+  }, [sitesData]);
 
   // Fetch vehicles with pagination
   useEffect(() => {

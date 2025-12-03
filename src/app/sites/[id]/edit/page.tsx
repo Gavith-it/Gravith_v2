@@ -1,11 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { use, useEffect, useState } from 'react';
+import { use } from 'react';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
+import { fetcher, swrConfig } from '@/lib/swr';
 import type { Site, SiteInput } from '@/types/sites';
 
 interface SiteEditPageProps {
@@ -17,41 +19,24 @@ interface SiteEditPageProps {
 export default function SiteEditPage({ params }: SiteEditPageProps) {
   const router = useRouter();
   const resolvedParams = use(params);
-  const [siteData, setSiteData] = useState<Site | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchSiteData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/sites/${resolvedParams.id}`, {
-          cache: 'no-store',
-        });
-        const payload = (await response.json().catch(() => ({}))) as {
-          site?: Site;
-          error?: string;
-        };
+  // Fetch site data using SWR
+  const {
+    data: siteDataResponse,
+    isLoading: loading,
+    error,
+  } = useSWR<{ site: Site }>(
+    resolvedParams.id ? `/api/sites/${resolvedParams.id}` : null,
+    fetcher,
+    swrConfig,
+  );
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load site');
-        }
+  const siteData = siteDataResponse?.site ?? null;
 
-        if (payload.site) {
-          setSiteData(payload.site);
-        } else {
-          throw new Error('Site not found');
-        }
-      } catch (error) {
-        console.error('Error fetching site:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load site');
-        setSiteData(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchSiteData();
-  }, [resolvedParams.id]);
+  // Show error toast if fetch fails
+  if (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to load site');
+  }
 
   const handleSubmit = async (data: SiteInput) => {
     try {

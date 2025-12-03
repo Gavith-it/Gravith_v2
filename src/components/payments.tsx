@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Plus, Trash2, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
@@ -18,7 +20,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -36,10 +45,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { usePayments } from '@/lib/contexts';
+import { fetcher, swrConfig } from '@/lib/swr';
 import { formatDate } from '@/lib/utils';
 import { formatDateOnly } from '@/lib/utils/date';
 import type { Payment } from '@/types';
-import { toast } from 'sonner';
 
 const paymentSchema = z.object({
   clientName: z.string().min(1, 'Client name is required.'),
@@ -76,14 +85,13 @@ function deriveStats(payments: Payment[]) {
 }
 
 export function PaymentsPage() {
-  const { payments, isLoading, addPayment, updatePayment, deletePayment, refresh, pagination } = usePayments();
+  const { payments, isLoading, addPayment, updatePayment, deletePayment, refresh, pagination } =
+    usePayments();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Payment['status']>('all');
-  const [siteOptions, setSiteOptions] = useState<SiteOption[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
   // Pagination state
   const [page, setPage] = useState<number>(1);
   const [limit] = useState<number>(50);
@@ -101,30 +109,12 @@ export function PaymentsPage() {
     },
   });
 
-  useEffect(() => {
-    const loadSites = async () => {
-      try {
-        setIsLoadingSites(true);
-        const response = await fetch('/api/sites', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          sites?: Array<{ id: string; name: string }>;
-        };
+  // Fetch sites using SWR
+  const { data: sitesData, isLoading: isLoadingSites } = useSWR<{
+    sites: Array<{ id: string; name: string }>;
+  }>('/api/sites', fetcher, swrConfig);
 
-        if (response.ok) {
-          setSiteOptions(payload.sites ?? []);
-        } else {
-          setSiteOptions([]);
-        }
-      } catch (error) {
-        console.error('Failed to load sites for payments form', error);
-        setSiteOptions([]);
-      } finally {
-        setIsLoadingSites(false);
-      }
-    };
-
-    void loadSites();
-  }, []);
+  const siteOptions = useMemo(() => sitesData?.sites ?? [], [sitesData]);
 
   // Fetch payments with pagination
   useEffect(() => {
@@ -232,7 +222,7 @@ export function PaymentsPage() {
   };
 
   const onSiteChange = (siteId: string | undefined) => {
-    const site = siteOptions.find((option) => option.id === siteId);
+    const site = siteOptions.find((option: SiteOption) => option.id === siteId);
     form.setValue('siteId', siteId);
     form.setValue('siteName', site?.name ?? '');
   };
@@ -251,7 +241,10 @@ export function PaymentsPage() {
             onChange={(event) => setSearchQuery(event.target.value)}
             className="w-full md:w-72"
           />
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}
+          >
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -271,7 +264,9 @@ export function PaymentsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Amount</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Amount
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">₹{stats.total.toLocaleString()}</p>
@@ -348,7 +343,11 @@ export function PaymentsPage() {
                       <TableCell>{payment.siteName ?? '—'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="icon" onClick={() => openForEdit(payment)}>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => openForEdit(payment)}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
@@ -369,7 +368,9 @@ export function PaymentsPage() {
               {pagination && pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-4 py-3">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} payments
+                    Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                    {pagination.total} payments
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -435,10 +436,7 @@ export function PaymentsPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(handleSubmit)}
-              className="space-y-6"
-            >
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -557,7 +555,7 @@ export function PaymentsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {siteOptions.map((site) => (
+                          {siteOptions.map((site: SiteOption) => (
                             <SelectItem key={site.id} value={site.id}>
                               {site.name}
                             </SelectItem>

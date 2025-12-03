@@ -1,11 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
+import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import VehicleRefuelingForm from '@/components/forms/VehicleRefuelingForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
+import { fetcher, swrConfig } from '@/lib/swr';
 import type { Vehicle as VehicleEntity, VehicleRefueling } from '@/types/entities';
 
 type Vehicle = {
@@ -33,64 +35,46 @@ type Vehicle = {
 
 export default function VehicleRefuelingPage() {
   const router = useRouter();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchVehicles = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/vehicles', { cache: 'no-store' });
-        const payload = (await response.json().catch(() => ({}))) as {
-          vehicles?: VehicleEntity[];
-          error?: string;
-        };
+  // Fetch vehicles using SWR
+  const {
+    data: vehiclesData,
+    isLoading,
+    error: vehiclesError,
+  } = useSWR<{ vehicles: VehicleEntity[] }>('/api/vehicles', fetcher, swrConfig);
 
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load vehicles');
-        }
-
-        // Map VehicleEntity to Vehicle format expected by form
-        const mappedVehicles: Vehicle[] = (payload.vehicles ?? []).map((v) => ({
-          id: v.id,
-          vehicleNumber: v.vehicleNumber,
-          type: v.type,
-          make: v.make || '',
-          model: v.model || '',
-          year: v.year || 0,
-          siteId: v.siteId || '',
-          siteName: v.siteName || '',
-          status: (v.status === 'available' || v.status === 'in_use'
-            ? 'Active'
-            : v.status === 'maintenance'
-              ? 'Maintenance'
-              : v.status === 'idle'
-                ? 'Idle'
-                : 'Returned') as Vehicle['status'],
-          operator: v.operator || '',
-          isRental: v.isRental,
-          fuelCapacity: v.fuelCapacity || 0,
-          currentFuelLevel: v.currentFuelLevel || 0,
-          mileage: v.mileage || 0,
-          lastMaintenanceDate: v.lastMaintenanceDate || '',
-          nextMaintenanceDate: v.nextMaintenanceDate || '',
-          insuranceExpiry: v.insuranceExpiry || '',
-          registrationExpiry: v.registrationExpiry || '',
-          createdAt: v.createdAt,
-          lastUpdated: v.updatedAt,
-        }));
-
-        setVehicles(mappedVehicles);
-      } catch (error) {
-        console.error('Error fetching vehicles:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to load vehicles');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void fetchVehicles();
-  }, []);
+  // Map VehicleEntity to Vehicle format expected by form
+  const vehicles = useMemo(() => {
+    if (!vehiclesData?.vehicles) return [];
+    return vehiclesData.vehicles.map((v) => ({
+      id: v.id,
+      vehicleNumber: v.vehicleNumber,
+      type: v.type,
+      make: v.make || '',
+      model: v.model || '',
+      year: v.year || 0,
+      siteId: v.siteId || '',
+      siteName: v.siteName || '',
+      status: (v.status === 'available' || v.status === 'in_use'
+        ? 'Active'
+        : v.status === 'maintenance'
+          ? 'Maintenance'
+          : v.status === 'idle'
+            ? 'Idle'
+            : 'Returned') as Vehicle['status'],
+      operator: v.operator || '',
+      isRental: v.isRental,
+      fuelCapacity: v.fuelCapacity || 0,
+      currentFuelLevel: v.currentFuelLevel || 0,
+      mileage: v.mileage || 0,
+      lastMaintenanceDate: v.lastMaintenanceDate || '',
+      nextMaintenanceDate: v.nextMaintenanceDate || '',
+      insuranceExpiry: v.insuranceExpiry || '',
+      registrationExpiry: v.registrationExpiry || '',
+      createdAt: v.createdAt,
+      lastUpdated: v.updatedAt,
+    }));
+  }, [vehiclesData]);
 
   const handleSubmit = async (data: {
     vehicleId: string;
