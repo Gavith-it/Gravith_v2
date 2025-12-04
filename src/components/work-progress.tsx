@@ -749,30 +749,68 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
   // Handle adding material to the work entry
   const handleAddMaterial = () => {
-    if (!selectedMaterial || materialQuantity <= 0) return;
+    if (!selectedMaterial || materialQuantity <= 0) {
+      toast.error('Please select a material and enter a valid quantity.');
+      return;
+    }
 
     const material = materials.find((m) => m.id === selectedMaterial);
-    if (!material) return;
+    if (!material) {
+      toast.error('Material not found. Please refresh and try again.');
+      return;
+    }
 
     const balanceStock = material.remainingQuantity || 0;
 
     if (materialQuantity > balanceStock) {
-      alert(`Insufficient stock! Available: ${balanceStock} ${material.unit}`);
+      toast.error(
+        `Insufficient stock! Available: ${balanceStock.toLocaleString()} ${material.unit}`,
+      );
       return;
     }
 
-    const newMaterialEntry = {
-      purchaseId: material.id,
-      materialId: material.materialId ?? undefined,
-      materialName: material.materialName,
-      quantity: materialQuantity,
-      unit: material.unit,
-      balanceStock: balanceStock - materialQuantity,
-    };
+    // Check if this material is already added
+    const existingIndex = workProgressForm.materialsUsed.findIndex(
+      (m) => m.purchaseId === material.id,
+    );
+
+    let updatedMaterialsUsed;
+    if (existingIndex >= 0) {
+      // Update existing material entry
+      const existing = workProgressForm.materialsUsed[existingIndex];
+      const newTotalQuantity = existing.quantity + materialQuantity;
+
+      if (newTotalQuantity > balanceStock) {
+        toast.error(
+          `Total quantity exceeds available stock! Available: ${balanceStock.toLocaleString()} ${material.unit}`,
+        );
+        return;
+      }
+
+      updatedMaterialsUsed = [...workProgressForm.materialsUsed];
+      updatedMaterialsUsed[existingIndex] = {
+        ...existing,
+        quantity: newTotalQuantity,
+        balanceStock: balanceStock - newTotalQuantity,
+      };
+      toast.success(`Updated ${material.materialName} quantity.`);
+    } else {
+      // Add new material entry
+      const newMaterialEntry = {
+        purchaseId: material.id,
+        materialId: material.materialId ?? undefined,
+        materialName: material.materialName,
+        quantity: materialQuantity,
+        unit: material.unit,
+        balanceStock: balanceStock - materialQuantity,
+      };
+      updatedMaterialsUsed = [...workProgressForm.materialsUsed, newMaterialEntry];
+      toast.success(`Added ${material.materialName} to consumption list.`);
+    }
 
     setWorkProgressForm((prev) => ({
       ...prev,
-      materialsUsed: [...prev.materialsUsed, newMaterialEntry],
+      materialsUsed: updatedMaterialsUsed,
     }));
 
     setSelectedMaterial('');
@@ -812,10 +850,30 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
   // Get available materials for selected site
   const getAvailableMaterials = () => {
-    if (!workProgressForm.siteName) return [];
-    return materials.filter(
-      (m) => m.site === workProgressForm.siteName && (m.remainingQuantity || 0) > 0,
-    );
+    if (!workProgressForm.siteName && !workProgressForm.siteId) return [];
+    return materials.filter((m) => {
+      const matchesSite = m.site === workProgressForm.siteName;
+      const hasStock = (m.remainingQuantity || 0) > 0;
+      return matchesSite && hasStock;
+    });
+  };
+
+  // Check if material is low in stock (less than 20% remaining or less than 10 units)
+  const isLowStock = (material: { remainingQuantity?: number; quantity?: number }) => {
+    const remaining = material.remainingQuantity || 0;
+    const total = material.quantity || 0;
+    if (total === 0) return false;
+    const percentageRemaining = (remaining / total) * 100;
+    return percentageRemaining < 20 || remaining < 10;
+  };
+
+  // Check if material is critically low (less than 5% remaining or less than 5 units)
+  const isCriticallyLowStock = (material: { remainingQuantity?: number; quantity?: number }) => {
+    const remaining = material.remainingQuantity || 0;
+    const total = material.quantity || 0;
+    if (total === 0) return false;
+    const percentageRemaining = (remaining / total) * 100;
+    return percentageRemaining < 5 || remaining < 5;
   };
 
   const handleDelete = async (entryId: string, description: string) => {
@@ -1289,7 +1347,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                     Material Consumption
                                   </h3>
 
-                                  {!workProgressForm.siteId ? (
+                                  {!workProgressForm.siteId && !workProgressForm.siteName ? (
                                     <div className="p-4 bg-muted rounded-lg text-center">
                                       <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                                       <p className="text-sm text-muted-foreground">
@@ -1300,7 +1358,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                     <div className="p-4 bg-muted rounded-lg text-center">
                                       <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                                       <p className="text-sm text-muted-foreground">
-                                        No materials available for this site
+                                        No materials available for this site. Materials must have
+                                        remaining stock to be added.
                                       </p>
                                     </div>
                                   ) : (
@@ -1316,12 +1375,37 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                               <SelectValue placeholder="Choose material" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                              {getAvailableMaterials().map((material) => (
-                                                <SelectItem key={material.id} value={material.id}>
-                                                  {material.materialName} (Balance:{' '}
-                                                  {material.remainingQuantity} {material.unit})
-                                                </SelectItem>
-                                              ))}
+                                              {getAvailableMaterials().map((material) => {
+                                                const lowStock = isLowStock(material);
+                                                const criticallyLow =
+                                                  isCriticallyLowStock(material);
+                                                return (
+                                                  <SelectItem key={material.id} value={material.id}>
+                                                    <div className="flex items-center justify-between w-full">
+                                                      <span>{material.materialName}</span>
+                                                      <span
+                                                        className={`ml-2 ${
+                                                          criticallyLow
+                                                            ? 'text-red-600 dark:text-red-400 font-semibold'
+                                                            : lowStock
+                                                              ? 'text-orange-600 dark:text-orange-400'
+                                                              : 'text-muted-foreground'
+                                                        }`}
+                                                      >
+                                                        (Balance:{' '}
+                                                        {material.remainingQuantity?.toLocaleString()}{' '}
+                                                        {material.unit}
+                                                        {criticallyLow
+                                                          ? ' ⚠️'
+                                                          : lowStock
+                                                            ? ' ⚡'
+                                                            : ''}
+                                                        )
+                                                      </span>
+                                                    </div>
+                                                  </SelectItem>
+                                                );
+                                              })}
                                             </SelectContent>
                                           </Select>
                                         </div>
@@ -1353,57 +1437,214 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                         </div>
                                       </div>
 
-                                      {selectedMaterial && (
-                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800">
-                                          <p className="text-sm text-blue-900 dark:text-blue-100">
-                                            <span className="font-medium">Balance Stock:</span>{' '}
-                                            {(
-                                              projectedBalance ??
-                                              selectedMaterialDetails?.remainingQuantity ??
-                                              0
-                                            ).toLocaleString(undefined, {
-                                              maximumFractionDigits: 2,
-                                            })}{' '}
-                                            {selectedMaterialDetails?.unit}
-                                            {projectedBalance !== undefined &&
-                                            selectedMaterialDetails?.remainingQuantity !== undefined
-                                              ? ` (after this entry)`
-                                              : ''}
-                                          </p>
+                                      {selectedMaterial && selectedMaterialDetails && (
+                                        <div
+                                          className={`p-3 rounded-lg border ${
+                                            isCriticallyLowStock(selectedMaterialDetails)
+                                              ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                                              : isLowStock(selectedMaterialDetails)
+                                                ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
+                                                : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
+                                          }`}
+                                        >
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1">
+                                              <p
+                                                className={`text-sm font-medium ${
+                                                  isCriticallyLowStock(selectedMaterialDetails)
+                                                    ? 'text-red-900 dark:text-red-100'
+                                                    : isLowStock(selectedMaterialDetails)
+                                                      ? 'text-orange-900 dark:text-orange-100'
+                                                      : 'text-blue-900 dark:text-blue-100'
+                                                }`}
+                                              >
+                                                <span className="font-semibold">
+                                                  Current Balance:
+                                                </span>{' '}
+                                                {selectedMaterialDetails.remainingQuantity?.toLocaleString(
+                                                  undefined,
+                                                  {
+                                                    maximumFractionDigits: 2,
+                                                  },
+                                                )}{' '}
+                                                {selectedMaterialDetails.unit}
+                                              </p>
+                                              {projectedBalance !== undefined &&
+                                                selectedMaterialDetails.remainingQuantity !==
+                                                  undefined && (
+                                                  <p
+                                                    className={`text-xs mt-1 ${
+                                                      isCriticallyLowStock(selectedMaterialDetails)
+                                                        ? 'text-red-700 dark:text-red-300'
+                                                        : isLowStock(selectedMaterialDetails)
+                                                          ? 'text-orange-700 dark:text-orange-300'
+                                                          : 'text-blue-700 dark:text-blue-300'
+                                                    }`}
+                                                  >
+                                                    Balance after consumption:{' '}
+                                                    {projectedBalance.toLocaleString(undefined, {
+                                                      maximumFractionDigits: 2,
+                                                    })}{' '}
+                                                    {selectedMaterialDetails.unit}
+                                                  </p>
+                                                )}
+                                            </div>
+                                            {(isLowStock(selectedMaterialDetails) ||
+                                              isCriticallyLowStock(selectedMaterialDetails)) && (
+                                              <AlertCircle
+                                                className={`h-5 w-5 flex-shrink-0 ${
+                                                  isCriticallyLowStock(selectedMaterialDetails)
+                                                    ? 'text-red-600 dark:text-red-400'
+                                                    : 'text-orange-600 dark:text-orange-400'
+                                                }`}
+                                              />
+                                            )}
+                                          </div>
+                                          {isCriticallyLowStock(selectedMaterialDetails) && (
+                                            <p className="text-xs text-red-700 dark:text-red-300 mt-2 font-medium">
+                                              ⚠️ Critically low stock! Consider ordering more soon.
+                                            </p>
+                                          )}
+                                          {isLowStock(selectedMaterialDetails) &&
+                                            !isCriticallyLowStock(selectedMaterialDetails) && (
+                                              <p className="text-xs text-orange-700 dark:text-orange-300 mt-2">
+                                                ⚡ Low stock alert - monitor consumption carefully.
+                                              </p>
+                                            )}
                                         </div>
                                       )}
 
                                       {workProgressForm.materialsUsed.length > 0 && (
                                         <div className="space-y-2">
-                                          <Label>Added Materials</Label>
+                                          <Label>
+                                            Materials Being Consumed (
+                                            {workProgressForm.materialsUsed.length})
+                                          </Label>
                                           <div className="space-y-2">
                                             {workProgressForm.materialsUsed.map(
-                                              (material, index) => (
-                                                <div
-                                                  key={index}
-                                                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                                                >
-                                                  <div className="flex-1">
-                                                    <p className="text-sm font-medium">
-                                                      {material.materialName}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                      Quantity: {material.quantity} {material.unit}{' '}
-                                                      | Balance after: {material.balanceStock}{' '}
-                                                      {material.unit}
-                                                    </p>
-                                                  </div>
-                                                  <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleRemoveMaterial(index)}
-                                                    className="h-8 w-8 p-0"
+                                              (material, index) => {
+                                                const materialDetails = materials.find(
+                                                  (m) => m.id === material.purchaseId,
+                                                );
+                                                const originalStock =
+                                                  materialDetails?.remainingQuantity ?? 0;
+                                                const willBeLowStock =
+                                                  materialDetails &&
+                                                  isLowStock({
+                                                    ...materialDetails,
+                                                    remainingQuantity: material.balanceStock,
+                                                  });
+                                                const willBeCriticallyLow =
+                                                  materialDetails &&
+                                                  isCriticallyLowStock({
+                                                    ...materialDetails,
+                                                    remainingQuantity: material.balanceStock,
+                                                  });
+
+                                                return (
+                                                  <div
+                                                    key={`${material.purchaseId}-${index}`}
+                                                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                                                      willBeCriticallyLow
+                                                        ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                                                        : willBeLowStock
+                                                          ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
+                                                          : 'bg-muted border-border'
+                                                    }`}
                                                   >
-                                                    <X className="h-4 w-4 text-destructive" />
-                                                  </Button>
-                                                </div>
-                                              ),
+                                                    <div className="flex-1">
+                                                      <div className="flex items-center gap-2">
+                                                        <Package className="h-4 w-4 text-muted-foreground" />
+                                                        <p className="text-sm font-medium">
+                                                          {material.materialName}
+                                                        </p>
+                                                        {willBeCriticallyLow && (
+                                                          <Badge
+                                                            variant="destructive"
+                                                            className="text-xs"
+                                                          >
+                                                            Critical
+                                                          </Badge>
+                                                        )}
+                                                        {willBeLowStock && !willBeCriticallyLow && (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="text-xs border-orange-500 text-orange-700 dark:text-orange-400"
+                                                          >
+                                                            Low Stock
+                                                          </Badge>
+                                                        )}
+                                                      </div>
+                                                      <div className="mt-1 space-y-1">
+                                                        <p className="text-xs text-muted-foreground">
+                                                          <span className="font-medium">
+                                                            Consuming:
+                                                          </span>{' '}
+                                                          {material.quantity.toLocaleString(
+                                                            undefined,
+                                                            {
+                                                              maximumFractionDigits: 2,
+                                                            },
+                                                          )}{' '}
+                                                          {material.unit}
+                                                        </p>
+                                                        <div className="flex items-center gap-3 text-xs">
+                                                          <span className="text-muted-foreground">
+                                                            <span className="font-medium">
+                                                              Before:
+                                                            </span>{' '}
+                                                            {originalStock.toLocaleString(
+                                                              undefined,
+                                                              {
+                                                                maximumFractionDigits: 2,
+                                                              },
+                                                            )}{' '}
+                                                            {material.unit}
+                                                          </span>
+                                                          <span className="text-muted-foreground">
+                                                            →
+                                                          </span>
+                                                          <span
+                                                            className={
+                                                              willBeCriticallyLow
+                                                                ? 'text-red-700 dark:text-red-300 font-semibold'
+                                                                : willBeLowStock
+                                                                  ? 'text-orange-700 dark:text-orange-300 font-medium'
+                                                                  : 'text-muted-foreground'
+                                                            }
+                                                          >
+                                                            <span className="font-medium">
+                                                              After:
+                                                            </span>{' '}
+                                                            {material.balanceStock.toLocaleString(
+                                                              undefined,
+                                                              {
+                                                                maximumFractionDigits: 2,
+                                                              },
+                                                            )}{' '}
+                                                            {material.unit}
+                                                          </span>
+                                                        </div>
+                                                        {willBeCriticallyLow && (
+                                                          <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                                                            ⚠️ Stock will be critically low after
+                                                            this consumption
+                                                          </p>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      onClick={() => handleRemoveMaterial(index)}
+                                                      className="h-8 w-8 p-0 flex-shrink-0"
+                                                    >
+                                                      <X className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                  </div>
+                                                );
+                                              },
                                             )}
                                           </div>
                                         </div>

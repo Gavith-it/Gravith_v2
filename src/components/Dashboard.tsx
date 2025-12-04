@@ -28,7 +28,6 @@ import {
   formatPercentage,
 } from '../lib/utils';
 
-
 import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
 import type { ExpenseFormData } from './forms/ExpenseForm';
@@ -445,13 +444,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                   vehicles: vehicleUsageDialog.openDialog,
                   sites: activityDialog.openDialog,
                 };
-                const fallback = dialogMap[action.action];
+                const openDialog = dialogMap[action.action];
                 const handleAction = () => {
-                  if (onNavigate) {
-                    onNavigate(action.action);
-                    return;
-                  }
-                  fallback?.();
+                  // Always open dialog instead of navigating
+                  openDialog?.();
                 };
 
                 return (
@@ -817,8 +813,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       </FormDialog>
 
       <FormDialog
-        title="Add Activity"
-        description="Schedule new construction activity"
+        title="Site Update"
+        description="Log site progress and activities"
         isOpen={activityDialog.isDialogOpen}
         onOpenChange={(open) => (open ? activityDialog.openDialog() : activityDialog.closeDialog())}
         maxWidth="max-w-2xl"

@@ -192,6 +192,157 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
 
   const sites = sitesData?.sites ?? [];
 
+  // Fetch purchases, expenses, and work progress to calculate metrics
+  const { data: purchasesData } = useSWR<{
+    purchases: Array<{ site: string; totalAmount: number; [key: string]: unknown }>;
+  }>('/api/purchases', fetcher, swrConfig);
+
+  const { data: expensesData } = useSWR<{
+    expenses: Array<{ siteId?: string; siteName?: string; amount: number; [key: string]: unknown }>;
+  }>('/api/expenses', fetcher, swrConfig);
+
+  const { data: workProgressData } = useSWR<{
+    entries: Array<{
+      siteId?: string;
+      siteName?: string;
+      status: string;
+      progressPercentage?: number;
+      [key: string]: unknown;
+    }>;
+  }>('/api/work-progress', fetcher, swrConfig);
+
+  // Calculate site metrics from actual transactions
+  const siteMetricsMap = useMemo(() => {
+    const metrics = new Map<
+      string,
+      {
+        spent: number;
+        progress: number;
+        daysRemaining: number | null;
+      }
+    >();
+
+    // Initialize all sites with default values
+    sites.forEach((site) => {
+      const expectedEnd = site.expectedEndDate ? new Date(site.expectedEndDate) : null;
+      const daysRemaining =
+        expectedEnd !== null
+          ? Math.max(0, Math.ceil((expectedEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+          : null;
+
+      metrics.set(site.id, {
+        spent: 0,
+        progress: 0,
+        daysRemaining,
+      });
+    });
+
+    // Calculate spent from purchases
+    if (purchasesData?.purchases) {
+      purchasesData.purchases.forEach((purchase) => {
+        const purchaseSiteName = String(purchase.site || '')
+          .trim()
+          .toLowerCase();
+        const purchaseAmount = Number(purchase.totalAmount || 0);
+
+        sites.forEach((site) => {
+          const siteName = site.name.trim().toLowerCase();
+          if (siteName === purchaseSiteName) {
+            const current = metrics.get(site.id) || { spent: 0, progress: 0, daysRemaining: null };
+            metrics.set(site.id, {
+              ...current,
+              spent: current.spent + purchaseAmount,
+            });
+          }
+        });
+      });
+    }
+
+    // Calculate spent from expenses
+    if (expensesData?.expenses) {
+      expensesData.expenses.forEach((expense) => {
+        const expenseSiteId = expense.siteId;
+        const expenseSiteName = String(expense.siteName || '')
+          .trim()
+          .toLowerCase();
+        const expenseAmount = Number(expense.amount || 0);
+
+        sites.forEach((site) => {
+          const matchesSiteId = expenseSiteId === site.id;
+          const siteName = site.name.trim().toLowerCase();
+          const matchesSiteName = expenseSiteName && siteName === expenseSiteName;
+
+          if (matchesSiteId || matchesSiteName) {
+            const current = metrics.get(site.id) || { spent: 0, progress: 0, daysRemaining: null };
+            metrics.set(site.id, {
+              ...current,
+              spent: current.spent + expenseAmount,
+            });
+          }
+        });
+      });
+    }
+
+    // Calculate progress from work progress entries
+    // Group entries by site first, then calculate average
+    const siteProgressEntries = new Map<string, number[]>();
+
+    if (workProgressData?.entries) {
+      workProgressData.entries.forEach((entry) => {
+        const entrySiteId = entry.siteId;
+        const entrySiteName = String(entry.siteName || '')
+          .trim()
+          .toLowerCase();
+        const entryStatus = entry.status;
+        const entryProgress = Number(entry.progressPercentage || 0);
+        const progressValue = entryStatus === 'completed' ? 100 : entryProgress;
+
+        sites.forEach((site) => {
+          const matchesSiteId = entrySiteId === site.id;
+          const siteName = site.name.trim().toLowerCase();
+          const matchesSiteName = entrySiteName && siteName === entrySiteName;
+
+          if (matchesSiteId || matchesSiteName) {
+            if (!siteProgressEntries.has(site.id)) {
+              siteProgressEntries.set(site.id, []);
+            }
+            siteProgressEntries.get(site.id)!.push(progressValue);
+          }
+        });
+      });
+    }
+
+    // Calculate average progress for each site
+    siteProgressEntries.forEach((progressValues, siteId) => {
+      const current = metrics.get(siteId) || { spent: 0, progress: 0, daysRemaining: null };
+      const averageProgress =
+        progressValues.length > 0
+          ? Math.round(progressValues.reduce((sum, val) => sum + val, 0) / progressValues.length)
+          : 0;
+      metrics.set(siteId, {
+        ...current,
+        progress: averageProgress,
+      });
+    });
+
+    // Fallback to site's own progress field if no work progress entries
+    sites.forEach((site) => {
+      if (
+        !siteProgressEntries.has(site.id) &&
+        site.progress !== undefined &&
+        site.progress !== null
+      ) {
+        const current = metrics.get(site.id) || { spent: 0, progress: 0, daysRemaining: null };
+        metrics.set(site.id, {
+          ...current,
+          progress: Number(site.progress),
+        });
+      }
+    });
+
+    return metrics;
+  }, [sites, purchasesData, expensesData, workProgressData]);
+
   // Check which sites have transactions when sites data changes
   useEffect(() => {
     if (!sites.length || isSitesLoading) return;
@@ -363,16 +514,17 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
     }
 
     const budgetValue = Number(currentSite.budget ?? 0);
-    const spentValue = Number(currentSite.spent ?? 0);
-    const progressValue = Number(currentSite.progress ?? 0);
+    const siteMetrics = siteMetricsMap.get(currentSite.id) || {
+      spent: 0,
+      progress: 0,
+      daysRemaining: null,
+    };
+    const spentValue = siteMetrics.spent || Number(currentSite.spent ?? 0);
+    const progressValue = siteMetrics.progress || Number(currentSite.progress ?? 0);
     const budgetCr = budgetValue / 10000000;
     const spentCr = spentValue / 10000000;
     const usagePercent = budgetValue > 0 ? (spentValue / budgetValue) * 100 : 0;
-    const expectedEnd = currentSite.expectedEndDate ? new Date(currentSite.expectedEndDate) : null;
-    const daysRemaining =
-      expectedEnd !== null
-        ? Math.max(0, Math.ceil((expectedEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-        : null;
+    const daysRemaining = siteMetrics.daysRemaining;
 
     return {
       budgetValue,
@@ -383,7 +535,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
       usagePercent,
       daysRemaining,
     };
-  }, [currentSite]);
+  }, [currentSite, siteMetricsMap]);
 
   const handleSiteSubmit = useCallback(
     async (siteData: SiteInput) => {
@@ -850,8 +1002,13 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                     const statusConfig = getStatusConfig();
                     const StatusIcon = statusConfig.icon;
                     const budgetValue = Number(site.budget ?? 0);
-                    const spentValue = Number(site.spent ?? 0);
-                    const progressValue = Number(site.progress ?? 0);
+                    const siteMetrics = siteMetricsMap.get(site.id) || {
+                      spent: 0,
+                      progress: 0,
+                      daysRemaining: null,
+                    };
+                    const spentValue = siteMetrics.spent || Number(site.spent ?? 0);
+                    const progressValue = siteMetrics.progress || Number(site.progress ?? 0);
                     const budgetUsagePercent =
                       budgetValue > 0 ? (spentValue / budgetValue) * 100 : 0;
                     const isOverBudget = budgetUsagePercent > 90;
