@@ -113,7 +113,7 @@ export function ExpenseReport({ className }: ExpenseReportProps) {
     setIsGeneratingPDF(true);
     try {
       // Dynamic import for jsPDF to avoid SSR issues
-      const { jsPDF } = await import('jspdf');
+      const jsPDF = (await import('jspdf')).default;
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
