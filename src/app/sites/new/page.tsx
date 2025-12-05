@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { mutate } from 'swr';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
 import type { Site, SiteInput } from '@/types/sites';
 
 export default function SiteNewPage() {
@@ -28,6 +29,9 @@ export default function SiteNewPage() {
       if (!response.ok || !payload.site) {
         throw new Error(payload.error || 'Failed to create site');
       }
+
+      // Invalidate and revalidate SWR cache to ensure new site appears immediately
+      await mutate('/api/sites', undefined, { revalidate: true });
 
       toast.success('Site created successfully');
       router.push('/sites');

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import SiteForm from '@/components/forms/SiteForm';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -56,6 +56,10 @@ export default function SiteEditPage({ params }: SiteEditPageProps) {
       if (!response.ok || !payload.site) {
         throw new Error(payload.error || 'Failed to update site');
       }
+
+      // Invalidate and revalidate SWR cache to ensure updated site appears immediately
+      await mutate('/api/sites', undefined, { revalidate: true });
+      await mutate(`/api/sites/${resolvedParams.id}`, undefined, { revalidate: true });
 
       toast.success('Site updated successfully');
       router.push('/sites');

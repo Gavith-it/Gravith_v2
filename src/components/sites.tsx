@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import { fetcher, swrConfig } from '../lib/swr';
 
@@ -558,7 +558,15 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
           throw new Error(payload.error || 'Failed to save site.');
         }
 
-        await mutateSites(); // Refresh sites data
+        // Refresh sites data - use both local and global mutate for faster updates
+        await mutateSites();
+        await mutate('/api/sites', undefined, { revalidate: true });
+
+        // If editing, also invalidate the individual site cache
+        if (isEditing && editingSite?.id) {
+          await mutate(`/api/sites/${editingSite.id}`, undefined, { revalidate: true });
+        }
+
         toast.success(isEditing ? 'Site updated successfully.' : 'Site created successfully.');
         setEditingSite(null);
         setIsSiteDialogOpen(false);
@@ -622,8 +630,17 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
           return;
         }
 
-        // Refresh sites data
-        await mutateSites();
+        // Optimistically update the cache - remove the deleted site immediately
+        // This provides instant UI feedback before revalidation
+        if (sitesData) {
+          const updatedSites = {
+            sites: sitesData.sites.filter((s) => s.id !== site.id),
+          };
+
+          // Update cache optimistically for instant UI update
+          mutateSites(updatedSites, { revalidate: false });
+          mutate('/api/sites', updatedSites, { revalidate: false });
+        }
 
         // Remove from sites with transactions
         setSitesWithTransactions((prev) => {
@@ -641,6 +658,10 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         // Show success dialog
         setDeletedSiteName(site.name);
         setIsDeleteDialogOpen(true);
+
+        // Revalidate in the background to ensure data consistency
+        void mutateSites(undefined, { revalidate: true });
+        void mutate('/api/sites', undefined, { revalidate: true });
       } catch (error) {
         console.error('Failed to delete site', error);
         toast.error(error instanceof Error ? error.message : 'Unable to delete site.');
