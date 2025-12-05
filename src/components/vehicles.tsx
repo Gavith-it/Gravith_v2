@@ -1002,7 +1002,7 @@ export function VehiclesPage({
     }
 
     const confirmed = window.confirm(
-      `Delete refueling record for ${record.vehicleNumber} on ${formatDateOnly(record.date)}? This action cannot be undone.`,
+      `Delete refueling record for ${record.vehicleNumber} on ${formatDateOnly(new Date(record.date))}? This action cannot be undone.`,
     );
     if (!confirmed) {
       return;
@@ -1035,7 +1035,7 @@ export function VehiclesPage({
     }
 
     const confirmed = window.confirm(
-      `Delete usage record for ${record.vehicleNumber} on ${formatDateOnly(record.date)}? This action cannot be undone.`,
+      `Delete usage record for ${record.vehicleNumber} on ${formatDateOnly(new Date(record.date))}? This action cannot be undone.`,
     );
     if (!confirmed) {
       return;
