@@ -1,12 +1,22 @@
 'use client';
 
-import type { MotionValue} from 'framer-motion';
+import type { MotionValue } from 'framer-motion';
 import { motion, useMotionValueEvent, useScroll, useTransform } from 'framer-motion';
 import Image from 'next/image';
-import React, { useRef } from 'react';
+import type React from 'react';
+import { useRef } from 'react';
+
+interface CardData {
+  title: string;
+  description: string;
+  image: string;
+  color?: string;
+  rotation?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}
 
 const DominoesItem = ({
-  image,
+  card,
   index,
   scrollYProgress,
   totalItems,
@@ -14,7 +24,7 @@ const DominoesItem = ({
   width,
   enableShadow,
 }: {
-  image: string;
+  card: CardData;
   index: number;
   scrollYProgress: MotionValue<number>;
   totalItems: number;
@@ -51,6 +61,8 @@ const DominoesItem = ({
     [0.6, 0.6, 0.6, 0.6, 0, 0],
   );
 
+  const Icon = card.icon;
+
   return (
     <motion.div
       style={{
@@ -75,28 +87,51 @@ const DominoesItem = ({
             opacity: shadowOpacity,
             transition: '100ms ease-out',
           }}
-          className="absolute inset-0 bg-black z-0 opacity-0 rounded"
+          className="absolute inset-0 bg-black z-0 opacity-0 rounded-2xl"
         />
       )}
-      <Image
-        src={image}
-        alt={`Domino ${index + 1}`}
-        width={width}
-        height={height}
-        className="w-full h-full object-cover rounded z-[1]"
-      />
+      <article
+        className={`h-full w-full rounded-2xl ${card.rotation || ''} p-10 grid gap-6 shadow-2xl relative overflow-hidden border-2 border-white/30 hover:border-cyan-400/70 transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/40`}
+        style={{ backgroundColor: card.color || '#0891b2' }}
+      >
+        {/* Decorative squares on cards */}
+        <div className="absolute top-4 right-4 w-16 h-16 border-2 border-white/20 rounded-sm rotate-12"></div>
+        <div className="absolute bottom-6 left-6 w-12 h-12 border-2 border-white/15 rounded-sm -rotate-6"></div>
+        <div className="absolute top-1/2 right-1/4 w-8 h-8 bg-white/10 rounded-sm rotate-45"></div>
+
+        <div className="flex items-center gap-4 relative z-10">
+          {Icon && <Icon className="w-10 h-10 text-white" />}
+          <h2 className="text-3xl font-semibold text-white">{card.title}</h2>
+        </div>
+
+        <p className="text-white/90 leading-relaxed relative z-10 text-lg">{card.description}</p>
+
+        {card.image && (
+          <div className="relative z-10 flex-1">
+            <div className="w-full h-64 overflow-hidden rounded-xl shadow-2xl border-2 border-white/20">
+              <Image
+                src={card.image}
+                alt={card.title}
+                width={width}
+                height={256}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+        )}
+      </article>
     </motion.div>
   );
 };
 
 const DominoesListScroll = ({
   items,
-  height = 500,
-  width = 384,
+  height = 512,
+  width = 720,
   enableShadow = false,
   onScrollProgress,
 }: {
-  items: { image: string }[];
+  items: CardData[];
   height?: number;
   width?: number;
   enableShadow?: boolean;
@@ -126,7 +161,7 @@ const DominoesListScroll = ({
           {items.map((item, index) => (
             <DominoesItem
               key={`dominoe-${index}`}
-              image={item.image}
+              card={item}
               index={index}
               scrollYProgress={scrollYProgress}
               totalItems={items.length}
@@ -143,7 +178,7 @@ const DominoesListScroll = ({
       >
         <div
           style={{
-            height: items.length * 500,
+            height: items.length * height,
           }}
           className="w-full bg-transparent"
         ></div>

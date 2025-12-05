@@ -16,8 +16,7 @@ import {
 } from 'lucide-react';
 import React from 'react';
 
-
-import ScrollCard from './ui/scroll-card';
+import DominoesListScroll from './dominoes-scroll';
 
 // Define gradient colors that match the Gavith Build theme
 const gradientColors = [
@@ -142,22 +141,43 @@ const features = [
 ];
 
 export function FeaturesSection() {
-  // Transform features data to match ScrollCard interface
-  const cardsData = features.map((feature, index) => ({
+  // Transform features data to match DominoesListScroll interface with full card data
+  const dominoesItems = features.map((feature, index) => ({
     title: feature.title,
     description: feature.description,
-    link: feature.img,
+    image: feature.img,
     color: gradientColors[index % gradientColors.length],
     rotation: rotations[index % rotations.length],
     icon: feature.icon,
   }));
 
   return (
-    <ScrollCard
-      cardsData={cardsData}
-      title="Comprehensive Construction Management"
-      subtitle="Scroll down to explore all 12 powerful features 👇"
-      sideTitle="What We Built For You 🏗️"
-    />
+    <div
+      className="min-h-screen w-full"
+      style={{
+        background: 'radial-gradient(circle at center, #071F3F 0%, #02142A 60%, #010D1D 100%)',
+      }}
+    >
+      <section className="text-white h-auto py-20 w-full grid place-content-center relative top-0">
+        <div className="absolute bottom-0 left-0 right-0 top-0 bg-gradient-to-b from-transparent via-cyan-900/10 to-transparent"></div>
+
+        {/* Decorative squares */}
+        <div className="absolute top-10 left-20 w-20 h-20 border-2 border-cyan-400/30 rounded-sm rotate-12"></div>
+        <div className="absolute top-16 right-20 w-16 h-16 border-2 border-blue-400/20 rounded-sm -rotate-6"></div>
+        <div className="absolute top-20 left-1/3 w-12 h-12 bg-cyan-500/10 rounded-sm rotate-45"></div>
+
+        <h1 className="2xl:text-7xl text-5xl px-8 font-semibold text-center tracking-tight leading-[120%] relative z-10 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
+          Comprehensive Construction Management
+        </h1>
+
+        <p className="text-xl text-center mt-4 text-cyan-100/80 relative z-10">
+          Scroll down to explore all 12 powerful features 👇
+        </p>
+      </section>
+
+      <div className="h-screen w-full">
+        <DominoesListScroll items={dominoesItems} height={512} width={720} enableShadow={true} />
+      </div>
+    </div>
   );
 }
