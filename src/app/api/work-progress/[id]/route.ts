@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { WorkProgressEntry, WorkProgressMaterial } from '@/types/entities';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type MutationRole =
   | 'owner'
@@ -414,9 +418,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       entry: mapRowToWorkProgress(refreshedEntry as unknown as WorkProgressRow),
     });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error updating work progress entry', error);
     return NextResponse.json(
@@ -451,7 +465,17 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to delete work progress entry.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error deleting work progress entry', error);
     return NextResponse.json(

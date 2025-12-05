@@ -164,7 +164,14 @@ export default function MaterialMasterForm({
   }, [siteAllocations, hasOpeningBalance, validationError]);
 
   // Update form values when defaultValues change in edit mode
+  // IMPORTANT: Don't reset during submission to prevent toggle flickering
   React.useEffect(() => {
+    // Skip reset if we're currently submitting - this prevents the toggle from flickering
+    // back to the old value during the update process
+    if (isSubmitting) {
+      return;
+    }
+
     if (isEdit && defaultValues) {
       const hasOB = Boolean(
         defaultValues.siteAllocations && defaultValues.siteAllocations.length > 0,
@@ -187,7 +194,7 @@ export default function MaterialMasterForm({
         hasOpeningBalance: hasOB,
       });
     }
-  }, [defaultValues, isEdit, form, getTaxRateIdFromRate]);
+  }, [defaultValues, isEdit, form, getTaxRateIdFromRate, isSubmitting]);
 
   const handleAddSiteAllocation = () => {
     setSiteAllocations([
@@ -328,6 +335,8 @@ export default function MaterialMasterForm({
       await onSubmit(materialData);
       // Clear validation error on successful submission
       setValidationError(null);
+      // Reset submitting state after successful submission
+      setIsSubmitting(false);
     } catch (error) {
       // Error is handled by parent component, but we need to ensure form state is correct
       console.error('Form submission error:', error);

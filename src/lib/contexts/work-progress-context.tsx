@@ -3,20 +3,16 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import type { WorkProgressEntry } from '@/types/entities';
 import { fetchJson } from '../utils/fetch';
+
+import type { WorkProgressEntry } from '@/types/entities';
 
 interface WorkProgressContextType {
   entries: WorkProgressEntry[];
   isLoading: boolean;
   refresh: () => Promise<void>;
-  addEntry: (
-    entry: WorkProgressInput,
-  ) => Promise<WorkProgressEntry | null>;
-  updateEntry: (
-    id: string,
-    entry: Partial<WorkProgressInput>,
-  ) => Promise<WorkProgressEntry | null>;
+  addEntry: (entry: WorkProgressInput) => Promise<WorkProgressEntry | null>;
+  updateEntry: (id: string, entry: Partial<WorkProgressInput>) => Promise<WorkProgressEntry | null>;
   deleteEntry: (id: string) => Promise<boolean>;
 }
 
@@ -110,44 +106,144 @@ export function WorkProgressProvider({ children }: { children: ReactNode }) {
 
   const updateEntry = useCallback(
     async (id: string, entry: Partial<WorkProgressInput>): Promise<WorkProgressEntry | null> => {
-      const response = await fetch(`/api/work-progress/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-      });
+      // Optimistically update the cache IMMEDIATELY - update the entry in UI right away
+      // This provides instant UI feedback before the API call completes
+      const existingEntry = entries.find((e) => e.id === id);
 
-      const payload = (await response.json().catch(() => ({}))) as {
-        entry?: WorkProgressEntry;
-        error?: string;
-      };
+      // Create optimistic update by merging existing entry with updates
+      // Convert null values to undefined for fields that don't accept null in WorkProgressEntry
+      const optimisticEntry: WorkProgressEntry | undefined = existingEntry
+        ? {
+            ...existingEntry,
+            siteId: entry.siteId !== undefined ? entry.siteId : existingEntry.siteId,
+            siteName: entry.siteName ?? existingEntry.siteName,
+            workType: entry.workType ?? existingEntry.workType,
+            description:
+              entry.description !== undefined
+                ? entry.description === null
+                  ? undefined
+                  : entry.description
+                : existingEntry.description,
+            workDate: entry.workDate ?? existingEntry.workDate,
+            unit: entry.unit ?? existingEntry.unit,
+            length: entry.length !== undefined ? entry.length : existingEntry.length,
+            breadth: entry.breadth !== undefined ? entry.breadth : existingEntry.breadth,
+            thickness: entry.thickness !== undefined ? entry.thickness : existingEntry.thickness,
+            totalQuantity: entry.totalQuantity ?? existingEntry.totalQuantity,
+            laborHours:
+              entry.laborHours !== undefined ? (entry.laborHours ?? 0) : existingEntry.laborHours,
+            progressPercentage:
+              entry.progressPercentage !== undefined
+                ? (entry.progressPercentage ?? 0)
+                : existingEntry.progressPercentage,
+            status: entry.status ?? existingEntry.status,
+            notes: entry.notes !== undefined ? entry.notes : existingEntry.notes,
+            photos: entry.photos ?? existingEntry.photos,
+            materials: entry.materials
+              ? entry.materials.map((m) => ({
+                  id: '',
+                  workProgressId: id,
+                  materialId: m.materialId ?? null,
+                  purchaseId: m.purchaseId ?? null,
+                  materialName: m.materialName,
+                  unit: m.unit,
+                  quantity: m.quantity,
+                  balanceQuantity: m.balanceQuantity ?? null,
+                  organizationId: existingEntry.organizationId,
+                  createdAt: '',
+                  updatedAt: '',
+                }))
+              : existingEntry.materials,
+          }
+        : undefined;
 
-      if (!response.ok || !payload.entry) {
-        throw new Error(payload.error || 'Failed to update work progress entry.');
+      // Update cache optimistically for INSTANT UI update
+      if (optimisticEntry) {
+        setEntries((prev) =>
+          prev.map((existing) => (existing.id === id ? optimisticEntry : existing)),
+        );
       }
 
-      setEntries((prev) =>
-        prev.map((existing) => (existing.id === id ? payload.entry! : existing)),
-      );
+      // Perform the actual update in the background
+      try {
+        const response = await fetch(`/api/work-progress/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry),
+        });
 
-      return payload.entry ?? null;
+        const payload = (await response.json().catch(() => ({}))) as {
+          entry?: WorkProgressEntry;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.entry) {
+          // Rollback optimistic update on error
+          if (existingEntry) {
+            setEntries((prev) => prev.map((e) => (e.id === id ? existingEntry : e)));
+          }
+          throw new Error(payload.error || 'Failed to update work progress entry.');
+        }
+
+        // Update with server response (more accurate than optimistic update)
+        setEntries((prev) =>
+          prev.map((existing) => (existing.id === id ? payload.entry! : existing)),
+        );
+
+        return payload.entry ?? null;
+      } catch (error) {
+        // Error already handled above with rollback
+        throw error;
+      }
     },
-    [],
+    [entries],
   );
 
-  const deleteEntry = useCallback(async (id: string): Promise<boolean> => {
-    const response = await fetch(`/api/work-progress/${id}`, { method: 'DELETE' });
-    const payload = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-    };
+  const deleteEntry = useCallback(
+    async (id: string): Promise<boolean> => {
+      // Optimistically update the cache IMMEDIATELY - remove the deleted entry from UI right away
+      // This provides instant UI feedback before the API call completes
+      const target = entries.find((entry) => entry.id === id);
 
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.error || 'Failed to delete work progress entry.');
-    }
+      // Update cache optimistically for INSTANT UI update
+      setEntries((prev) => prev.filter((entry) => entry.id !== id));
 
-    setEntries((prev) => prev.filter((entry) => entry.id !== id));
-    return true;
-  }, []);
+      // Perform the actual deletion in the background
+      try {
+        const response = await fetch(`/api/work-progress/${id}`, { method: 'DELETE' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.success) {
+          // Rollback optimistic update on error
+          if (target) {
+            setEntries((prev) => {
+              // Restore the entry to its original position (sorted by work date)
+              const restored = [...prev, target].sort((a, b) => {
+                if (a.workDate && b.workDate) {
+                  return new Date(b.workDate).getTime() - new Date(a.workDate).getTime();
+                }
+                return 0;
+              });
+              return restored;
+            });
+          }
+          throw new Error(payload.error || 'Failed to delete work progress entry.');
+        }
+
+        // Don't revalidate immediately - keep the optimistic update
+        // The deletion was successful, so the optimistic update is correct
+        // The next refresh will naturally fetch fresh data
+        return true;
+      } catch (error) {
+        // Error already handled above with rollback
+        throw error;
+      }
+    },
+    [entries],
+  );
 
   const value = useMemo<WorkProgressContextType>(
     () => ({
@@ -171,4 +267,3 @@ export function useWorkProgress() {
   }
   return context;
 }
-
