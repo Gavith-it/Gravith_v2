@@ -5,6 +5,10 @@ import { createClient } from '@/lib/supabase/server';
 import type { MaterialMaster } from '@/types/entities';
 import type { MaterialMasterInput } from '@/types/materials';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type MaterialRow = {
@@ -51,9 +55,9 @@ function mapRowToMaterial(
   const aggregate = aggregates?.get(row.id);
   // Use opening_balance as quantity if available, otherwise fall back to quantity
   const quantityAvailable =
-    aggregate?.remaining ?? (row.opening_balance ? Number(row.opening_balance) : Number(row.quantity ?? 0));
-  const quantityConsumed =
-    aggregate?.consumed ?? Number(row.consumed_quantity ?? 0);
+    aggregate?.remaining ??
+    (row.opening_balance ? Number(row.opening_balance) : Number(row.quantity ?? 0));
+  const quantityConsumed = aggregate?.consumed ?? Number(row.consumed_quantity ?? 0);
 
   return {
     id: row.id,
@@ -164,7 +168,10 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
@@ -237,7 +244,11 @@ export async function GET(request: Request) {
       const baseQuantity = Number(row.quantity ?? 0);
       const consumedFromUsage =
         purchaseUsageMap.get(purchaseId) ??
-        Number(row.consumed_quantity !== null && row.consumed_quantity !== undefined ? row.consumed_quantity : 0);
+        Number(
+          row.consumed_quantity !== null && row.consumed_quantity !== undefined
+            ? row.consumed_quantity
+            : 0,
+        );
       const remainingFromUsage =
         row.remaining_quantity !== null && row.remaining_quantity !== undefined
           ? Number(row.remaining_quantity)
@@ -251,7 +262,10 @@ export async function GET(request: Request) {
 
     // Fetch site allocations for all materials
     const materialIds = (data ?? []).map((row) => row.id);
-    const siteAllocationsMap = new Map<string, Array<{ siteId: string; siteName: string; quantity: number }>>();
+    const siteAllocationsMap = new Map<
+      string,
+      Array<{ siteId: string; siteName: string; quantity: number }>
+    >();
 
     if (materialIds.length > 0) {
       const { data: allocationsData, error: allocationsError } = await supabase
@@ -262,7 +276,9 @@ export async function GET(request: Request) {
 
       if (!allocationsError && allocationsData) {
         // Fetch site names for allocations
-        const siteIds = [...new Set((allocationsData as SiteAllocationRow[]).map((a) => a.site_id))];
+        const siteIds = [
+          ...new Set((allocationsData as SiteAllocationRow[]).map((a) => a.site_id)),
+        ];
         const { data: sitesData } = await supabase
           .from('sites')
           .select('id, name')
@@ -309,11 +325,14 @@ export async function GET(request: Request) {
       },
     });
 
-    // Add cache headers: cache for 60 seconds, revalidate in background
+    // Disable caching to ensure fresh data in production
+    // This prevents Vercel edge cache from serving stale data after mutations
     response.headers.set(
       'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
     );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
 
     return response;
   } catch (error) {
@@ -331,7 +350,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
+    if (
+      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(
+        ctx.role,
+      )
+    ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -349,19 +372,23 @@ export async function POST(request: Request) {
       siteAllocations,
     } = body;
 
-    if (
-      !name ||
-      !category ||
-      !unit ||
-      typeof standardRate !== 'number' ||
-      !taxRateId
-    ) {
+    if (!name || !category || !unit || typeof standardRate !== 'number' || !taxRateId) {
       return NextResponse.json({ error: 'Missing required material fields.' }, { status: 400 });
     }
 
     // Validate tax rate ID exists in masters (basic validation)
     // Note: In a real system, you might want to check against a tax_rates table
-    const validTaxRateIds = ['GST0', 'GST5', 'GST12', 'GST18', 'GST28', 'CGST9', 'SGST9', 'IGST18', 'TDS2'];
+    const validTaxRateIds = [
+      'GST0',
+      'GST5',
+      'GST12',
+      'GST18',
+      'GST28',
+      'CGST9',
+      'SGST9',
+      'IGST18',
+      'TDS2',
+    ];
     if (!validTaxRateIds.includes(taxRateId)) {
       return NextResponse.json({ error: 'Invalid tax rate ID.' }, { status: 400 });
     }
@@ -369,8 +396,12 @@ export async function POST(request: Request) {
     // Validate site allocations if provided
     if (siteAllocations && siteAllocations.length > 0) {
       const calculatedOB = siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-      
-      if (openingBalance !== undefined && openingBalance !== null && Math.abs(calculatedOB - openingBalance) > 0.01) {
+
+      if (
+        openingBalance !== undefined &&
+        openingBalance !== null &&
+        Math.abs(calculatedOB - openingBalance) > 0.01
+      ) {
         return NextResponse.json(
           { error: 'Opening balance does not match sum of site allocations.' },
           { status: 400 },
@@ -386,11 +417,7 @@ export async function POST(request: Request) {
         }
 
         // Validate site belongs to organization
-        const siteRes = await resolveSiteSelection(
-          supabase,
-          allocation.siteId,
-          ctx.organizationId,
-        );
+        const siteRes = await resolveSiteSelection(supabase, allocation.siteId, ctx.organizationId);
         if (!siteRes.ok) {
           return NextResponse.json(
             { error: `Invalid site in allocation: ${siteRes.message}` },
@@ -402,27 +429,30 @@ export async function POST(request: Request) {
 
     const siteResolution = await resolveSiteSelection(supabase, siteId ?? null, ctx.organizationId);
     if (!siteResolution.ok) {
-      return NextResponse.json({ error: siteResolution.message }, { status: siteResolution.status });
+      return NextResponse.json(
+        { error: siteResolution.message },
+        { status: siteResolution.status },
+      );
     }
 
     // Calculate opening balance from site allocations if provided
     const calculatedOpeningBalance =
       siteAllocations && siteAllocations.length > 0
         ? siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0)
-        : openingBalance ?? null;
+        : (openingBalance ?? null);
 
     // Get tax rate percentage from tax rate ID for backward compatibility
     // Map tax rate codes to percentages
     const taxRateMap: Record<string, number> = {
-      'GST0': 0,
-      'GST5': 5,
-      'GST12': 12,
-      'GST18': 18,
-      'GST28': 28,
-      'CGST9': 9,
-      'SGST9': 9,
-      'IGST18': 18,
-      'TDS2': 2,
+      GST0: 0,
+      GST5: 5,
+      GST12: 12,
+      GST18: 18,
+      GST28: 28,
+      CGST9: 9,
+      SGST9: 9,
+      IGST18: 18,
+      TDS2: 2,
     };
     const taxRatePercentage = taxRateMap[taxRateId] ?? 18;
 
@@ -485,11 +515,11 @@ export async function POST(request: Request) {
       if (allocationsError) {
         console.error('Error creating site allocations', allocationsError);
         // Clean up material if allocations fail
-        await supabase.from('material_masters').delete().eq('id', materialId as string);
-        return NextResponse.json(
-          { error: 'Failed to create site allocations.' },
-          { status: 500 },
-        );
+        await supabase
+          .from('material_masters')
+          .delete()
+          .eq('id', materialId as string);
+        return NextResponse.json({ error: 'Failed to create site allocations.' }, { status: 500 });
       }
     }
 
@@ -535,7 +565,7 @@ export async function POST(request: Request) {
     }
 
     const material = mapRowToMaterial(materialData as MaterialRow);
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         material: {
           ...material,
@@ -544,6 +574,16 @@ export async function POST(request: Request) {
       },
       { status: 201 },
     );
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error creating material', error);
     return NextResponse.json({ error: 'Unexpected error creating material.' }, { status: 500 });

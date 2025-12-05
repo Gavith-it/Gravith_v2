@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import MaterialMasterForm from '@/components/forms/MaterialMasterForm';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -97,7 +97,35 @@ export default function MaterialMasterEditPage({ params }: MaterialMasterEditPag
         throw new Error(payload.error || 'Failed to update material');
       }
 
+      // Optimistically update the cache - update the material immediately
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+        async (currentData: { materials: MaterialMaster[] } | undefined) => {
+          if (!currentData) return undefined;
+          // Update existing material in the list
+          return {
+            materials: currentData.materials.map((m: MaterialMaster) =>
+              m.id === resolvedParams.id ? payload.material! : m,
+            ),
+            pagination: currentData.pagination,
+          };
+        },
+        { revalidate: false },
+      );
+
       toast.success('Material updated successfully');
+
+      // Immediately revalidate to fetch fresh data from server (bypassing all caches)
+      // This ensures production gets the latest data immediately
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+        undefined,
+        {
+          revalidate: true,
+          rollbackOnError: false,
+        },
+      );
+
       router.push('/materials');
     } catch (error) {
       console.error('Error updating material:', error);

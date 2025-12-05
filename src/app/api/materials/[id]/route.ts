@@ -4,6 +4,10 @@ import { createClient } from '@/lib/supabase/server';
 import type { MaterialMaster } from '@/types/entities';
 import type { MaterialMasterInput } from '@/types/materials';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -47,7 +51,9 @@ function mapRowToMaterial(row: MaterialRow): MaterialMaster & {
   const createdAt = row.created_at ?? new Date().toISOString();
   const updatedAt = row.updated_at ?? createdAt;
   // Use opening_balance as quantity if available
-  const quantityValue = row.opening_balance ? Number(row.opening_balance) : Number(row.quantity ?? 0);
+  const quantityValue = row.opening_balance
+    ? Number(row.opening_balance)
+    : Number(row.quantity ?? 0);
 
   return {
     id: row.id,
@@ -148,7 +154,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
+    if (
+      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(
+        ctx.role,
+      )
+    ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -175,9 +185,16 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     // Validate site allocations if provided
     if (body.siteAllocations && body.siteAllocations.length > 0) {
-      const calculatedOB = body.siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-      
-      if (body.openingBalance !== undefined && body.openingBalance !== null && Math.abs(calculatedOB - body.openingBalance) > 0.01) {
+      const calculatedOB = body.siteAllocations.reduce(
+        (sum, alloc) => sum + (alloc.quantity || 0),
+        0,
+      );
+
+      if (
+        body.openingBalance !== undefined &&
+        body.openingBalance !== null &&
+        Math.abs(calculatedOB - body.openingBalance) > 0.01
+      ) {
         return NextResponse.json(
           { error: 'Opening balance does not match sum of site allocations.' },
           { status: 400 },
@@ -193,11 +210,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         }
 
         // Validate site belongs to organization
-        const siteRes = await resolveSiteSelection(
-          supabase,
-          allocation.siteId,
-          ctx.organizationId,
-        );
+        const siteRes = await resolveSiteSelection(supabase, allocation.siteId, ctx.organizationId);
         if (!siteRes.ok) {
           return NextResponse.json(
             { error: `Invalid site in allocation: ${siteRes.message}` },
@@ -219,22 +232,32 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (typeof body.hsn === 'string') updatePayload['hsn'] = body.hsn;
     if (typeof body.taxRateId === 'string') {
       // Validate tax rate ID
-      const validTaxRateIds = ['GST0', 'GST5', 'GST12', 'GST18', 'GST28', 'CGST9', 'SGST9', 'IGST18', 'TDS2'];
+      const validTaxRateIds = [
+        'GST0',
+        'GST5',
+        'GST12',
+        'GST18',
+        'GST28',
+        'CGST9',
+        'SGST9',
+        'IGST18',
+        'TDS2',
+      ];
       if (!validTaxRateIds.includes(body.taxRateId)) {
         return NextResponse.json({ error: 'Invalid tax rate ID.' }, { status: 400 });
       }
       updatePayload['tax_rate_id'] = body.taxRateId;
       // Also update tax_rate for backward compatibility
       const taxRateMap: Record<string, number> = {
-        'GST0': 0,
-        'GST5': 5,
-        'GST12': 12,
-        'GST18': 18,
-        'GST28': 28,
-        'CGST9': 9,
-        'SGST9': 9,
-        'IGST18': 18,
-        'TDS2': 2,
+        GST0: 0,
+        GST5: 5,
+        GST12: 12,
+        GST18: 18,
+        GST28: 28,
+        CGST9: 9,
+        SGST9: 9,
+        IGST18: 18,
+        TDS2: 2,
       };
       updatePayload['tax_rate'] = taxRateMap[body.taxRateId] ?? 18;
     }
@@ -245,7 +268,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       const calculatedOpeningBalance =
         body.siteAllocations && body.siteAllocations.length > 0
           ? body.siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0)
-          : body.openingBalance ?? null;
+          : (body.openingBalance ?? null);
 
       updatePayload['opening_balance'] = calculatedOpeningBalance;
 
@@ -261,9 +284,16 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     if ('siteId' in body) {
-      const siteResolution = await resolveSiteSelection(supabase, body.siteId ?? null, ctx.organizationId);
+      const siteResolution = await resolveSiteSelection(
+        supabase,
+        body.siteId ?? null,
+        ctx.organizationId,
+      );
       if (!siteResolution.ok) {
-        return NextResponse.json({ error: siteResolution.message }, { status: siteResolution.status });
+        return NextResponse.json(
+          { error: siteResolution.message },
+          { status: siteResolution.status },
+        );
       }
       updatePayload['site_id'] = siteResolution.siteId;
       updatePayload['site_name'] = siteResolution.siteName;
@@ -294,10 +324,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
       if (deleteError) {
         console.error('Error deleting existing site allocations', deleteError);
-        return NextResponse.json(
-          { error: 'Failed to update site allocations.' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'Failed to update site allocations.' }, { status: 500 });
       }
 
       // Insert new allocations if provided
@@ -354,12 +381,22 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     const material = mapRowToMaterial(updated as MaterialRow);
-    return NextResponse.json({
+    const response = NextResponse.json({
       material: {
         ...material,
         siteAllocations: siteAllocationsResponse.length > 0 ? siteAllocationsResponse : undefined,
       },
     });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error updating material', error);
     return NextResponse.json({ error: 'Unexpected error updating material.' }, { status: 500 });
@@ -376,7 +413,11 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
+    if (
+      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(
+        ctx.role,
+      )
+    ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -451,7 +492,10 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       .eq('organization_id', ctx.organizationId);
 
     if (allocationsDeleteError) {
-      console.error('Error deleting site allocations before material delete', allocationsDeleteError);
+      console.error(
+        'Error deleting site allocations before material delete',
+        allocationsDeleteError,
+      );
       // Continue with material delete even if allocations delete fails (FK cascade will handle it)
     }
 
@@ -462,7 +506,17 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to delete material.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error deleting material', error);
     return NextResponse.json({ error: 'Unexpected error deleting material.' }, { status: 500 });

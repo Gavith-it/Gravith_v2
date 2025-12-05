@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import { useTableState } from '../lib/hooks/useTableState';
 import { fetcher, swrConfig } from '../lib/swr';
@@ -53,7 +53,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import {
   Table,
   TableBody,
@@ -412,14 +411,61 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           throw new Error(payload.error || 'Failed to save material.');
         }
 
+        // Optimistically update the cache - add/update the material immediately
+        // Note: This works for the current page cache, but we also invalidate all material caches
+        const updateCache = (currentData: { materials: MaterialMasterItem[] } | undefined) => {
+          if (!currentData || !currentData.materials) {
+            return undefined; // Let revalidation handle it
+          }
+
+          if (isEditing) {
+            // Update existing material
+            const updatedMaterials = currentData.materials.map((m: MaterialMasterItem) =>
+              m.id === editingMaterial?.id ? payload.material! : m,
+            );
+            return {
+              ...currentData,
+              materials: updatedMaterials,
+            };
+          } else {
+            // Add new material to the beginning
+            return {
+              ...currentData,
+              materials: [payload.material!, ...currentData.materials],
+              pagination: {
+                ...currentData.pagination,
+                total: (currentData.pagination?.total || 0) + 1,
+              },
+            };
+          }
+        };
+
+        // Update cache optimistically for instant UI update
+        mutateMaterials(updateCache, { revalidate: false });
+        mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), updateCache, {
+          revalidate: false,
+        });
+
         // Reset to first page after create/update to see the new/updated material
         setPage(1);
-        await mutateMaterials(); // Refresh materials data
         toast.success(
           isEditing ? 'Material updated successfully.' : 'Material added successfully.',
         );
         setEditingMaterial(null);
         setIsMaterialDialogOpen(false);
+
+        // Immediately revalidate to fetch fresh data from server (bypassing all caches)
+        // This ensures production gets the latest data immediately
+        await Promise.all([
+          mutateMaterials(undefined, {
+            revalidate: true,
+            rollbackOnError: false,
+          }),
+          mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), undefined, {
+            revalidate: true,
+            rollbackOnError: false,
+          }),
+        ]);
       } catch (error) {
         console.error('Failed to save material', error);
         toast.error(error instanceof Error ? error.message : 'Failed to save material.');
@@ -454,6 +500,72 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         return;
       }
 
+      // Optimistically update the cache IMMEDIATELY - remove the deleted material from UI right away
+      // This provides instant UI feedback before the API call completes
+      const updateCache = (
+        currentData:
+          | {
+              materials: MaterialMasterItem[];
+              pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                totalPages: number;
+              };
+            }
+          | undefined,
+      ) => {
+        if (!currentData) return undefined;
+        return {
+          materials: currentData.materials.filter((m) => m.id !== materialId),
+          pagination: {
+            ...currentData.pagination,
+            total: Math.max(0, currentData.pagination.total - 1),
+          },
+        };
+      };
+
+      // Rollback function in case deletion fails
+      const rollbackCache = (
+        currentData:
+          | {
+              materials: MaterialMasterItem[];
+              pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                totalPages: number;
+              };
+            }
+          | undefined,
+      ) => {
+        if (!currentData) return undefined;
+        // Restore material to its original position (sorted by created_at)
+        const restoredMaterials = [...currentData.materials, target].sort((a, b) => {
+          if (a.createdDate && b.createdDate) {
+            return new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime();
+          }
+          return 0;
+        });
+        return {
+          materials: restoredMaterials,
+          pagination: {
+            ...currentData.pagination,
+            total: currentData.pagination.total + 1,
+          },
+        };
+      };
+
+      // Update cache optimistically for INSTANT UI update
+      mutateMaterials(updateCache, { revalidate: false });
+      mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), updateCache, {
+        revalidate: false,
+      });
+
+      // Show success toast IMMEDIATELY (before API call completes)
+      toast.success('Material deleted successfully.');
+
+      // Perform the actual deletion in the background
       try {
         const response = await fetch(`/api/materials/${materialId}`, {
           method: 'DELETE',
@@ -465,17 +577,46 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         };
 
         if (!response.ok || !payload.success) {
-          throw new Error(payload.error || 'Failed to delete material.');
+          // Rollback optimistic update on error
+          mutateMaterials(rollbackCache, { revalidate: false });
+          mutate(
+            (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+            rollbackCache,
+            { revalidate: false },
+          );
+
+          toast.error(payload.error || 'Failed to delete material. Please try again.');
+          return;
         }
 
-        await mutateMaterials(); // Refresh materials data
-        toast.success('Material deleted successfully.');
+        // Revalidate in the background to ensure consistency (non-blocking)
+        // This ensures production gets the latest data but doesn't block the UI
+        void Promise.all([
+          mutateMaterials(undefined, {
+            revalidate: true,
+            rollbackOnError: false,
+          }),
+          mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), undefined, {
+            revalidate: true,
+            rollbackOnError: false,
+          }),
+        ]);
       } catch (error) {
+        // Rollback optimistic update on error
+        mutateMaterials(rollbackCache, { revalidate: false });
+        mutate(
+          (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+          rollbackCache,
+          { revalidate: false },
+        );
+
         console.error('Failed to delete material', error);
-        toast.error(error instanceof Error ? error.message : 'Unable to delete material.');
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to delete material. Please try again.',
+        );
       }
     },
-    [materialMasterData],
+    [materialMasterData, mutateMaterials],
   );
 
   const toggleMasterMaterialStatus = useCallback(

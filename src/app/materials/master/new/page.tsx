@@ -42,16 +42,51 @@ export default function MaterialMasterNewPage() {
         throw new Error(payload.error || 'Failed to create material');
       }
 
-      // Invalidate SWR cache to ensure new material appears immediately
-      // Invalidate both base endpoint and all paginated cache keys
-      await mutate('/api/materials');
+      // Optimistically update the cache - add the new material immediately
+      // This ensures instant UI update before navigation
       await mutate(
         (key) => typeof key === 'string' && key.startsWith('/api/materials'),
-        undefined,
-        { revalidate: true },
+        async (currentData: { materials: MaterialMaster[] } | undefined) => {
+          if (!currentData) {
+            // If no cache, fetch fresh data with cache bypass
+            const freshResponse = await fetch('/api/materials?page=1&limit=50', {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                Pragma: 'no-cache',
+              },
+            });
+            const freshData = await freshResponse.json();
+            return {
+              materials: [payload.material!, ...(freshData.materials || [])],
+              pagination: freshData.pagination || { page: 1, limit: 50, total: 1, totalPages: 1 },
+            };
+          }
+          // Add new material to the beginning of the list
+          return {
+            materials: [payload.material!, ...currentData.materials],
+            pagination: {
+              ...currentData.pagination,
+              total: currentData.pagination.total + 1,
+            },
+          };
+        },
+        { revalidate: false },
       );
 
       toast.success('Material created successfully');
+
+      // Immediately revalidate to fetch fresh data from server (bypassing all caches)
+      // This ensures production gets the latest data immediately
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+        undefined,
+        {
+          revalidate: true,
+          rollbackOnError: false,
+        },
+      );
+
       router.push('/materials');
     } catch (error) {
       console.error('Error creating material:', error);
