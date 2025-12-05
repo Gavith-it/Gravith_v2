@@ -1,5 +1,6 @@
 'use client';
 
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2,
   UserCheck,
@@ -14,18 +15,42 @@ import {
   Shield,
   TrendingUp,
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
-import React from 'react';
+import React, { useState } from 'react';
 
-// Dynamically import Stack component with SSR disabled to prevent hydration mismatches
-const Stack = dynamic(() => import('./Stack'), {
-  ssr: false,
-  loading: () => (
-    <div className="relative flex items-center justify-center" style={{ width: 400, height: 500 }}>
-      <div className="text-cyan-100/60">Loading...</div>
-    </div>
-  ),
-});
+import DominoesListScroll from './dominoes-scroll';
+import ScrollCard from './ui/scroll-card';
+
+// Define gradient colors that match the Gavith Build theme
+const gradientColors = [
+  '#0891b2', // cyan-600
+  '#0284c7', // sky-600
+  '#0369a1', // sky-700
+  '#075985', // sky-800
+  '#0c4a6e', // sky-900
+  '#164e63', // cyan-800
+  '#155e75', // cyan-700
+  '#0e7490', // cyan-600
+  '#06b6d4', // cyan-500
+  '#22d3ee', // cyan-400
+  '#0ea5e9', // sky-500
+  '#3b82f6', // blue-500
+];
+
+// Define rotations for variety
+const rotations = [
+  'rotate-3',
+  '-rotate-2',
+  'rotate-1',
+  '-rotate-1',
+  'rotate-2',
+  '-rotate-3',
+  'rotate-0',
+  'rotate-1',
+  '-rotate-2',
+  'rotate-2',
+  '-rotate-1',
+  'rotate-0',
+];
 
 const features = [
   {
@@ -118,34 +143,116 @@ const features = [
 ];
 
 export function FeaturesSection() {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  // Transform features data for DominoesListScroll
+  const dominoesItems = features.map((feature) => ({
+    image: feature.img,
+  }));
+
+  // Handle scroll progress to determine active card
+  const handleScrollProgress = (progress: number) => {
+    // Calculate which card should be active based on scroll progress
+    // Each card becomes active when scroll reaches its position (index / totalItems)
+    const totalItems = dominoesItems.length * 2;
+
+    // Find which card is closest to the current scroll position
+    let closestIndex = 0;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < totalItems; i++) {
+      const cardPosition = i / totalItems;
+      const distance = Math.abs(progress - cardPosition);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    // Map back to original features array (since we duplicate)
+    const originalIndex = closestIndex % features.length;
+    setActiveIndex(originalIndex);
+  };
+
+  const activeFeature = features[activeIndex];
+
   return (
-    <section id="features" className="relative pt-4 pb-32">
+    <section
+      className="relative min-h-screen w-full py-20"
+      style={{
+        background: 'radial-gradient(circle at center, #071F3F 0%, #02142A 60%, #010D1D 100%)',
+      }}
+    >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-transparent to-transparent"></div>
 
-      <div className="relative z-10 mx-auto max-w-[1100px] px-4">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex flex-col items-center mb-16">
-          <h2 className="text-6xl md:text-7xl font-bold text-white mb-6 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
+        <div className="text-center mb-16">
+          <h2 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
             Features
           </h2>
-          <p className="text-center text-2xl leading-relaxed text-cyan-100/80 max-w-[700px] mb-4">
+          <p className="text-xl text-blue-100/80 max-w-2xl mx-auto">
             Powerful tools to manage construction sites, teams, materials, and finances all in one
             place.
           </p>
-          <p className="text-center text-lg text-cyan-200/60 italic">
-            Drag cards to explore • Click to reorder
-          </p>
         </div>
 
-        {/* Stack Component */}
-        <div className="flex justify-center items-center min-h-[600px]">
-          <Stack
-            randomRotation={true}
-            sensitivity={150}
-            sendToBackOnClick={true}
-            cardDimensions={{ width: 400, height: 500 }}
-            cardsData={features}
-          />
+        {/* Main Content: Dominoes on left, Content on right */}
+        <div className="grid lg:grid-cols-2 gap-12 items-center min-h-[600px]">
+          {/* Left: Dominoes Scroll */}
+          <div className="h-[600px] w-full">
+            <DominoesListScroll
+              items={[...dominoesItems, ...dominoesItems]}
+              enableShadow
+              height={500}
+              width={384}
+              onScrollProgress={handleScrollProgress}
+            />
+          </div>
+
+          {/* Right: Feature Content */}
+          <div className="flex items-center justify-center h-full">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeIndex}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="w-full max-w-lg"
+              >
+                {/* Icon */}
+                <div className="mb-6">
+                  {activeFeature.icon && <activeFeature.icon className="h-12 w-12 text-cyan-400" />}
+                </div>
+
+                {/* Title */}
+                <h3 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                  {activeFeature.title}
+                </h3>
+
+                {/* Description */}
+                <p className="text-blue-100/90 text-lg leading-relaxed mb-6">
+                  {activeFeature.description}
+                </p>
+
+                {/* Feature Number Indicator */}
+                <div className="flex items-center gap-2">
+                  <span className="text-cyan-400/70 text-sm font-medium">
+                    {activeIndex + 1} of {features.length}
+                  </span>
+                  <div className="flex-1 h-1 bg-blue-900/50 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-cyan-400 to-blue-400"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${((activeIndex + 1) / features.length) * 100}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </section>
