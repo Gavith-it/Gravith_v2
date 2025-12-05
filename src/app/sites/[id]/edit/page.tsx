@@ -57,12 +57,36 @@ export default function SiteEditPage({ params }: SiteEditPageProps) {
         throw new Error(payload.error || 'Failed to update site');
       }
 
-      // Invalidate and revalidate SWR cache to ensure updated site appears immediately
-      await mutate('/api/sites', undefined, { revalidate: true });
-      await mutate(`/api/sites/${resolvedParams.id}`, undefined, { revalidate: true });
+      // Optimistically update the cache with the updated site
+      await mutate(
+        '/api/sites',
+        async (currentData: { sites: Site[] } | undefined) => {
+          if (!currentData) {
+            // If no cache, fetch fresh data
+            const freshResponse = await fetch('/api/sites', { cache: 'no-store' });
+            const freshData = await freshResponse.json();
+            return {
+              sites: (freshData.sites || []).map((s: Site) =>
+                s.id === resolvedParams.id ? payload.site! : s,
+              ),
+            };
+          }
+          // Update the site in the list
+          return {
+            sites: currentData.sites.map((s) => (s.id === resolvedParams.id ? payload.site! : s)),
+          };
+        },
+        { revalidate: false },
+      );
 
       toast.success('Site updated successfully');
       router.push('/sites');
+
+      // Revalidate after navigation to ensure consistency
+      setTimeout(() => {
+        void mutate('/api/sites', undefined, { revalidate: true });
+        void mutate(`/api/sites/${resolvedParams.id}`, undefined, { revalidate: true });
+      }, 200);
     } catch (error) {
       console.error('Error updating site:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to update site');

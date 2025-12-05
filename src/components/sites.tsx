@@ -632,15 +632,16 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
 
         // Optimistically update the cache - remove the deleted site immediately
         // This provides instant UI feedback before revalidation
-        if (sitesData) {
-          const updatedSites = {
-            sites: sitesData.sites.filter((s) => s.id !== site.id),
+        const updateCache = (currentData: { sites: Site[] } | undefined) => {
+          if (!currentData) return undefined;
+          return {
+            sites: currentData.sites.filter((s) => s.id !== site.id),
           };
+        };
 
-          // Update cache optimistically for instant UI update
-          mutateSites(updatedSites, { revalidate: false });
-          mutate('/api/sites', updatedSites, { revalidate: false });
-        }
+        // Update cache optimistically for instant UI update
+        mutateSites(updateCache, { revalidate: false });
+        mutate('/api/sites', updateCache, { revalidate: false });
 
         // Remove from sites with transactions
         setSitesWithTransactions((prev) => {
@@ -659,9 +660,11 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         setDeletedSiteName(site.name);
         setIsDeleteDialogOpen(true);
 
-        // Revalidate in the background to ensure data consistency
-        void mutateSites(undefined, { revalidate: true });
-        void mutate('/api/sites', undefined, { revalidate: true });
+        // Revalidate in the background after a short delay to ensure optimistic update is applied
+        setTimeout(() => {
+          void mutateSites(undefined, { revalidate: true });
+          void mutate('/api/sites', undefined, { revalidate: true });
+        }, 100);
       } catch (error) {
         console.error('Failed to delete site', error);
         toast.error(error instanceof Error ? error.message : 'Unable to delete site.');

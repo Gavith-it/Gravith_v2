@@ -30,11 +30,35 @@ export default function SiteNewPage() {
         throw new Error(payload.error || 'Failed to create site');
       }
 
-      // Invalidate and revalidate SWR cache to ensure new site appears immediately
-      await mutate('/api/sites', undefined, { revalidate: true });
+      // Optimistically update the cache - add the new site immediately
+      // This ensures instant UI update before navigation
+      await mutate(
+        '/api/sites',
+        async (currentData: { sites: Site[] } | undefined) => {
+          if (!currentData) {
+            // If no cache, fetch fresh data
+            const freshResponse = await fetch('/api/sites', { cache: 'no-store' });
+            const freshData = await freshResponse.json();
+            return {
+              sites: [payload.site!, ...(freshData.sites || [])],
+            };
+          }
+          // Add new site to the beginning of the list
+          return {
+            sites: [payload.site!, ...currentData.sites],
+          };
+        },
+        { revalidate: false },
+      );
 
       toast.success('Site created successfully');
       router.push('/sites');
+
+      // Revalidate after navigation to ensure consistency
+      // Use setTimeout to ensure navigation completes first
+      setTimeout(() => {
+        void mutate('/api/sites', undefined, { revalidate: true });
+      }, 200);
     } catch (error) {
       console.error('Error creating site:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to create site');
