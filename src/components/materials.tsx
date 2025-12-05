@@ -413,7 +413,19 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
 
         // Optimistically update the cache - add/update the material immediately
         // Note: This works for the current page cache, but we also invalidate all material caches
-        const updateCache = (currentData: { materials: MaterialMasterItem[] } | undefined) => {
+        const updateCache = (
+          currentData:
+            | {
+                materials: MaterialMasterItem[];
+                pagination: {
+                  page: number;
+                  limit: number;
+                  total: number;
+                  totalPages: number;
+                };
+              }
+            | undefined,
+        ) => {
           if (!currentData || !currentData.materials) {
             return undefined; // Let revalidation handle it
           }
@@ -434,7 +446,7 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
               materials: [payload.material!, ...currentData.materials],
               pagination: {
                 ...currentData.pagination,
-                total: (currentData.pagination?.total || 0) + 1,
+                total: currentData.pagination.total + 1,
               },
             };
           }
