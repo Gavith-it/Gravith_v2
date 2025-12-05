@@ -170,11 +170,12 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
     };
   }>(`/api/materials?page=${page}&limit=${limit}`, fetcher, swrConfig);
 
-  // Normalize materials data
+  // Normalize materials data and deduplicate by ID
   const materialMasterData = useMemo(() => {
     if (!materialsData?.materials) return [];
 
-    return materialsData.materials.map((material) => {
+    // First, map all materials
+    const mapped = materialsData.materials.map((material) => {
       // If material has site allocations but no direct siteId/siteName, use the first allocation's site info
       let displaySiteId = material.siteId ?? null;
       let displaySiteName = material.siteName ?? null;
@@ -216,6 +217,19 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         base.siteAllocations = material.siteAllocations;
       }
       return base;
+    });
+
+    // Deduplicate by ID - keep only the first occurrence of each ID
+    const seen = new Set<string>();
+    return mapped.filter((material) => {
+      if (seen.has(material.id)) {
+        console.warn(
+          `Duplicate material ID detected: ${material.id} (${material.name}). Removing duplicate.`,
+        );
+        return false;
+      }
+      seen.add(material.id);
+      return true;
     });
   }, [materialsData]);
 
@@ -528,11 +542,14 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           | undefined,
       ) => {
         if (!currentData) return undefined;
+        // Remove ALL instances of the material with this ID (in case of duplicates)
+        const filtered = currentData.materials.filter((m) => m.id !== materialId);
+        const removedCount = currentData.materials.length - filtered.length;
         return {
-          materials: currentData.materials.filter((m) => m.id !== materialId),
+          materials: filtered,
           pagination: {
             ...currentData.pagination,
-            total: Math.max(0, currentData.pagination.total - 1),
+            total: Math.max(0, currentData.pagination.total - removedCount),
           },
         };
       };
@@ -583,10 +600,17 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
           method: 'DELETE',
         });
 
-        const payload = (await response.json().catch(() => ({}))) as {
-          success?: boolean;
-          error?: string;
-        };
+        let payload: { success?: boolean; error?: string } = {};
+        try {
+          payload = (await response.json()) as {
+            success?: boolean;
+            error?: string;
+          };
+        } catch (jsonError) {
+          // If JSON parsing fails, try to get text
+          const text = await response.text().catch(() => 'Unknown error');
+          payload = { error: text || 'Failed to delete material' };
+        }
 
         if (!response.ok || !payload.success) {
           // Rollback optimistic update on error
@@ -597,22 +621,18 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
             { revalidate: false },
           );
 
-          toast.error(payload.error || 'Failed to delete material. Please try again.');
+          const errorMessage =
+            payload.error || `Failed to delete material (${response.status}). Please try again.`;
+          toast.error(errorMessage, {
+            duration: response.status === 400 ? 8000 : 5000, // Show dependency errors longer
+          });
           return;
         }
 
-        // Revalidate in the background to ensure consistency (non-blocking)
-        // This ensures production gets the latest data but doesn't block the UI
-        void Promise.all([
-          mutateMaterials(undefined, {
-            revalidate: true,
-            rollbackOnError: false,
-          }),
-          mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), undefined, {
-            revalidate: true,
-            rollbackOnError: false,
-          }),
-        ]);
+        // Don't revalidate immediately - keep the optimistic update
+        // The deletion was successful, so the optimistic update is correct
+        // SWR will naturally revalidate on the next interval or when the page is refocused
+        // This prevents the material from reappearing due to race conditions or stale cache
       } catch (error) {
         // Rollback optimistic update on error
         mutateMaterials(rollbackCache, { revalidate: false });
