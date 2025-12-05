@@ -46,7 +46,15 @@ export default function MaterialMasterNewPage() {
       // This ensures instant UI update before navigation
       await mutate(
         (key) => typeof key === 'string' && key.startsWith('/api/materials'),
-        async (currentData: { materials: MaterialMaster[] } | undefined) => {
+        async (
+          currentData:
+            | {
+                materials: MaterialMaster[];
+                pagination?: { page: number; limit: number; total: number; totalPages: number };
+              }
+            | { material: MaterialMaster }
+            | undefined,
+        ) => {
           if (!currentData) {
             // If no cache, fetch fresh data with cache bypass
             const freshResponse = await fetch('/api/materials?page=1&limit=50', {
@@ -62,14 +70,22 @@ export default function MaterialMasterNewPage() {
               pagination: freshData.pagination || { page: 1, limit: 50, total: 1, totalPages: 1 },
             };
           }
-          // Add new material to the beginning of the list
-          return {
-            materials: [payload.material!, ...currentData.materials],
-            pagination: {
-              ...currentData.pagination,
-              total: currentData.pagination.total + 1,
-            },
-          };
+          // Handle list response (with materials array)
+          if ('materials' in currentData) {
+            // Add new material to the beginning of the list
+            return {
+              ...currentData,
+              materials: [payload.material!, ...currentData.materials],
+              pagination: currentData.pagination
+                ? {
+                    ...currentData.pagination,
+                    total: currentData.pagination.total + 1,
+                  }
+                : undefined,
+            };
+          }
+          // Handle single material response - return as-is (new material won't be in single material cache)
+          return currentData;
         },
         { revalidate: false },
       );
