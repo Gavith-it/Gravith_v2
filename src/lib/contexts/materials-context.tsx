@@ -3,8 +3,8 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-import { fetchJson } from '../utils/fetch';
 import { useAuth } from '../auth-context';
+import { fetchJson } from '../utils/fetch';
 
 // Shared Material interface that works for both MaterialManagement and SiteManagement
 export interface SharedMaterial {
@@ -162,23 +162,54 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const deleteMaterial = useCallback(async (id: string): Promise<boolean> => {
-    const response = await fetch(`/api/purchases/${id}`, {
-      method: 'DELETE',
-    });
+  const deleteMaterial = useCallback(
+    async (id: string): Promise<boolean> => {
+      // Optimistically update the cache IMMEDIATELY - remove the deleted purchase from UI right away
+      // This provides instant UI feedback before the API call completes
+      const target = materials.find((material) => material.id === id);
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-    };
+      // Update cache optimistically for INSTANT UI update
+      setMaterials((prev) => prev.filter((material) => material.id !== id));
 
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.error || 'Failed to delete purchase.');
-    }
+      // Perform the actual deletion in the background
+      try {
+        const response = await fetch(`/api/purchases/${id}`, {
+          method: 'DELETE',
+        });
 
-    setMaterials((prev) => prev.filter((material) => material.id !== id));
-    return true;
-  }, []);
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.success) {
+          // Rollback optimistic update on error
+          if (target) {
+            setMaterials((prev) => {
+              // Restore the purchase to its original position (sorted by purchase date)
+              const restored = [...prev, target].sort((a, b) => {
+                if (a.purchaseDate && b.purchaseDate) {
+                  return new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime();
+                }
+                return 0;
+              });
+              return restored;
+            });
+          }
+          throw new Error(payload.error || 'Failed to delete purchase.');
+        }
+
+        // Don't revalidate immediately - keep the optimistic update
+        // The deletion was successful, so the optimistic update is correct
+        // The next refresh will naturally fetch fresh data
+        return true;
+      } catch (error) {
+        // Error already handled above with rollback
+        throw error;
+      }
+    },
+    [materials],
+  );
 
   const getMaterialsBySite = useCallback(
     (siteName: string) => materials.filter((material) => material.site === siteName),

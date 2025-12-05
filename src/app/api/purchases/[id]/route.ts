@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type { SharedMaterial } from '@/lib/contexts/materials-context';
 import { createClient } from '@/lib/supabase/server';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -131,7 +135,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
+    if (
+      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(
+        ctx.role,
+      )
+    ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -197,7 +205,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update purchase.' }, { status: 500 });
     }
 
-    return NextResponse.json({ purchase: mapRowToSharedMaterial(data as PurchaseRow) });
+    const response = NextResponse.json({ purchase: mapRowToSharedMaterial(data as PurchaseRow) });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error updating purchase', error);
     return NextResponse.json({ error: 'Unexpected error updating purchase.' }, { status: 500 });
@@ -214,7 +232,11 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: ctx.error }, { status: 401 });
     }
 
-    if (!['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(ctx.role)) {
+    if (
+      !['owner', 'admin', 'manager', 'project-manager', 'materials-manager', 'user'].includes(
+        ctx.role,
+      )
+    ) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
@@ -240,7 +262,17 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to delete purchase.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error deleting purchase', error);
     return NextResponse.json({ error: 'Unexpected error deleting purchase.' }, { status: 500 });

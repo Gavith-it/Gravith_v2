@@ -20,14 +20,16 @@ import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
 
 import { DataTable } from './common/DataTable';
-import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseTabs } from './layout/PurchaseTabs';
+import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseForm } from './shared/PurchaseForm';
 
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -36,10 +38,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { FilterSheet } from '@/components/filters/FilterSheet';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -51,7 +52,6 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMaterials } from '@/lib/contexts';
 import type { SharedMaterial } from '@/lib/contexts';
-import { Progress } from '@/components/ui/progress';
 
 interface PurchasePageProps {
   filterBySite?: string;
@@ -139,10 +139,12 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
-    useState<PurchaseAdvancedFilterState>(createDefaultPurchaseAdvancedFilters);
-  const [draftAdvancedFilters, setDraftAdvancedFilters] =
-    useState<PurchaseAdvancedFilterState>(createDefaultPurchaseAdvancedFilters);
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<PurchaseAdvancedFilterState>(
+    createDefaultPurchaseAdvancedFilters,
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<PurchaseAdvancedFilterState>(
+    createDefaultPurchaseAdvancedFilters,
+  );
 
   const categoryOptions = useMemo(() => {
     const categories = new Set<string>();
@@ -200,8 +202,7 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const totalConsumedQuantity = filteredMaterialsForStats.reduce((sum, material) => {
     const ordered = material.quantity ?? 0;
     const remaining = material.remainingQuantity ?? ordered;
-    const consumed =
-      material.consumedQuantity ?? Math.max(0, ordered - remaining);
+    const consumed = material.consumedQuantity ?? Math.max(0, ordered - remaining);
     return sum + consumed;
   }, 0);
   const totalRemainingQuantity = filteredMaterialsForStats.reduce((sum, material) => {
@@ -247,8 +248,7 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
           appliedAdvancedFilters.vendors.length === 0 ||
           (material.vendor && appliedAdvancedFilters.vendors.includes(material.vendor));
         const purchaseDate = parseDateValue(material.purchaseDate);
-        const matchesDateFrom =
-          !dateFrom || (purchaseDate !== null && purchaseDate >= dateFrom);
+        const matchesDateFrom = !dateFrom || (purchaseDate !== null && purchaseDate >= dateFrom);
         const matchesDateTo = !dateTo || (purchaseDate !== null && purchaseDate <= dateTo);
         const amount = material.totalAmount ?? 0;
         const matchesMinAmount =
@@ -306,6 +306,18 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   };
 
   const handleDelete = async (materialId: string) => {
+    const target = materials.find((material) => material.id === materialId);
+    if (!target) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete purchase for "${target.materialName}"? This action cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
     try {
       await deleteMaterial(materialId);
       toast.success('Purchase deleted successfully.');
@@ -317,23 +329,23 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     }
   };
 
-const [activeInnerTab, setActiveInnerTab] = useState<'bills' | 'receipts'>(
-  filterBySite ? 'bills' : 'bills',
-);
+  const [activeInnerTab, setActiveInnerTab] = useState<'bills' | 'receipts'>(
+    filterBySite ? 'bills' : 'bills',
+  );
 
-if (activeInnerTab === 'receipts') {
+  if (activeInnerTab === 'receipts') {
+    return (
+      <div className="w-full min-w-0 bg-background">
+        <PurchaseTabs activeTab={activeInnerTab} onTabChange={setActiveInnerTab} />
+        <MaterialReceiptsPage filterBySite={filterBySite} showTabs={false} />
+      </div>
+    );
+  }
+
   return (
     <div className="w-full min-w-0 bg-background">
       <PurchaseTabs activeTab={activeInnerTab} onTabChange={setActiveInnerTab} />
-      <MaterialReceiptsPage filterBySite={filterBySite} showTabs={false} />
-    </div>
-  );
-}
-
-return (
-  <div className="w-full min-w-0 bg-background">
-    <PurchaseTabs activeTab={activeInnerTab} onTabChange={setActiveInnerTab} />
-    <div className="p-4 md:p-6 space-y-6 max-w-full min-w-0">
+      <div className="p-4 md:p-6 space-y-6 max-w-full min-w-0">
         {/* Purchase Statistics */}
         <Card className="w-full overflow-hidden">
           <CardContent className="p-4 md:p-6">
@@ -387,7 +399,9 @@ return (
                 <CardContent className="p-4 md:p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-muted-foreground">Inventory Remaining</p>
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Inventory Remaining
+                      </p>
                       <div>
                         <p className="text-2xl font-bold text-purple-600">
                           {isLoading
@@ -401,7 +415,8 @@ return (
                           {totalConsumedQuantity.toLocaleString(undefined, {
                             maximumFractionDigits: 2,
                           })}{' '}
-                          / Total {totalQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          / Total{' '}
+                          {totalQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </p>
                       </div>
                     </div>
@@ -463,7 +478,9 @@ return (
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
                           onClick={() => {
-                            setDraftAdvancedFilters(clonePurchaseAdvancedFilters(appliedAdvancedFilters));
+                            setDraftAdvancedFilters(
+                              clonePurchaseAdvancedFilters(appliedAdvancedFilters),
+                            );
                             setIsFilterSheetOpen(true);
                           }}
                         >
@@ -628,127 +645,122 @@ return (
                   const totalOrdered = material.quantity ?? 0;
                   const consumedQuantity =
                     material.consumedQuantity ??
-                    Math.max(
-                      0,
-                      totalOrdered - (material.remainingQuantity ?? totalOrdered),
-                    );
+                    Math.max(0, totalOrdered - (material.remainingQuantity ?? totalOrdered));
                   const remainingQuantity =
                     material.remainingQuantity ?? Math.max(0, totalOrdered - consumedQuantity);
                   const usagePercent =
-                    totalOrdered > 0
-                      ? Math.min(100, (consumedQuantity / totalOrdered) * 100)
-                      : 0;
+                    totalOrdered > 0 ? Math.min(100, (consumedQuantity / totalOrdered) * 100) : 0;
 
                   return {
-                  materialName: (
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8 bg-primary/10">
-                        <AvatarFallback className="bg-primary/10 text-primary">
-                          <Package className="h-4 w-4" />
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{material.materialName}</div>
-                        <div className="text-sm text-muted-foreground">{material.site}</div>
-                      </div>
-                    </div>
-                  ),
-                  vendor: (
-                    <div>
-                      <div className="font-medium">{material.vendor}</div>
-                      <div className="text-sm text-muted-foreground">{material.purchaseDate}</div>
-                    </div>
-                  ),
-                  quantity: (
-                    <div>
-                      <div className="font-medium">
-                        {totalOrdered.toFixed(2)} {material.unit}
-                      </div>
-                      {material.filledWeight && (
-                        <div className="text-sm text-muted-foreground">
-                          Net: {material.netWeight?.toFixed(2)}kg
+                    materialName: (
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8 bg-primary/10">
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            <Package className="h-4 w-4" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium">{material.materialName}</div>
+                          <div className="text-sm text-muted-foreground">{material.site}</div>
                         </div>
-                      )}
-                    </div>
-                  ),
-                  usage: (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>
-                          Used:{' '}
-                          {consumedQuantity.toLocaleString(undefined, {
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                        <span>
-                          Left:{' '}
-                          {remainingQuantity.toLocaleString(undefined, {
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
                       </div>
-                      <Progress value={usagePercent} className="h-1.5" />
-                      <div className="text-[11px] text-muted-foreground text-right">
-                        {usagePercent.toFixed(1)}%
+                    ),
+                    vendor: (
+                      <div>
+                        <div className="font-medium">{material.vendor}</div>
+                        <div className="text-sm text-muted-foreground">{material.purchaseDate}</div>
                       </div>
-                    </div>
-                  ),
-                  unitRate: (
-                    <span className="font-medium">₹{material.unitRate?.toLocaleString()}</span>
-                  ),
-                  totalAmount: (
-                    <span className="font-medium text-green-600">
-                      ₹{material.totalAmount?.toLocaleString()}
-                    </span>
-                  ),
-                  purchaseDate: (
-                    <span className="text-sm text-muted-foreground">{material.purchaseDate}</span>
-                  ),
-                  actions: (
-                    <div className="flex items-center gap-1">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEdit(material);
-                              }}
-                              className="h-8 w-8 p-0 transition-all hover:bg-primary/10"
-                            >
-                              <Edit className="h-3 w-3 text-muted-foreground hover:text-primary" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Edit purchase</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(material.id);
-                              }}
-                              className="h-8 w-8 p-0 transition-all hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Delete purchase</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                  ),
-                };
+                    ),
+                    quantity: (
+                      <div>
+                        <div className="font-medium">
+                          {totalOrdered.toFixed(2)} {material.unit}
+                        </div>
+                        {material.filledWeight && (
+                          <div className="text-sm text-muted-foreground">
+                            Net: {material.netWeight?.toFixed(2)}kg
+                          </div>
+                        )}
+                      </div>
+                    ),
+                    usage: (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>
+                            Used:{' '}
+                            {consumedQuantity.toLocaleString(undefined, {
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                          <span>
+                            Left:{' '}
+                            {remainingQuantity.toLocaleString(undefined, {
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                        <Progress value={usagePercent} className="h-1.5" />
+                        <div className="text-[11px] text-muted-foreground text-right">
+                          {usagePercent.toFixed(1)}%
+                        </div>
+                      </div>
+                    ),
+                    unitRate: (
+                      <span className="font-medium">₹{material.unitRate?.toLocaleString()}</span>
+                    ),
+                    totalAmount: (
+                      <span className="font-medium text-green-600">
+                        ₹{material.totalAmount?.toLocaleString()}
+                      </span>
+                    ),
+                    purchaseDate: (
+                      <span className="text-sm text-muted-foreground">{material.purchaseDate}</span>
+                    ),
+                    actions: (
+                      <div className="flex items-center gap-1">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(material);
+                                }}
+                                className="h-8 w-8 p-0 transition-all hover:bg-primary/10"
+                              >
+                                <Edit className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Edit purchase</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(material.id);
+                                }}
+                                className="h-8 w-8 p-0 transition-all hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Delete purchase</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    ),
+                  };
                 })}
                 onSort={tableState.setSortField}
                 onPageChange={tableState.setCurrentPage}
