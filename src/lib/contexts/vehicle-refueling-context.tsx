@@ -3,8 +3,9 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import type { VehicleRefueling } from '@/types/entities';
 import { fetchJson } from '../utils/fetch';
+
+import type { VehicleRefueling } from '@/types/entities';
 
 interface VehicleRefuelingContextType {
   records: VehicleRefueling[];
@@ -116,26 +117,62 @@ export function VehicleRefuelingProvider({ children }: { children: ReactNode }) 
         throw new Error(payload.error || 'Failed to update refueling record.');
       }
 
-      setRecords((prev) => prev.map((existing) => (existing.id === id ? payload.record! : existing)));
+      setRecords((prev) =>
+        prev.map((existing) => (existing.id === id ? payload.record! : existing)),
+      );
       return payload.record ?? null;
     },
     [],
   );
 
-  const deleteRecord = useCallback(async (id: string): Promise<boolean> => {
-    const response = await fetch(`/api/vehicles/refueling/${id}`, { method: 'DELETE' });
-    const payload = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-    };
+  const deleteRecord = useCallback(
+    async (id: string): Promise<boolean> => {
+      // Store the record for potential rollback
+      const recordToDelete = records.find((r) => r.id === id);
+      if (!recordToDelete) {
+        throw new Error('Record not found.');
+      }
 
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.error || 'Failed to delete refueling record.');
-    }
+      // Optimistically update the cache IMMEDIATELY - remove the deleted record from UI right away
+      setRecords((prev) => prev.filter((record) => record.id !== id));
 
-    setRecords((prev) => prev.filter((record) => record.id !== id));
-    return true;
-  }, []);
+      try {
+        const response = await fetch(`/api/vehicles/refueling/${id}`, { method: 'DELETE' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.success) {
+          // Rollback optimistic update on error
+          setRecords((prev) => {
+            // Restore record to its original position (sorted by date)
+            const restored = [...prev, recordToDelete].sort((a, b) => {
+              return new Date(b.date).getTime() - new Date(a.date).getTime();
+            });
+            return restored;
+          });
+          throw new Error(payload.error || 'Failed to delete refueling record.');
+        }
+
+        return true;
+      } catch (error) {
+        // Rollback optimistic update on error (if not already rolled back)
+        setRecords((prev) => {
+          if (!prev.find((r) => r.id === id)) {
+            // Restore record to its original position (sorted by date)
+            const restored = [...prev, recordToDelete].sort((a, b) => {
+              return new Date(b.date).getTime() - new Date(a.date).getTime();
+            });
+            return restored;
+          }
+          return prev;
+        });
+        throw error;
+      }
+    },
+    [records],
+  );
 
   const value = useMemo(
     (): VehicleRefuelingContextType => ({
@@ -161,4 +198,3 @@ export function useVehicleRefueling() {
   }
   return context;
 }
-

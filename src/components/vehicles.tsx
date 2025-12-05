@@ -813,23 +813,38 @@ export function VehiclesPage({
 
   const handleDeleteVehicle = useCallback(
     async (vehicleId: string) => {
-      if (!confirm('Are you sure you want to delete this vehicle? This action cannot be undone.')) {
+      const vehicle = vehicles.find((v) => v.id === vehicleId);
+      if (!vehicle) {
         return;
       }
 
+      const confirmed = window.confirm(
+        `Are you sure you want to delete "${vehicle.vehicleNumber || vehicle.name || 'this vehicle'}"? This action cannot be undone.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      // Clear selection if deleted vehicle was selected
+      if (selectedVehicle === vehicleId) {
+        setSelectedVehicle('');
+        onVehicleSelect?.('');
+      }
+
+      // Show success toast IMMEDIATELY (context will optimistically update)
+      toast.success('Vehicle deleted successfully.');
+
+      // Perform the deletion (context handles optimistic updates and rollback)
       try {
         await deleteVehicle(vehicleId);
-        toast.success('Vehicle deleted.');
-        if (selectedVehicle === vehicleId) {
-          setSelectedVehicle('');
-          onVehicleSelect?.('');
-        }
       } catch (error) {
         console.error('Failed to delete vehicle', error);
-        toast.error(error instanceof Error ? error.message : 'Unable to delete vehicle right now.');
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to delete vehicle. Please try again.',
+        );
       }
     },
-    [deleteVehicle, selectedVehicle, onVehicleSelect],
+    [vehicles, selectedVehicle, onVehicleSelect, deleteVehicle],
   );
 
   const handleRefuelingSubmit = async (e: React.FormEvent) => {
@@ -981,16 +996,30 @@ export function VehiclesPage({
   };
 
   const handleDeleteRefueling = async (recordId: string) => {
-    if (typeof window !== 'undefined' && !window.confirm('Delete this refueling record?')) {
+    const record = refuelingRecords.find((r) => r.id === recordId);
+    if (!record) {
       return;
     }
+
+    const confirmed = window.confirm(
+      `Delete refueling record for ${record.vehicleNumber} on ${formatDateOnly(record.date)}? This action cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    // Show success toast IMMEDIATELY (context will optimistically update)
+    toast.success('Refueling record deleted successfully.');
+
+    // Perform the deletion (context handles optimistic updates and rollback)
     try {
       await removeRefuelingRecord(recordId);
-      toast.success('Refueling record deleted.');
     } catch (error) {
       console.error('Failed to delete refueling record', error);
       toast.error(
-        error instanceof Error ? error.message : 'Unable to delete refueling record right now.',
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete refueling record. Please try again.',
       );
     }
   };
@@ -1000,16 +1029,28 @@ export function VehiclesPage({
   };
 
   const handleDeleteUsage = async (recordId: string) => {
-    if (typeof window !== 'undefined' && !window.confirm('Delete this usage record?')) {
+    const record = usageRecords.find((r) => r.id === recordId);
+    if (!record) {
       return;
     }
+
+    const confirmed = window.confirm(
+      `Delete usage record for ${record.vehicleNumber} on ${formatDateOnly(record.date)}? This action cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    // Show success toast IMMEDIATELY (context will optimistically update)
+    toast.success('Usage record deleted successfully.');
+
+    // Perform the deletion (context handles optimistic updates and rollback)
     try {
       await removeUsageRecord(recordId);
-      toast.success('Usage record deleted.');
     } catch (error) {
       console.error('Failed to delete usage record', error);
       toast.error(
-        error instanceof Error ? error.message : 'Unable to delete usage record right now.',
+        error instanceof Error ? error.message : 'Unable to delete usage record. Please try again.',
       );
     }
   };

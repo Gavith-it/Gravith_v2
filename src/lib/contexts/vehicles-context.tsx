@@ -3,8 +3,9 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import type { Vehicle } from '@/types/entities';
 import { fetchJson } from '../utils/fetch';
+
+import type { Vehicle } from '@/types/entities';
 
 interface VehiclesContextType {
   vehicles: Vehicle[];
@@ -50,7 +51,10 @@ interface VehicleInput {
 
 const VehiclesContext = createContext<VehiclesContextType | undefined>(undefined);
 
-async function fetchVehicles(page = 1, limit = 50): Promise<{
+async function fetchVehicles(
+  page = 1,
+  limit = 50,
+): Promise<{
   vehicles: Vehicle[];
   pagination?: {
     page: number;
@@ -92,12 +96,15 @@ async function fetchVehicles(page = 1, limit = 50): Promise<{
 export function VehiclesProvider({ children }: { children: ReactNode }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [pagination, setPagination] = useState<{
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  } | undefined>(undefined);
+  const [pagination, setPagination] = useState<
+    | {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      }
+    | undefined
+  >(undefined);
 
   const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
@@ -154,26 +161,106 @@ export function VehiclesProvider({ children }: { children: ReactNode }) {
         throw new Error(payload.error || 'Failed to update vehicle.');
       }
 
-      setVehicles((prev) => prev.map((existing) => (existing.id === id ? payload.vehicle! : existing)));
+      setVehicles((prev) =>
+        prev.map((existing) => (existing.id === id ? payload.vehicle! : existing)),
+      );
       return payload.vehicle ?? null;
     },
     [],
   );
 
-  const deleteVehicle = useCallback(async (id: string): Promise<boolean> => {
-    const response = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
-    const payload = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-    };
+  const deleteVehicle = useCallback(
+    async (id: string): Promise<boolean> => {
+      // Store the vehicle for potential rollback
+      const vehicleToDelete = vehicles.find((v) => v.id === id);
+      if (!vehicleToDelete) {
+        throw new Error('Vehicle not found.');
+      }
 
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.error || 'Failed to delete vehicle.');
-    }
+      // Optimistically update the cache IMMEDIATELY - remove the deleted vehicle from UI right away
+      setVehicles((prev) => prev.filter((vehicle) => vehicle.id !== id));
 
-    setVehicles((prev) => prev.filter((vehicle) => vehicle.id !== id));
-    return true;
-  }, []);
+      // Update pagination if it exists
+      if (pagination) {
+        setPagination((prev) =>
+          prev
+            ? {
+                ...prev,
+                total: Math.max(0, prev.total - 1),
+              }
+            : prev,
+        );
+      }
+
+      try {
+        const response = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.success) {
+          // Rollback optimistic update on error
+          setVehicles((prev) => {
+            // Restore vehicle to its original position (sorted by created_at if available)
+            const restored = [...prev, vehicleToDelete].sort((a, b) => {
+              if (a.createdAt && b.createdAt) {
+                return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+              }
+              return 0;
+            });
+            return restored;
+          });
+
+          // Rollback pagination
+          if (pagination) {
+            setPagination((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    total: prev.total + 1,
+                  }
+                : prev,
+            );
+          }
+
+          throw new Error(payload.error || 'Failed to delete vehicle.');
+        }
+
+        return true;
+      } catch (error) {
+        // Rollback optimistic update on error (if not already rolled back)
+        setVehicles((prev) => {
+          if (!prev.find((v) => v.id === id)) {
+            // Restore vehicle to its original position (sorted by created_at if available)
+            const restored = [...prev, vehicleToDelete].sort((a, b) => {
+              if (a.createdAt && b.createdAt) {
+                return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+              }
+              return 0;
+            });
+            return restored;
+          }
+          return prev;
+        });
+
+        // Rollback pagination (if not already rolled back)
+        if (pagination) {
+          setPagination((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  total: prev.total + 1,
+                }
+              : prev,
+          );
+        }
+
+        throw error;
+      }
+    },
+    [vehicles, pagination],
+  );
 
   const value = useMemo<VehiclesContextType>(
     () => ({
@@ -198,4 +285,3 @@ export function useVehicles() {
   }
   return context;
 }
-
