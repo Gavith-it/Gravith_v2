@@ -1,10 +1,20 @@
 /**
  * SWR Fetcher Utility
  * Handles API requests with proper error handling
+ * Uses cache: 'no-store' to bypass Next.js/Vercel caching in production
  */
 
 export const fetcher = async <T = unknown>(url: string): Promise<T> => {
-  const res = await fetch(url);
+  // Use cache: 'no-store' to bypass Next.js/Vercel caching
+  // This ensures fresh data is always fetched, especially after mutations
+  const res = await fetch(url, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  });
 
   if (!res.ok) {
     // Try to parse error message from response
