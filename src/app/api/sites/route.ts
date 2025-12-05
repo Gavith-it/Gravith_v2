@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { Site, SiteInput } from '@/types/sites';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type SiteRow = {
   id: string;
   name: string;
@@ -81,7 +85,10 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
@@ -126,11 +133,14 @@ export async function GET(request: Request) {
       },
     });
 
-    // Add cache headers: cache for 60 seconds, revalidate in background
+    // Disable caching to ensure fresh data in production
+    // This prevents Vercel edge cache from serving stale data after mutations
     response.headers.set(
       'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
     );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
 
     return response;
   } catch (error) {
@@ -183,7 +193,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create site.' }, { status: 500 });
     }
 
-    return NextResponse.json({ site: mapRowToSite(data as SiteRow) }, { status: 201 });
+    const response = NextResponse.json({ site: mapRowToSite(data as SiteRow) }, { status: 201 });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error creating site', error);
     return NextResponse.json({ error: 'Unexpected error creating site.' }, { status: 500 });

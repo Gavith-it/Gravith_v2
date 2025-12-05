@@ -36,8 +36,14 @@ export default function SiteNewPage() {
         '/api/sites',
         async (currentData: { sites: Site[] } | undefined) => {
           if (!currentData) {
-            // If no cache, fetch fresh data
-            const freshResponse = await fetch('/api/sites', { cache: 'no-store' });
+            // If no cache, fetch fresh data with cache bypass
+            const freshResponse = await fetch('/api/sites', {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                Pragma: 'no-cache',
+              },
+            });
             const freshData = await freshResponse.json();
             return {
               sites: [payload.site!, ...(freshData.sites || [])],
@@ -52,13 +58,15 @@ export default function SiteNewPage() {
       );
 
       toast.success('Site created successfully');
-      router.push('/sites');
 
-      // Revalidate after navigation to ensure consistency
-      // Use setTimeout to ensure navigation completes first
-      setTimeout(() => {
-        void mutate('/api/sites', undefined, { revalidate: true });
-      }, 200);
+      // Immediately revalidate to fetch fresh data from server (bypassing all caches)
+      // This ensures production gets the latest data immediately
+      await mutate('/api/sites', undefined, {
+        revalidate: true,
+        rollbackOnError: false,
+      });
+
+      router.push('/sites');
     } catch (error) {
       console.error('Error creating site:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to create site');

@@ -660,11 +660,18 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         setDeletedSiteName(site.name);
         setIsDeleteDialogOpen(true);
 
-        // Revalidate in the background after a short delay to ensure optimistic update is applied
-        setTimeout(() => {
-          void mutateSites(undefined, { revalidate: true });
-          void mutate('/api/sites', undefined, { revalidate: true });
-        }, 100);
+        // Immediately revalidate to fetch fresh data from server (bypassing all caches)
+        // This ensures production gets the latest data immediately
+        await Promise.all([
+          mutateSites(undefined, {
+            revalidate: true,
+            rollbackOnError: false,
+          }),
+          mutate('/api/sites', undefined, {
+            revalidate: true,
+            rollbackOnError: false,
+          }),
+        ]);
       } catch (error) {
         console.error('Failed to delete site', error);
         toast.error(error instanceof Error ? error.message : 'Unable to delete site.');

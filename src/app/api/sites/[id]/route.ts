@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { Site, SiteInput } from '@/types/sites';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type Params = {
   params: Promise<{
     id: string;
@@ -100,8 +104,13 @@ export async function GET(_: NextRequest, { params }: Params) {
 
     const response = NextResponse.json({ site: mapRowToSite(data as SiteRow) });
 
-    // Add cache headers: cache for 30 seconds, revalidate in background
-    response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    // Disable caching to ensure fresh data in production
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
 
     return response;
   } catch (error) {
@@ -172,7 +181,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Failed to update site.' }, { status: 500 });
     }
 
-    return NextResponse.json({ site: mapRowToSite(updated as SiteRow) });
+    const response = NextResponse.json({ site: mapRowToSite(updated as SiteRow) });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error updating site', error);
     return NextResponse.json({ error: 'Unexpected error updating site.' }, { status: 500 });
@@ -326,7 +345,17 @@ export async function DELETE(_: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Failed to delete site.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error deleting site', error);
     return NextResponse.json({ error: 'Unexpected error deleting site.' }, { status: 500 });
