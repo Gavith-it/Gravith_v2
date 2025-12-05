@@ -6,6 +6,10 @@ import type { ExpenseRow } from '../_utils';
 import { createClient } from '@/lib/supabase/server';
 import type { Expense } from '@/types';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const EXPENSE_SELECT = `
   id,
   description,
@@ -144,7 +148,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update expense.' }, { status: 500 });
     }
 
-    return NextResponse.json({ expense: mapRowToExpense(data as ExpenseRow) });
+    const response = NextResponse.json({ expense: mapRowToExpense(data as ExpenseRow) });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error updating expense:', error);
     return NextResponse.json({ error: 'Unexpected error updating expense.' }, { status: 500 });
@@ -177,10 +191,19 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to delete expense.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error deleting expense:', error);
     return NextResponse.json({ error: 'Unexpected error deleting expense.' }, { status: 500 });
   }
 }
-

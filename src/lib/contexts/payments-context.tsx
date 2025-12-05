@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import type { Payment } from '@/types';
 import { fetchJson } from '../utils/fetch';
+
+import type { Payment } from '@/types';
 
 interface PaymentsContextType {
   payments: Payment[];
@@ -36,7 +37,10 @@ type PaymentUpdatePayload = Partial<PaymentPayload>;
 
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
 
-async function fetchPayments(page = 1, limit = 50): Promise<{
+async function fetchPayments(
+  page = 1,
+  limit = 50,
+): Promise<{
   payments: Payment[];
   pagination?: {
     page: number;
@@ -78,12 +82,15 @@ async function fetchPayments(page = 1, limit = 50): Promise<{
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [pagination, setPagination] = useState<{
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  } | undefined>(undefined);
+  const [pagination, setPagination] = useState<
+    | {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      }
+    | undefined
+  >(undefined);
 
   const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
@@ -150,23 +157,54 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const deletePayment = useCallback(async (id: string): Promise<boolean> => {
-    const response = await fetch(`/api/payments/${id}`, {
-      method: 'DELETE',
-    });
+  const deletePayment = useCallback(
+    async (id: string): Promise<boolean> => {
+      // Optimistically update the cache IMMEDIATELY - remove the deleted payment from UI right away
+      // This provides instant UI feedback before the API call completes
+      const target = payments.find((payment) => payment.id === id);
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-    };
+      // Update cache optimistically for INSTANT UI update
+      setPayments((prev) => prev.filter((payment) => payment.id !== id));
 
-    if (!response.ok || payload.success !== true) {
-      throw new Error(payload.error || 'Failed to delete payment.');
-    }
+      // Perform the actual deletion in the background
+      try {
+        const response = await fetch(`/api/payments/${id}`, {
+          method: 'DELETE',
+        });
 
-    setPayments((prev) => prev.filter((payment) => payment.id !== id));
-    return true;
-  }, []);
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || payload.success !== true) {
+          // Rollback optimistic update on error
+          if (target) {
+            setPayments((prev) => {
+              // Restore the payment to its original position (sorted by due date)
+              const restored = [...prev, target].sort((a, b) => {
+                if (a.dueDate && b.dueDate) {
+                  return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+                }
+                return 0;
+              });
+              return restored;
+            });
+          }
+          throw new Error(payload.error || 'Failed to delete payment.');
+        }
+
+        // Don't revalidate immediately - keep the optimistic update
+        // The deletion was successful, so the optimistic update is correct
+        // The next refresh will naturally fetch fresh data
+        return true;
+      } catch (error) {
+        // Error already handled above with rollback
+        throw error;
+      }
+    },
+    [payments],
+  );
 
   const value = useMemo<PaymentsContextType>(
     () => ({
@@ -191,4 +229,3 @@ export function usePayments() {
   }
   return ctx;
 }
-

@@ -6,6 +6,9 @@ import type { PaymentRow } from '../_utils';
 import { createClient } from '@/lib/supabase/server';
 import type { Payment } from '@/types';
 
+// Force dynamic rendering to prevent caching in production
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const PAYMENT_SELECT = `
   id,
@@ -122,7 +125,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update payment.' }, { status: 500 });
     }
 
-    return NextResponse.json({ payment: mapRowToPayment(data as PaymentRow) });
+    const response = NextResponse.json({ payment: mapRowToPayment(data as PaymentRow) });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error updating payment:', error);
     return NextResponse.json({ error: 'Unexpected error updating payment.' }, { status: 500 });
@@ -155,7 +168,17 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to delete payment.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+
+    // Invalidate cache to ensure fresh data is fetched on next request
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    );
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     console.error('Unexpected error deleting payment:', error);
     return NextResponse.json({ error: 'Unexpected error deleting payment.' }, { status: 500 });

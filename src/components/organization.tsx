@@ -313,7 +313,7 @@ export function OrganizationPage({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Organization Name</Label>
+                    <Label className="text-sm font-medium text-foreground">Organization Name</Label>
                     {isEditingName ? (
                       <div className="mt-2 flex gap-2">
                         <Input
@@ -331,7 +331,7 @@ export function OrganizationPage({
                       </div>
                     ) : (
                       <div className="mt-2 flex items-center justify-between">
-                        <p className="font-semibold text-slate-900">{currentOrganization.name}</p>
+                        <p className="font-semibold text-foreground">{currentOrganization.name}</p>
                         {(currentUser.organizationRole === 'owner' ||
                           currentUser.organizationRole === 'admin') && (
                           <Button
@@ -347,7 +347,7 @@ export function OrganizationPage({
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Subscription Plan</Label>
+                    <Label className="text-sm font-medium text-foreground">Subscription Plan</Label>
                     <div className="mt-2">
                       <Badge
                         variant={getSubscriptionBadgeVariant(
@@ -361,7 +361,7 @@ export function OrganizationPage({
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Status</Label>
+                    <Label className="text-sm font-medium text-foreground">Status</Label>
                     <div className="mt-2">
                       <Badge variant={currentOrganization.isActive ? 'default' : 'destructive'}>
                         {currentOrganization.isActive ? 'Active' : 'Inactive'}
@@ -370,8 +370,8 @@ export function OrganizationPage({
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Created</Label>
-                    <div className="mt-2 flex items-center gap-2 text-slate-600">
+                    <Label className="text-sm font-medium text-foreground">Created</Label>
+                    <div className="mt-2 flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
                       {formatDate(currentOrganization.createdAt)}
                     </div>
@@ -391,7 +391,7 @@ export function OrganizationPage({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Role</Label>
+                    <Label className="text-sm font-medium text-foreground">Role</Label>
                     <div className="mt-2">
                       <Badge
                         variant={getRoleBadgeVariant(currentUser.organizationRole)}
@@ -403,13 +403,13 @@ export function OrganizationPage({
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Email</Label>
-                    <p className="mt-2 text-slate-900">{currentUser.email}</p>
+                    <Label className="text-sm font-medium text-foreground">Email</Label>
+                    <p className="mt-2 text-foreground">{currentUser.email}</p>
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Member Since</Label>
-                    <div className="mt-2 flex items-center gap-2 text-slate-600">
+                    <Label className="text-sm font-medium text-foreground">Member Since</Label>
+                    <div className="mt-2 flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
                       {formatDate(currentUser.createdAt)}
                     </div>
@@ -418,21 +418,27 @@ export function OrganizationPage({
                   <Separator />
 
                   <div>
-                    <Label className="text-sm font-medium text-slate-700">Permissions</Label>
+                    <Label className="text-sm font-medium text-foreground">Permissions</Label>
                     <div className="mt-2 space-y-1">
                       {currentUser.organizationRole === 'owner' && (
-                        <div className="text-sm text-slate-600">• Full organization access</div>
+                        <div className="text-sm text-muted-foreground">
+                          • Full organization access
+                        </div>
                       )}
                       {(currentUser.organizationRole === 'owner' ||
                         currentUser.organizationRole === 'admin') && (
                         <>
-                          <div className="text-sm text-slate-600">
+                          <div className="text-sm text-muted-foreground">
                             • Manage organization settings
                           </div>
-                          <div className="text-sm text-slate-600">• Invite and manage members</div>
+                          <div className="text-sm text-muted-foreground">
+                            • Invite and manage members
+                          </div>
                         </>
                       )}
-                      <div className="text-sm text-slate-600">• Access all projects and data</div>
+                      <div className="text-sm text-muted-foreground">
+                        • Access all projects and data
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -458,12 +464,12 @@ export function OrganizationPage({
               </CardHeader>
               <CardContent>
                 {isMembersLoading ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
+                  <div className="py-12 flex flex-col items-center justify-center text-muted-foreground gap-2">
                     <Loader2 className="h-6 w-6 animate-spin" />
                     <p>Loading members...</p>
                   </div>
                 ) : members.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>No members found</p>
                     <p className="text-sm mt-1">Invite team members to collaborate on projects.</p>
@@ -487,13 +493,15 @@ export function OrganizationPage({
                               {(member.first_name?.[0] || member.username[0] || 'U').toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-semibold text-slate-900">
+                              <p className="font-semibold text-foreground">
                                 {displayName}{' '}
-                                {isCurrentUser && <span className="text-blue-600">(You)</span>}
+                                {isCurrentUser && (
+                                  <span className="text-blue-600 dark:text-blue-400">(You)</span>
+                                )}
                               </p>
-                              <p className="text-sm text-slate-600">{member.email}</p>
+                              <p className="text-sm text-muted-foreground">{member.email}</p>
                               {!member.is_active && (
-                                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                                   <Mail className="h-3 w-3" />
                                   Invitation pending
                                 </p>
@@ -527,13 +535,13 @@ export function OrganizationPage({
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  <div className="p-6 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
+                  <div className="p-6 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-semibold text-slate-900 capitalize">
+                        <h3 className="font-semibold text-foreground capitalize">
                           {currentOrganization.subscription || 'Free'} Plan
                         </h3>
-                        <p className="text-sm text-slate-600 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Current subscription plan for your organization
                         </p>
                       </div>
@@ -541,7 +549,7 @@ export function OrganizationPage({
                     </div>
                   </div>
 
-                  <div className="text-center py-8 text-slate-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <CreditCard className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>Billing management coming soon</p>
                     <p className="text-sm mt-1">
@@ -565,7 +573,7 @@ export function OrganizationPage({
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  <div className="text-center py-8 text-slate-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <Settings className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>Advanced settings coming soon</p>
                     <p className="text-sm mt-1">

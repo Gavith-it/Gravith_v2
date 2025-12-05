@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import type { Expense } from '@/types';
 import { fetchJson } from '../utils/fetch';
+
+import type { Expense } from '@/types';
 
 interface ExpensesContextType {
   expenses: Expense[];
@@ -42,7 +43,10 @@ type ExpenseUpdatePayload = Partial<ExpensePayload>;
 
 const ExpensesContext = createContext<ExpensesContextType | undefined>(undefined);
 
-async function fetchExpenses(page = 1, limit = 50): Promise<{
+async function fetchExpenses(
+  page = 1,
+  limit = 50,
+): Promise<{
   expenses: Expense[];
   pagination?: {
     page: number;
@@ -84,12 +88,15 @@ async function fetchExpenses(page = 1, limit = 50): Promise<{
 export function ExpensesProvider({ children }: { children: ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [pagination, setPagination] = useState<{
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  } | undefined>(undefined);
+  const [pagination, setPagination] = useState<
+    | {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      }
+    | undefined
+  >(undefined);
 
   const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
@@ -156,23 +163,54 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const deleteExpense = useCallback(async (id: string): Promise<boolean> => {
-    const response = await fetch(`/api/expenses/${id}`, {
-      method: 'DELETE',
-    });
+  const deleteExpense = useCallback(
+    async (id: string): Promise<boolean> => {
+      // Optimistically update the cache IMMEDIATELY - remove the deleted expense from UI right away
+      // This provides instant UI feedback before the API call completes
+      const target = expenses.find((expense) => expense.id === id);
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-    };
+      // Update cache optimistically for INSTANT UI update
+      setExpenses((prev) => prev.filter((expense) => expense.id !== id));
 
-    if (!response.ok || payload.success !== true) {
-      throw new Error(payload.error || 'Failed to delete expense.');
-    }
+      // Perform the actual deletion in the background
+      try {
+        const response = await fetch(`/api/expenses/${id}`, {
+          method: 'DELETE',
+        });
 
-    setExpenses((prev) => prev.filter((expense) => expense.id !== id));
-    return true;
-  }, []);
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok || payload.success !== true) {
+          // Rollback optimistic update on error
+          if (target) {
+            setExpenses((prev) => {
+              // Restore the expense to its original position (sorted by date)
+              const restored = [...prev, target].sort((a, b) => {
+                if (a.date && b.date) {
+                  return new Date(b.date).getTime() - new Date(a.date).getTime();
+                }
+                return 0;
+              });
+              return restored;
+            });
+          }
+          throw new Error(payload.error || 'Failed to delete expense.');
+        }
+
+        // Don't revalidate immediately - keep the optimistic update
+        // The deletion was successful, so the optimistic update is correct
+        // The next refresh will naturally fetch fresh data
+        return true;
+      } catch (error) {
+        // Error already handled above with rollback
+        throw error;
+      }
+    },
+    [expenses],
+  );
 
   const value = useMemo<ExpensesContextType>(
     () => ({
@@ -197,4 +235,3 @@ export function useExpenses() {
   }
   return ctx;
 }
-
