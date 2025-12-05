@@ -7,12 +7,13 @@ const PUBLIC_PATHS = ['/login', '/signup', '/home', '/invite'];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api') ||
-    pathname.startsWith('/static') ||
-    pathname.includes('.')
-  ) {
+  // Skip middleware for API routes - they handle auth themselves
+  if (pathname.startsWith('/api')) {
+    return updateSession(request);
+  }
+
+  // Skip for static files and Next.js internals
+  if (pathname.startsWith('/_next') || pathname.startsWith('/static') || pathname.includes('.')) {
     return updateSession(request);
   }
 

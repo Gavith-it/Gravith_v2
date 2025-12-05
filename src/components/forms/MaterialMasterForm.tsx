@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2, Building2, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Building2, ExternalLink, Loader2 } from 'lucide-react';
 import * as React from 'react';
 import { Controller, useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -93,6 +93,8 @@ export default function MaterialMasterForm({
 }: MaterialMasterFormProps) {
   const formId = isEdit ? 'material-master-edit-form' : 'material-master-new-form';
   const [isClient, setIsClient] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [validationError, setValidationError] = React.useState<string | null>(null);
   const [uomOptions] = React.useState<UOMItem[]>(getActiveUOMs());
   const [taxRateOptions] = React.useState<TaxRateItem[]>(getActiveTaxRates());
 
@@ -149,6 +151,18 @@ export default function MaterialMasterForm({
     setIsClient(true);
   }, []);
 
+  // Clear validation error when allocations become valid
+  React.useEffect(() => {
+    if (hasOpeningBalance && validationError) {
+      const validAllocations = siteAllocations.filter(
+        (alloc) => alloc.siteId && alloc.quantity > 0,
+      );
+      if (validAllocations.length > 0) {
+        setValidationError(null);
+      }
+    }
+  }, [siteAllocations, hasOpeningBalance, validationError]);
+
   // Update form values when defaultValues change in edit mode
   React.useEffect(() => {
     if (isEdit && defaultValues) {
@@ -184,6 +198,8 @@ export default function MaterialMasterForm({
         quantity: 0,
       },
     ]);
+    // Clear validation error when user adds an allocation
+    setValidationError(null);
   };
 
   const handleRemoveSiteAllocation = (index: number) => {
@@ -222,53 +238,113 @@ export default function MaterialMasterForm({
   const totalAllocatedOB = siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
 
   async function handleFormSubmit(data: MaterialMasterFormData) {
-    // Validate site allocations if opening balance is enabled
-    if (hasOpeningBalance) {
-      if (siteAllocations.length === 0) {
-        toast.error('Please add at least one site allocation for opening balance.');
-        return;
-      }
+    // Set loading state immediately for instant visual feedback
+    setIsSubmitting(true);
 
-      for (const [index, allocation] of siteAllocations.entries()) {
-        if (!allocation.siteId) {
-          toast.error(`Please select a site for allocation ${index + 1}.`);
-          return;
-        }
-        if (!allocation.quantity || allocation.quantity <= 0) {
-          toast.error(`Please enter a valid quantity (> 0) for allocation ${index + 1}.`);
-          return;
-        }
-      }
-    }
-
-    const materialData: MaterialMasterInput = {
-      name: data.name,
-      category: data.category,
-      unit: data.unit,
-      standardRate: data.standardRate,
-      isActive: data.isActive,
-      hsn: data.hsn || '',
-      taxRateId: data.taxRateId,
-    };
-
-    if (hasOpeningBalance && siteAllocations.length > 0) {
-      materialData.openingBalance = totalAllocatedOB;
-      materialData.siteAllocations = siteAllocations.filter(
+    try {
+      // Filter out invalid allocations first (empty or incomplete)
+      const validAllocations = siteAllocations.filter(
         (alloc) => alloc.siteId && alloc.quantity > 0,
       );
-    }
 
-    await onSubmit(materialData);
+      // Validate site allocations if opening balance is enabled
+      if (hasOpeningBalance) {
+        // If toggle is ON, must have at least one valid allocation
+        // User can delete some allocations and keep others - that's fine
+        if (validAllocations.length === 0) {
+          const errorMsg =
+            'Please add at least one site allocation with valid quantity for opening balance, or turn off the opening balance toggle.';
+          setValidationError(errorMsg);
+          toast.error(errorMsg);
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Clear validation error if we have valid allocations
+        setValidationError(null);
+
+        // Validate each remaining allocation (only check valid ones)
+        for (const [index, allocation] of siteAllocations.entries()) {
+          // Skip validation for empty/incomplete allocations (they'll be filtered out)
+          if (!allocation.siteId && !allocation.quantity) {
+            continue; // Empty allocation row, will be filtered out
+          }
+
+          // If allocation has some data but is incomplete, show error
+          if (allocation.siteId && (!allocation.quantity || allocation.quantity <= 0)) {
+            const errorMsg = `Please enter a valid quantity (> 0) for allocation ${index + 1}.`;
+            setValidationError(errorMsg);
+            toast.error(errorMsg);
+            setIsSubmitting(false);
+            return;
+          }
+          if (!allocation.siteId && allocation.quantity > 0) {
+            const errorMsg = `Please select a site for allocation ${index + 1}.`;
+            setValidationError(errorMsg);
+            toast.error(errorMsg);
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+
+      const materialData: MaterialMasterInput = {
+        name: data.name,
+        category: data.category,
+        unit: data.unit,
+        standardRate: data.standardRate,
+        isActive: data.isActive,
+        hsn: data.hsn || '',
+        taxRateId: data.taxRateId,
+      };
+
+      // Handle opening balance based on toggle state
+      if (hasOpeningBalance) {
+        // Toggle is ON - use valid allocations (user can delete some and keep others)
+        if (validAllocations.length > 0) {
+          // Recalculate total from valid allocations only
+          const totalOB = validAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+          materialData.openingBalance = totalOB;
+          materialData.siteAllocations = validAllocations;
+          // Clear validation error on successful validation
+          setValidationError(null);
+        } else {
+          // This shouldn't happen due to validation above, but handle it anyway
+          const errorMsg =
+            'Please add at least one valid site allocation or turn off opening balance.';
+          setValidationError(errorMsg);
+          toast.error(errorMsg);
+          setIsSubmitting(false);
+          return;
+        }
+      } else {
+        // Toggle is OFF - explicitly clear opening balance and allocations
+        materialData.openingBalance = null;
+        materialData.siteAllocations = [];
+        // Clear validation error when toggle is off
+        setValidationError(null);
+      }
+
+      await onSubmit(materialData);
+      // Clear validation error on successful submission
+      setValidationError(null);
+    } catch (error) {
+      // Error is handled by parent component, but we need to ensure form state is correct
+      console.error('Form submission error:', error);
+      setIsSubmitting(false);
+    }
   }
 
-  const getSubmitButtonText = () =>
-    form.formState.isSubmitting
+  const getSubmitButtonText = () => {
+    const submitting = isSubmitting || form.formState.isSubmitting;
+    return submitting
       ? isEdit
         ? 'Updating Material...'
         : 'Adding Material...'
       : isEdit
         ? 'Update Material'
         : 'Add Material';
+  };
 
   // Prevent hydration issues by only rendering after client-side mount
   if (!isClient) {
@@ -502,6 +578,8 @@ export default function MaterialMasterForm({
                       onCheckedChange={(checked) => {
                         field.onChange(checked);
                         setHasOpeningBalance(checked);
+                        // Clear validation error when toggle is changed
+                        setValidationError(null);
                         if (!checked) {
                           setSiteAllocations([]);
                         } else if (siteAllocations.length === 0) {
@@ -712,13 +790,43 @@ export default function MaterialMasterForm({
           </div>
         </FieldGroup>
       </form>
-      <div className="flex items-center justify-end gap-3 pt-4 pb-2 border-t">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" form={formId} disabled={form.formState.isSubmitting}>
-          {getSubmitButtonText()}
-        </Button>
+      <div className="space-y-3 pt-4 pb-2 border-t">
+        {/* Validation Error Message */}
+        {validationError && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3">
+            <p className="text-sm text-destructive font-medium flex items-center gap-2">
+              <span className="text-destructive">⚠</span>
+              {validationError}
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isSubmitting || form.formState.isSubmitting}
+            className="transition-all"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            disabled={isSubmitting || form.formState.isSubmitting}
+            className="min-w-[140px] transition-all hover:scale-105 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 cursor-pointer"
+          >
+            {isSubmitting || form.formState.isSubmitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {getSubmitButtonText()}
+              </span>
+            ) : (
+              <span className="flex items-center justify-center">{getSubmitButtonText()}</span>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -263,23 +263,33 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     // Handle opening balance and site allocations
+    // Priority: siteAllocations > openingBalance
     if (body.siteAllocations !== undefined) {
-      // Calculate opening balance from site allocations if provided
-      const calculatedOpeningBalance =
-        body.siteAllocations && body.siteAllocations.length > 0
-          ? body.siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0)
-          : (body.openingBalance ?? null);
-
-      updatePayload['opening_balance'] = calculatedOpeningBalance;
-
-      // Update quantity from OB for backward compatibility
-      if (calculatedOpeningBalance !== null) {
+      // If siteAllocations is explicitly provided (even if empty array), use it
+      if (body.siteAllocations && body.siteAllocations.length > 0) {
+        // Calculate opening balance from site allocations
+        const calculatedOpeningBalance = body.siteAllocations.reduce(
+          (sum, alloc) => sum + (alloc.quantity || 0),
+          0,
+        );
+        updatePayload['opening_balance'] = calculatedOpeningBalance;
         updatePayload['quantity'] = calculatedOpeningBalance;
+      } else {
+        // Empty array means clear opening balance
+        // Use body.openingBalance if provided, otherwise null
+        const openingBalanceValue = body.openingBalance !== undefined ? body.openingBalance : null;
+        updatePayload['opening_balance'] = openingBalanceValue;
+        // Explicitly clear quantity when opening balance is cleared
+        updatePayload['quantity'] = 0;
       }
     } else if (body.openingBalance !== undefined) {
+      // Only openingBalance provided (no siteAllocations)
       updatePayload['opening_balance'] = body.openingBalance;
-      if (body.openingBalance !== null) {
+      if (body.openingBalance !== null && body.openingBalance !== undefined) {
         updatePayload['quantity'] = body.openingBalance;
+      } else {
+        // Explicitly clear quantity when opening balance is cleared
+        updatePayload['quantity'] = 0;
       }
     }
 
@@ -327,8 +337,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         return NextResponse.json({ error: 'Failed to update site allocations.' }, { status: 500 });
       }
 
-      // Insert new allocations if provided
-      if (body.siteAllocations.length > 0) {
+      // Insert new allocations only if provided and not empty
+      if (body.siteAllocations && body.siteAllocations.length > 0) {
         const allocationPayloads = body.siteAllocations.map((allocation) => ({
           material_id: id,
           site_id: allocation.siteId,

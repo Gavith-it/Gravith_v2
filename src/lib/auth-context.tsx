@@ -27,7 +27,10 @@ async function fetchAuthenticatedProfile(): Promise<UserWithOrganization | null>
   try {
     const response = await fetch('/api/auth/profile', {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
       cache: 'no-store',
     });
 
@@ -37,13 +40,21 @@ async function fetchAuthenticatedProfile(): Promise<UserWithOrganization | null>
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           const errorData = await response.json();
-          errorMessage = errorData.error || 'Unknown error';
+          errorMessage = errorData.error || errorData.details || 'Unknown error';
         } else {
+          // If we get HTML instead of JSON, it's likely a server error
           const text = await response.text();
-          errorMessage = `Server error: ${text.substring(0, 100)}`;
+          // Don't log the full HTML, just indicate it's an HTML response
+          if (text.trim().startsWith('<')) {
+            errorMessage = 'Server returned HTML instead of JSON. Please check server logs.';
+            console.error('Server returned HTML response. Status:', response.status);
+          } else {
+            errorMessage = `Server error: ${text.substring(0, 100)}`;
+          }
         }
       } catch (parseError) {
         console.error('Failed to parse error response:', parseError);
+        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
       }
       console.error('Failed to load profile:', errorMessage);
       return null;
