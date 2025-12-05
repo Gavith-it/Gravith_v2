@@ -597,6 +597,51 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         return;
       }
 
+      // Optimistically update the cache IMMEDIATELY - remove the deleted site from UI right away
+      // This provides instant UI feedback before the API call completes
+      const updateCache = (currentData: { sites: Site[] } | undefined) => {
+        if (!currentData) return undefined;
+        return {
+          sites: currentData.sites.filter((s) => s.id !== site.id),
+        };
+      };
+
+      // Rollback function in case deletion fails
+      const rollbackCache = (currentData: { sites: Site[] } | undefined) => {
+        if (!currentData) return undefined;
+        return {
+          sites: [...currentData.sites, site].sort((a, b) => {
+            // Maintain original order by created_at if available
+            if (a.createdAt && b.createdAt) {
+              return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            }
+            return 0;
+          }),
+        };
+      };
+
+      // Update cache optimistically for INSTANT UI update
+      mutateSites(updateCache, { revalidate: false });
+      mutate('/api/sites', updateCache, { revalidate: false });
+
+      // Remove from sites with transactions
+      setSitesWithTransactions((prev) => {
+        const next = new Set(prev);
+        next.delete(site.id);
+        return next;
+      });
+
+      // Clear selection if deleted site was selected
+      if (selectedSite === site.id) {
+        selectedSiteRef.current = null;
+        setSelectedSite(null);
+      }
+
+      // Show success dialog IMMEDIATELY (before API call completes)
+      setDeletedSiteName(site.name);
+      setIsDeleteDialogOpen(true);
+
+      // Perform the actual deletion in the background
       try {
         const response = await fetch(`/api/sites/${site.id}`, {
           method: 'DELETE',
@@ -617,6 +662,19 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
         };
 
         if (!response.ok || !payload.success) {
+          // Rollback optimistic update on error
+          mutateSites(rollbackCache, { revalidate: false });
+          mutate('/api/sites', rollbackCache, { revalidate: false });
+
+          // Restore site in transactions set
+          setSitesWithTransactions((prev) => {
+            const next = new Set(prev);
+            next.add(site.id);
+            return next;
+          });
+
+          // Close success dialog and show error
+          setIsDeleteDialogOpen(false);
           if (payload.dependencies) {
             toast.error(
               `Cannot delete site. It has ${payload.dependencies}. Please delete or unlink these transactions first.`,
@@ -625,44 +683,14 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
               },
             );
           } else {
-            throw new Error(payload.error || 'Failed to delete site.');
+            toast.error(payload.error || 'Failed to delete site. Please try again.');
           }
           return;
         }
 
-        // Optimistically update the cache - remove the deleted site immediately
-        // This provides instant UI feedback before revalidation
-        const updateCache = (currentData: { sites: Site[] } | undefined) => {
-          if (!currentData) return undefined;
-          return {
-            sites: currentData.sites.filter((s) => s.id !== site.id),
-          };
-        };
-
-        // Update cache optimistically for instant UI update
-        mutateSites(updateCache, { revalidate: false });
-        mutate('/api/sites', updateCache, { revalidate: false });
-
-        // Remove from sites with transactions
-        setSitesWithTransactions((prev) => {
-          const next = new Set(prev);
-          next.delete(site.id);
-          return next;
-        });
-
-        // Clear selection if deleted site was selected
-        if (selectedSite === site.id) {
-          selectedSiteRef.current = null;
-          setSelectedSite(null);
-        }
-
-        // Show success dialog
-        setDeletedSiteName(site.name);
-        setIsDeleteDialogOpen(true);
-
-        // Immediately revalidate to fetch fresh data from server (bypassing all caches)
-        // This ensures production gets the latest data immediately
-        await Promise.all([
+        // Revalidate in the background to ensure consistency (non-blocking)
+        // This ensures production gets the latest data but doesn't block the UI
+        void Promise.all([
           mutateSites(undefined, {
             revalidate: true,
             rollbackOnError: false,
@@ -673,11 +701,26 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
           }),
         ]);
       } catch (error) {
+        // Rollback optimistic update on error
+        mutateSites(rollbackCache, { revalidate: false });
+        mutate('/api/sites', rollbackCache, { revalidate: false });
+
+        // Restore site in transactions set
+        setSitesWithTransactions((prev) => {
+          const next = new Set(prev);
+          next.add(site.id);
+          return next;
+        });
+
+        // Close success dialog and show error
+        setIsDeleteDialogOpen(false);
         console.error('Failed to delete site', error);
-        toast.error(error instanceof Error ? error.message : 'Unable to delete site.');
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to delete site. Please try again.',
+        );
       }
     },
-    [selectedSite],
+    [selectedSite, mutateSites],
   );
 
   return (
