@@ -100,15 +100,32 @@ export default function MaterialMasterEditPage({ params }: MaterialMasterEditPag
       // Optimistically update the cache - update the material immediately
       await mutate(
         (key) => typeof key === 'string' && key.startsWith('/api/materials'),
-        async (currentData: { materials: MaterialMaster[] } | undefined) => {
+        async (
+          currentData:
+            | {
+                materials: MaterialMaster[];
+                pagination?: { page: number; limit: number; total: number; totalPages: number };
+              }
+            | { material: MaterialMaster }
+            | undefined,
+        ) => {
           if (!currentData) return undefined;
-          // Update existing material in the list
-          return {
-            materials: currentData.materials.map((m: MaterialMaster) =>
-              m.id === resolvedParams.id ? payload.material! : m,
-            ),
-            pagination: currentData.pagination,
-          };
+          // Handle list response (with materials array)
+          if ('materials' in currentData) {
+            return {
+              ...currentData,
+              materials: currentData.materials.map((m: MaterialMaster) =>
+                m.id === resolvedParams.id ? payload.material! : m,
+              ),
+            };
+          }
+          // Handle single material response
+          if ('material' in currentData && currentData.material.id === resolvedParams.id) {
+            return {
+              material: payload.material!,
+            };
+          }
+          return currentData;
         },
         { revalidate: false },
       );
