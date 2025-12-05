@@ -1,6 +1,5 @@
 'use client';
 
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2,
   UserCheck,
@@ -15,9 +14,9 @@ import {
   Shield,
   TrendingUp,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React from 'react';
 
-import DominoesListScroll from './dominoes-scroll';
+
 import ScrollCard from './ui/scroll-card';
 
 // Define gradient colors that match the Gavith Build theme
@@ -143,118 +142,22 @@ const features = [
 ];
 
 export function FeaturesSection() {
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  // Transform features data for DominoesListScroll
-  const dominoesItems = features.map((feature) => ({
-    image: feature.img,
+  // Transform features data to match ScrollCard interface
+  const cardsData = features.map((feature, index) => ({
+    title: feature.title,
+    description: feature.description,
+    link: feature.img,
+    color: gradientColors[index % gradientColors.length],
+    rotation: rotations[index % rotations.length],
+    icon: feature.icon,
   }));
 
-  // Handle scroll progress to determine active card
-  const handleScrollProgress = (progress: number) => {
-    // Calculate which card should be active based on scroll progress
-    // Each card becomes active when scroll reaches its position (index / totalItems)
-    const totalItems = dominoesItems.length * 2;
-
-    // Find which card is closest to the current scroll position
-    let closestIndex = 0;
-    let minDistance = Infinity;
-
-    for (let i = 0; i < totalItems; i++) {
-      const cardPosition = i / totalItems;
-      const distance = Math.abs(progress - cardPosition);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = i;
-      }
-    }
-
-    // Map back to original features array (since we duplicate)
-    const originalIndex = closestIndex % features.length;
-    setActiveIndex(originalIndex);
-  };
-
-  const activeFeature = features[activeIndex];
-
   return (
-    <section
-      className="relative min-h-screen w-full py-20"
-      style={{
-        background: 'radial-gradient(circle at center, #071F3F 0%, #02142A 60%, #010D1D 100%)',
-      }}
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-transparent to-transparent"></div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-16">
-          <h2 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
-            Features
-          </h2>
-          <p className="text-xl text-blue-100/80 max-w-2xl mx-auto">
-            Powerful tools to manage construction sites, teams, materials, and finances all in one
-            place.
-          </p>
-        </div>
-
-        {/* Main Content: Dominoes on left, Content on right */}
-        <div className="grid lg:grid-cols-2 gap-12 items-center min-h-[600px]">
-          {/* Left: Dominoes Scroll */}
-          <div className="h-[600px] w-full">
-            <DominoesListScroll
-              items={[...dominoesItems, ...dominoesItems]}
-              enableShadow
-              height={500}
-              width={384}
-              onScrollProgress={handleScrollProgress}
-            />
-          </div>
-
-          {/* Right: Feature Content */}
-          <div className="flex items-center justify-center h-full">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeIndex}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className="w-full max-w-lg"
-              >
-                {/* Icon */}
-                <div className="mb-6">
-                  {activeFeature.icon && <activeFeature.icon className="h-12 w-12 text-cyan-400" />}
-                </div>
-
-                {/* Title */}
-                <h3 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                  {activeFeature.title}
-                </h3>
-
-                {/* Description */}
-                <p className="text-blue-100/90 text-lg leading-relaxed mb-6">
-                  {activeFeature.description}
-                </p>
-
-                {/* Feature Number Indicator */}
-                <div className="flex items-center gap-2">
-                  <span className="text-cyan-400/70 text-sm font-medium">
-                    {activeIndex + 1} of {features.length}
-                  </span>
-                  <div className="flex-1 h-1 bg-blue-900/50 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-cyan-400 to-blue-400"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${((activeIndex + 1) / features.length) * 100}%` }}
-                      transition={{ duration: 0.3 }}
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </div>
-      </div>
-    </section>
+    <ScrollCard
+      cardsData={cardsData}
+      title="Comprehensive Construction Management"
+      subtitle="Scroll down to explore all 12 powerful features 👇"
+      sideTitle="What We Built For You 🏗️"
+    />
   );
 }
