@@ -157,11 +157,11 @@ export default function VehicleUsagePage() {
       });
 
       const payload = (await response.json().catch(() => ({}))) as {
-        usage?: VehicleUsage;
+        record?: VehicleUsage;
         error?: string;
       };
 
-      if (!response.ok || !payload.usage) {
+      if (!response.ok || !payload.record) {
         throw new Error(payload.error || 'Failed to create vehicle usage record');
       }
 

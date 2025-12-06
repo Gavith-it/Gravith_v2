@@ -6,18 +6,18 @@ import {
   Users,
   TrendingUp,
   AlertTriangle,
-  Target,
   ArrowRight,
   MapPin,
   ShoppingCart,
-  Info,
   Database,
   BarChart3,
   PieChart,
   type LucideIcon,
 } from 'lucide-react';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import useSWR from 'swr';
+import { mutate } from 'swr';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { fetcher, swrConfig } from '../lib/swr';
@@ -27,6 +27,7 @@ import {
   formatIndianCurrencyShort,
   formatPercentage,
 } from '../lib/utils';
+import { formatDateOnly } from '../lib/utils/date';
 
 import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
@@ -43,13 +44,8 @@ import { Card, CardContent } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
-import type {
-  DashboardActiveSite,
-  DashboardData,
-  DashboardRecentActivity,
-} from '@/types/dashboard';
-
-// Form data types
+import type { DashboardData, DashboardRecentActivity } from '@/types/dashboard';
+import type { Vehicle } from '@/types/entities';
 import type { MaterialMasterInput } from '@/types/materials';
 
 interface ActivityFormData {
@@ -157,6 +153,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     isLoading,
   } = useSWR<DashboardData>('/api/dashboard/overview', fetcher, swrConfig);
 
+  // Fetch vehicles and sites for Vehicle Usage form
+  const { data: vehiclesData } = useSWR<{ vehicles: Vehicle[] }>(
+    '/api/vehicles',
+    fetcher,
+    swrConfig,
+  );
+  const { data: sitesData } = useSWR<{ sites: Array<{ id: string; name: string }> }>(
+    '/api/sites',
+    fetcher,
+    swrConfig,
+  );
+
   // Convert SWR error to string for display
   const error = swrError
     ? swrError instanceof Error
@@ -183,35 +191,309 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const vehicleUsageDialog = useDialogState();
   const activityDialog = useDialogState();
 
+  // Loading states for form submissions
+  const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+  const [isSubmittingMaterial, setIsSubmittingMaterial] = useState(false);
+  const [isSubmittingVehicle, setIsSubmittingVehicle] = useState(false);
+  const [isSubmittingActivity, setIsSubmittingActivity] = useState(false);
+
+  // Map VehicleUsageForm workCategory to database enum
+  const mapWorkCategoryToEnum = (
+    category: string,
+  ): 'construction' | 'transport' | 'delivery' | 'maintenance' | 'inspection' | 'other' => {
+    const categoryMap: Record<
+      string,
+      'construction' | 'transport' | 'delivery' | 'maintenance' | 'inspection' | 'other'
+    > = {
+      Transportation: 'transport',
+      'Material Hauling': 'transport',
+      'Equipment Transport': 'transport',
+      'Site Inspection': 'inspection',
+      Other: 'other',
+    };
+    return categoryMap[category] || 'other';
+  };
+
   // Handler functions for each dialog
   const handleExpenseSubmit = async (data: ExpenseFormData) => {
-    console.log('Expense submitted:', data);
-    expenseDialog.closeDialog();
-    // TODO: Call API to save expense
+    setIsSubmittingExpense(true);
+    try {
+      const response = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          category: data.category,
+          subcategory: data.subcategory,
+          description: data.description,
+          amount: data.amount,
+          date: formatDateOnly(data.date),
+          vendor: data.vendor,
+          siteId: data.siteId,
+          siteName: data.siteName,
+          receipt: data.receipt || null,
+          approvedBy: data.approvedBy || null,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        expense?: unknown;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.expense) {
+        throw new Error(payload.error || 'Failed to create expense');
+      }
+
+      // Close dialog immediately for better UX
+      expenseDialog.closeDialog();
+      toast.success('Expense created successfully');
+
+      // Invalidate cache in background (non-blocking)
+      mutate((key) => typeof key === 'string' && key.startsWith('/api/expenses'), undefined, {
+        revalidate: true,
+      }).catch(() => {});
+      mutate('/api/dashboard/overview', undefined, { revalidate: true }).catch(() => {});
+    } catch (error) {
+      console.error('Error creating expense:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create expense');
+      throw error;
+    } finally {
+      setIsSubmittingExpense(false);
+    }
   };
 
   const handleMaterialMasterSubmit = async (data: MaterialMasterInput) => {
-    console.log('Material master submitted:', data);
-    materialMasterDialog.closeDialog();
-    // TODO: Call API to save material master
+    setIsSubmittingMaterial(true);
+    try {
+      const response = await fetch('/api/materials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name,
+          category: data.category,
+          unit: data.unit,
+          standardRate: data.standardRate,
+          isActive: data.isActive ?? true,
+          hsn: data.hsn || null,
+          taxRateId: data.taxRateId || null,
+          siteId: data.siteId ?? null,
+          openingBalance: data.openingBalance ?? 0,
+          siteAllocations: data.siteAllocations || [],
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        material?: unknown;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.material) {
+        throw new Error(payload.error || 'Failed to create material');
+      }
+
+      // Close dialog immediately for better UX
+      materialMasterDialog.closeDialog();
+      toast.success('Material created successfully');
+
+      // Invalidate cache in background (non-blocking)
+      mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), undefined, {
+        revalidate: true,
+      }).catch(() => {});
+      mutate('/api/dashboard/overview', undefined, { revalidate: true }).catch(() => {});
+    } catch (error) {
+      console.error('Error creating material:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create material');
+      throw error;
+    } finally {
+      setIsSubmittingMaterial(false);
+    }
   };
 
-  const handlePurchaseSubmit = async (data: Record<string, unknown>) => {
-    console.log('Purchase submitted:', data);
+  const handlePurchaseSubmit = async (_data: Record<string, unknown>) => {
+    // PurchaseForm handles its own submission internally using contexts
+    // This callback is just for notification and cleanup
+    // The form will show its own success/error toasts
     purchaseDialog.closeDialog();
-    // TODO: Call API to save purchase
+
+    // Invalidate purchases and materials cache
+    await mutate(
+      (key) =>
+        typeof key === 'string' &&
+        (key.startsWith('/api/purchases') || key.startsWith('/api/materials')),
+      undefined,
+      { revalidate: true },
+    );
+
+    // Invalidate dashboard cache
+    await mutate('/api/dashboard/overview', undefined, { revalidate: true });
   };
 
   const handleVehicleUsageSubmit = async (data: Record<string, unknown>) => {
-    console.log('Vehicle usage submitted:', data);
-    vehicleUsageDialog.closeDialog();
-    // TODO: Call API to save vehicle usage
+    setIsSubmittingVehicle(true);
+    try {
+      // Find selected vehicle and site from the fetched data
+      const selectedVehicle = vehiclesData?.vehicles?.find(
+        (v: Vehicle) => v.id === data.vehicleId,
+      ) as Vehicle | undefined;
+      const selectedSite = sitesData?.sites?.find((s) => s.id === data.siteId);
+
+      if (!selectedVehicle) {
+        throw new Error('Vehicle not found');
+      }
+      if (!selectedSite) {
+        throw new Error('Site not found');
+      }
+
+      const totalDistance = Math.max(
+        0,
+        (data.endOdometer as number) - (data.startOdometer as number),
+      );
+
+      // Map workCategory from form value to database enum
+      const workCategory = data.workCategory
+        ? mapWorkCategoryToEnum(data.workCategory as string)
+        : 'other';
+
+      // Use vehicle data from already fetched list (no extra API call needed)
+      const originalVehicle = selectedVehicle;
+
+      const response = await fetch('/api/vehicles/usage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vehicleId: data.vehicleId,
+          vehicleNumber: selectedVehicle.vehicleNumber,
+          date: typeof data.date === 'string' ? data.date : formatDateOnly(data.date as Date),
+          startTime: data.startTime || null,
+          endTime: data.endTime || null,
+          startOdometer: data.startOdometer || 0,
+          endOdometer: data.endOdometer || 0,
+          totalDistance: totalDistance,
+          workDescription: data.workDescription || null,
+          workCategory: workCategory,
+          siteId: data.siteId || null,
+          siteName: selectedSite.name,
+          operator: selectedVehicle.operator || '',
+          fuelConsumed: typeof data.fuelConsumed === 'number' ? data.fuelConsumed : 0,
+          isRental: selectedVehicle.isRental ?? false,
+          rentalCost: originalVehicle?.totalRentalCost ?? null,
+          vendor: originalVehicle?.vendor ?? null,
+          status: 'In Progress' as const,
+          notes: data.notes || null,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        record?: unknown;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.record) {
+        throw new Error(payload.error || 'Failed to create vehicle usage record');
+      }
+
+      // Close dialog immediately for better UX
+      vehicleUsageDialog.closeDialog();
+      toast.success('Vehicle usage recorded successfully');
+
+      // Invalidate cache in background (non-blocking)
+      mutate((key) => typeof key === 'string' && key.startsWith('/api/vehicles'), undefined, {
+        revalidate: true,
+      }).catch(() => {});
+      mutate('/api/dashboard/overview', undefined, { revalidate: true }).catch(() => {});
+    } catch (error) {
+      console.error('Error creating vehicle usage:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create vehicle usage');
+      throw error;
+    } finally {
+      setIsSubmittingVehicle(false);
+    }
   };
 
   const handleActivitySubmit = async (data: ActivityFormData) => {
-    console.log('Activity submitted:', data);
-    activityDialog.closeDialog();
-    // TODO: Call API to save activity
+    setIsSubmittingActivity(true);
+    try {
+      // Get site name from activeSites
+      const site = activeSites.find((s) => s.id === data.siteId);
+      const siteName = site?.name || data.siteId;
+
+      if (!siteName || !data.name || !data.startDate) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      // Map priority to status
+      const statusMap: Record<
+        ActivityFormData['priority'],
+        'in_progress' | 'completed' | 'on_hold'
+      > = {
+        Critical: 'in_progress',
+        High: 'in_progress',
+        Medium: 'in_progress',
+        Low: 'in_progress',
+      };
+
+      // Use a default unit since category is not a valid unit
+      // Common units: sqft, cft, kg, bags, pieces, etc.
+      const unit = 'sqft'; // Default unit, can be made configurable later
+
+      const response = await fetch('/api/work-progress', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          siteId: data.siteId || null,
+          siteName: siteName,
+          workType: data.name,
+          description: data.description || null,
+          workDate: data.startDate,
+          unit: unit,
+          totalQuantity: parseFloat(data.duration) || 0,
+          laborHours: null, // assignedTeam is a string, not hours - set to null
+          progressPercentage:
+            data.priority === 'Critical'
+              ? 100
+              : data.priority === 'High'
+                ? 75
+                : data.priority === 'Medium'
+                  ? 50
+                  : 25,
+          status: statusMap[data.priority] || 'in_progress',
+          notes: data.resources || null,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        entry?: unknown;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.entry) {
+        throw new Error(payload.error || 'Failed to create work progress entry');
+      }
+
+      // Close dialog immediately for better UX
+      activityDialog.closeDialog();
+      toast.success('Work progress entry created successfully');
+
+      // Invalidate cache in background (non-blocking)
+      mutate((key) => typeof key === 'string' && key.startsWith('/api/work-progress'), undefined, {
+        revalidate: true,
+      }).catch(() => {});
+      mutate('/api/dashboard/overview', undefined, { revalidate: true }).catch(() => {});
+    } catch (error) {
+      console.error('Error creating work progress entry:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create work progress entry');
+      throw error;
+    } finally {
+      setIsSubmittingActivity(false);
+    }
   };
 
   const getAlertVariant = (type: string) => {
@@ -807,8 +1089,41 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         <VehicleUsageForm
           onSubmit={handleVehicleUsageSubmit}
           onCancel={vehicleUsageDialog.closeDialog}
-          vehicles={[]}
-          sites={[]}
+          isSubmitting={isSubmittingVehicle}
+          vehicles={
+            vehiclesData?.vehicles
+              ? vehiclesData.vehicles.map((v: Vehicle) => ({
+                  id: v.id,
+                  vehicleNumber: v.vehicleNumber,
+                  type: v.type,
+                  make: v.make || '',
+                  model: v.model || '',
+                  year: v.year || 0,
+                  siteId: v.siteId || '',
+                  siteName: v.siteName || '',
+                  status:
+                    v.status === 'available' || v.status === 'in_use'
+                      ? 'Active'
+                      : v.status === 'maintenance'
+                        ? 'Maintenance'
+                        : v.status === 'idle'
+                          ? 'Idle'
+                          : 'Returned',
+                  operator: v.operator || '',
+                  isRental: v.isRental || false,
+                  fuelCapacity: v.fuelCapacity || 0,
+                  currentFuelLevel: v.currentFuelLevel || 0,
+                  mileage: v.mileage || 0,
+                  lastMaintenanceDate: v.lastMaintenanceDate || '',
+                  nextMaintenanceDate: v.nextMaintenanceDate || '',
+                  insuranceExpiry: v.insuranceExpiry || '',
+                  registrationExpiry: v.registrationExpiry || '',
+                  createdAt: v.createdAt || '',
+                  lastUpdated: v.updatedAt || '',
+                }))
+              : []
+          }
+          sites={sitesData?.sites || []}
         />
       </FormDialog>
 
@@ -823,6 +1138,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           onSubmit={handleActivitySubmit}
           onCancel={activityDialog.closeDialog}
           sites={activeSites.map((site) => ({ id: site.id, name: site.name }))}
+          isSubmitting={isSubmittingActivity}
         />
       </FormDialog>
     </div>

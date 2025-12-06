@@ -26,6 +26,16 @@ import { MaterialReceiptForm } from './forms/MaterialReceiptForm';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -93,6 +103,10 @@ export function MaterialReceiptsPage({
   });
 
   const dialog = useDialogState<MaterialReceipt>();
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [receiptToDelete, setReceiptToDelete] = useState<MaterialReceipt | null>(null);
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -219,7 +233,7 @@ export function MaterialReceiptsPage({
 
   const activeAdvancedFilterCount = useMemo(
     () => countReceiptAdvancedFilters(appliedAdvancedFilters),
-    [appliedAdvancedFilters],
+    [appliedAdvancedFilters, countReceiptAdvancedFilters],
   );
   const hasActiveAdvancedFilters = activeAdvancedFilterCount > 0;
 
@@ -303,18 +317,32 @@ export function MaterialReceiptsPage({
     dialog.openDialog(receipt);
   };
 
-  const handleDelete = async (receiptId: string) => {
+  const handleDelete = (receiptId: string) => {
     const receipt = receipts.find((r) => r.id === receiptId);
-    if (receipt?.linkedPurchaseId) {
+    if (!receipt) return;
+
+    // Check if receipt is linked
+    if (receipt.linkedPurchaseId) {
       toast.error('Cannot delete a linked receipt', {
         description: 'Please unlink the receipt from the purchase bill first.',
       });
       return;
     }
+
+    // Open confirmation dialog
+    setReceiptToDelete(receipt);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!receiptToDelete) return;
+
     try {
-      setProcessingId(receiptId);
-      await deleteReceipt(receiptId);
+      setProcessingId(receiptToDelete.id);
+      await deleteReceipt(receiptToDelete.id);
       toast.success('Receipt deleted successfully');
+      setDeleteDialogOpen(false);
+      setReceiptToDelete(null);
     } catch (error) {
       console.error('Failed to delete receipt', error);
       toast.error(error instanceof Error ? error.message : 'Failed to delete receipt.');
@@ -775,7 +803,7 @@ export function MaterialReceiptsPage({
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleUnlink(receipt);
+                                    void handleUnlink(receipt);
                                   }}
                                   disabled={processingId === receipt.id}
                                   className="h-8 w-8 p-0 transition-all hover:bg-orange-100 dark:hover:bg-orange-900/30"
@@ -1113,6 +1141,45 @@ export function MaterialReceiptsPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Material Receipt</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this material receipt?
+              {receiptToDelete && (
+                <>
+                  <br />
+                  <br />
+                  <strong>Receipt Details:</strong>
+                  <br />
+                  Vehicle: {receiptToDelete.vehicleNumber}
+                  <br />
+                  Material: {receiptToDelete.materialName}
+                  <br />
+                  Date: {receiptToDelete.date}
+                  <br />
+                  Net Weight: {receiptToDelete.netWeight.toFixed(2)} kg
+                </>
+              )}
+              <br />
+              <br />
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setReceiptToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

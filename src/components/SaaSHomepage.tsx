@@ -1,25 +1,12 @@
 'use client';
 
-import {
-  Check,
-  Building2,
-  Users,
-  Shield,
-  TrendingUp,
-  Zap,
-  ArrowRight,
-  Star,
-  Phone,
-  Mail,
-  MapPin,
-} from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { Check, ArrowRight, Phone, Mail, MapPin } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 import gavithLogo from '../assets/40b9a52cc41bb9e286b6859d260d4a3571e6e982.png';
 
 import { FeaturesSection } from './FeaturesSection';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 
@@ -83,8 +70,8 @@ export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
         style={{ margin: 0, padding: 0 }}
       >
         <div className="bg-gradient-to-r from-cyan-500/70 via-blue-600/70 to-blue-700/70 backdrop-blur-md border-b border-cyan-400/20 shadow-2xl shadow-cyan-500/20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-12">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-10 sm:h-12">
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <ImageWithFallback
@@ -107,7 +94,7 @@ export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
                 </div>
               </div>
 
-              <nav className="hidden md:flex items-center gap-7">
+              <nav className="hidden lg:flex items-center gap-4 xl:gap-7">
                 <a
                   href="#features"
                   className="text-cyan-50 hover:text-white text-sm font-medium transition-all duration-300 hover:scale-110"
@@ -128,22 +115,24 @@ export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
                 </a>
               </nav>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-cyan-50 hover:text-white hover:bg-white/10 border border-cyan-200/30 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-sm px-4 py-2"
+                  className="text-cyan-50 hover:text-white hover:bg-white/10 border border-cyan-200/30 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-xs sm:text-sm px-2 sm:px-3 md:px-4 py-1.5 sm:py-2"
                   onClick={onLogin}
                 >
-                  Sign In
+                  <span className="hidden sm:inline">Sign In</span>
+                  <span className="sm:hidden">Sign In</span>
                 </Button>
                 <Button
                   size="sm"
-                  className="bg-gradient-to-r from-white via-cyan-50 to-white text-blue-700 hover:from-cyan-50 hover:via-white hover:to-cyan-50 font-bold text-sm px-5 py-2 shadow-2xl shadow-white/30 border-0 transition-all duration-300 hover:scale-105"
+                  className="bg-gradient-to-r from-white via-cyan-50 to-white text-blue-700 hover:from-cyan-50 hover:via-white hover:to-cyan-50 font-bold text-xs sm:text-sm px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 shadow-2xl shadow-white/30 border-0 transition-all duration-300 hover:scale-105"
                   onClick={onGetStarted}
                 >
-                  Get Started
-                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Get Started</span>
+                  <span className="sm:hidden">Start</span>
+                  <ArrowRight className="ml-1 sm:ml-1.5 h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 </Button>
               </div>
             </div>
@@ -234,11 +223,13 @@ export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-transparent to-transparent"></div>
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-          <div className="text-center mb-12">
-            <h2 className="text-5xl md:text-6xl font-bold text-white mb-4 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-3 sm:mb-4 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl px-4">
               Transparent Pricing
             </h2>
-            <p className="text-xl text-blue-100/80">One simple plan with everything included</p>
+            <p className="text-base sm:text-lg md:text-xl text-blue-100/80 px-4">
+              One simple plan with everything included
+            </p>
           </div>
 
           <Card className="bg-gradient-to-br from-white/15 to-white/5 backdrop-blur-2xl border-2 border-blue-400/40 shadow-2xl shadow-blue-500/30 hover:shadow-cyan-500/50 transition-all duration-500 hover:scale-105">
@@ -284,13 +275,13 @@ export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-transparent to-transparent"></div>
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-          <div className="text-center mb-20">
-            <h2 className="text-6xl md:text-7xl font-bold mb-8 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
+          <div className="text-center mb-12 sm:mb-16 md:mb-20">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 md:mb-8 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl px-4">
               Start Your Journey Today
             </h2>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-10">
+          <div className="grid md:grid-cols-2 gap-6 sm:gap-8 md:gap-10">
             {/* Contact Info Card */}
             <Card className="bg-gradient-to-br from-white/15 to-white/5 backdrop-blur-2xl border-2 border-cyan-400/40 hover:border-cyan-400/60 transition-all duration-500 p-10 hover:scale-105 shadow-2xl shadow-cyan-500/30">
               <div className="flex items-center gap-4 mb-10">

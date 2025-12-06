@@ -233,7 +233,7 @@ export async function POST(request: Request) {
       site_id: body.siteId,
       site_name: body.siteName,
       operator: body.operator,
-      fuel_consumed: body.fuelConsumed,
+      fuel_consumed: typeof body.fuelConsumed === 'number' ? body.fuelConsumed : 0,
       is_rental: body.isRental,
       rental_cost: body.rentalCost ?? null,
       vendor: body.vendor ?? null,

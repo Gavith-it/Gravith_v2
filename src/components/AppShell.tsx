@@ -129,38 +129,38 @@ export function AppShell({ children }: AppShellProps) {
             />
 
             <main className="flex-1 overflow-auto w-full">
-              <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/60 dark:border-gray-700/60 dark:bg-gradient-to-r dark:from-gray-900 dark:to-gray-800/80">
-                <div className="flex items-center gap-4">
-                  <SidebarTrigger className="h-9 w-9 rounded-lg border border-gray-200/60 dark:border-gray-700/60 bg-white/80 dark:bg-gray-800/80 hover:bg-gray-50/80 dark:hover:bg-gray-700/80 shadow-sm hover:shadow-md transition-all duration-200" />
-                  <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between h-auto sm:h-16 px-3 sm:px-4 md:px-6 py-2 sm:py-0 border-b border-gray-200/60 dark:border-gray-700/60 dark:bg-gradient-to-r dark:from-gray-900 dark:to-gray-800/80 gap-2 sm:gap-0">
+                <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                  <SidebarTrigger className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border border-gray-200/60 dark:border-gray-700/60 bg-white/80 dark:bg-gray-800/80 hover:bg-gray-50/80 dark:hover:bg-gray-700/80 shadow-sm hover:shadow-md transition-all duration-200 flex-shrink-0" />
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
                     <Image
                       src="/Untitled design.png"
                       alt="Dashboard icon"
                       width={32}
                       height={32}
-                      className="h-8 w-8 object-cover"
+                      className="h-6 w-6 sm:h-8 sm:w-8 object-cover flex-shrink-0"
                       priority
                     />
-                    <div>
-                      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 capitalize leading-tight">
+                    <div className="min-w-0">
+                      <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100 capitalize leading-tight truncate">
                         {currentPage}
                       </h1>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-tight">
+                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-medium leading-tight hidden sm:block">
                         Management Dashboard
                       </p>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
                   {user && (
-                    <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                        <span className="text-white text-sm font-semibold">
+                    <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                      <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs sm:text-sm font-semibold">
                           {user.firstName?.charAt(0) ?? user.username.charAt(0)}
                           {user.lastName?.charAt(0) ?? ''}
                         </span>
                       </div>
-                      <span className="font-medium">
+                      <span className="font-medium hidden lg:inline">
                         {user.firstName && user.lastName
                           ? `${user.firstName} ${user.lastName}`
                           : user.email}
@@ -170,7 +170,7 @@ export function AppShell({ children }: AppShellProps) {
                   <ThemeToggle />
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
+                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -184,7 +184,9 @@ export function AppShell({ children }: AppShellProps) {
                   </button>
                 </div>
               </div>
-              <div className="min-h-full w-full max-w-none bg-background">{children}</div>
+              <div className="min-h-full w-full max-w-none bg-background px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+                {children}
+              </div>
             </main>
           </div>
         </SidebarProvider>

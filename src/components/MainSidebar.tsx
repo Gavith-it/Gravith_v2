@@ -15,7 +15,6 @@ import {
   ShoppingCart,
   Target,
   Database,
-  FileText,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -129,27 +128,27 @@ export function MainSidebar({ currentPage, onNavigate }: MainSidebarProps) {
   return (
     <TooltipProvider>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="border-b border-sidebar-border h-16 px-4">
+        <SidebarHeader className="border-b border-sidebar-border h-14 sm:h-16 px-2 sm:px-4">
           <div className="flex h-full w-full items-center justify-center">
             <Image
               src="/Untitled design.png"
               alt="Build Logo"
               width={40}
               height={40}
-              className="h-10 w-10 object-cover"
+              className="h-8 w-8 sm:h-10 sm:w-10 object-cover"
             />
             {state === 'expanded' && (
-              <span className="text-2xl font-bold text-sidebar-foreground leading-tight tracking-tight ml-3">
+              <span className="text-lg sm:text-xl md:text-2xl font-bold text-sidebar-foreground leading-tight tracking-tight ml-2 sm:ml-3">
                 BUILD
               </span>
             )}
           </div>
         </SidebarHeader>
 
-        <SidebarContent className="px-2 py-4">
+        <SidebarContent className="px-1 sm:px-2 py-2 sm:py-4">
           <SidebarGroup>
             {state === 'expanded' && (
-              <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+              <SidebarGroupLabel className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
                 Navigation
               </SidebarGroupLabel>
             )}
@@ -162,21 +161,23 @@ export function MainSidebar({ currentPage, onNavigate }: MainSidebarProps) {
                       onMouseEnter={() => handleMouseEnter(item.id)}
                       isActive={currentPage === item.id}
                       tooltip={item.title}
-                      className={`h-11 px-3 rounded-lg transition-all duration-200 ${
+                      className={`h-9 sm:h-10 md:h-11 px-2 sm:px-3 rounded-lg transition-all duration-200 ${
                         currentPage === item.id
                           ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-md border border-sidebar-border'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                       }`}
                     >
-                      <item.icon className="h-5 w-5 shrink-0" />
-                      <span className="font-semibold truncate text-sm">{item.title}</span>
+                      <item.icon className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+                      <span className="font-semibold truncate text-xs sm:text-sm">
+                        {item.title}
+                      </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-          <div className="mx-3 my-2 border-b border-sidebar-border"></div>
+          <div className="mx-2 sm:mx-3 my-2 border-b border-sidebar-border"></div>
         </SidebarContent>
 
         <SidebarFooter className="px-2 py-2">

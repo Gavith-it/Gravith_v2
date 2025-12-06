@@ -14,7 +14,7 @@ import {
   Shield,
   TrendingUp,
 } from 'lucide-react';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import AnimatedShaderBackground from './AnimatedShaderBackground';
 import DominoesListScroll from './dominoes-scroll';
@@ -142,6 +142,28 @@ const features = [
 ];
 
 export function FeaturesSection() {
+  const [dimensions, setDimensions] = useState({ height: 512, width: 720 });
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      const width = window.innerWidth;
+      if (width < 768) {
+        // Mobile
+        setDimensions({ height: 400, width: Math.min(width - 32, 320) });
+      } else if (width < 1024) {
+        // Tablet
+        setDimensions({ height: 450, width: Math.min(width - 64, 600) });
+      } else {
+        // Desktop
+        setDimensions({ height: 512, width: 720 });
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
   // Transform features data to match DominoesListScroll interface with full card data
   const dominoesItems = features.map((feature, index) => ({
     title: feature.title,
@@ -160,25 +182,30 @@ export function FeaturesSection() {
       }}
     >
       <AnimatedShaderBackground />
-      <section className="text-white h-auto py-20 w-full grid place-content-center relative top-0 z-10">
+      <section className="text-white h-auto py-12 sm:py-16 md:py-20 w-full grid place-content-center relative top-0 z-10 px-4 sm:px-6 md:px-8">
         <div className="absolute bottom-0 left-0 right-0 top-0 bg-gradient-to-b from-transparent via-cyan-900/10 to-transparent z-0"></div>
 
-        {/* Decorative squares */}
-        <div className="absolute top-10 left-20 w-20 h-20 border-2 border-cyan-400/30 rounded-sm rotate-12"></div>
-        <div className="absolute top-16 right-20 w-16 h-16 border-2 border-blue-400/20 rounded-sm -rotate-6"></div>
-        <div className="absolute top-20 left-1/3 w-12 h-12 bg-cyan-500/10 rounded-sm rotate-45"></div>
+        {/* Decorative squares - hidden on mobile */}
+        <div className="hidden sm:block absolute top-10 left-10 sm:left-20 w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-cyan-400/30 rounded-sm rotate-12"></div>
+        <div className="hidden sm:block absolute top-16 right-10 sm:right-20 w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 border-2 border-blue-400/20 rounded-sm -rotate-6"></div>
+        <div className="hidden md:block absolute top-20 left-1/3 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-cyan-500/10 rounded-sm rotate-45"></div>
 
-        <h1 className="2xl:text-7xl text-5xl px-8 font-semibold text-center tracking-tight leading-[120%] relative z-10 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl 2xl:text-7xl px-4 sm:px-6 md:px-8 font-semibold text-center tracking-tight leading-[120%] relative z-10 bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
           Comprehensive Construction Management
         </h1>
 
-        <p className="text-xl text-center mt-4 text-cyan-100/80 relative z-10">
+        <p className="text-base sm:text-lg md:text-xl text-center mt-3 sm:mt-4 text-cyan-100/80 relative z-10 px-4">
           Scroll down to explore all 12 powerful features 👇
         </p>
       </section>
 
       <div className="h-screen w-full relative z-10">
-        <DominoesListScroll items={dominoesItems} height={512} width={720} enableShadow={true} />
+        <DominoesListScroll
+          items={dominoesItems}
+          height={dimensions.height}
+          width={dimensions.width}
+          enableShadow={true}
+        />
       </div>
     </div>
   );
