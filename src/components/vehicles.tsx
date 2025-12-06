@@ -181,6 +181,7 @@ export function VehiclesPage({
     addRecord: createUsageRecord,
     updateRecord: editUsageRecord,
     deleteRecord: removeUsageRecord,
+    refresh: refreshUsageRecords,
   } = useVehicleUsage();
 
   const [selectedVehicle, setSelectedVehicle] = useState<string>(propSelectedVehicle || '');
@@ -1041,12 +1042,14 @@ export function VehiclesPage({
       return;
     }
 
-    // Show success toast IMMEDIATELY (context will optimistically update)
-    toast.success('Usage record deleted successfully.');
-
     // Perform the deletion (context handles optimistic updates and rollback)
     try {
       await removeUsageRecord(recordId);
+      toast.success('Usage record deleted successfully.');
+
+      // Force refresh to ensure data consistency (context already refreshes, but this ensures it)
+      // This prevents the record from reappearing on page refresh
+      await refreshUsageRecords();
     } catch (error) {
       console.error('Failed to delete usage record', error);
       toast.error(
