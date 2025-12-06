@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import React from 'react';
 
+import AnimatedShaderBackground from './AnimatedShaderBackground';
 import DominoesListScroll from './dominoes-scroll';
 
 // Define gradient colors that match the Gavith Build theme
@@ -153,13 +154,14 @@ export function FeaturesSection() {
 
   return (
     <div
-      className="min-h-screen w-full"
+      className="min-h-screen w-full relative"
       style={{
         background: 'radial-gradient(circle at center, #071F3F 0%, #02142A 60%, #010D1D 100%)',
       }}
     >
-      <section className="text-white h-auto py-20 w-full grid place-content-center relative top-0">
-        <div className="absolute bottom-0 left-0 right-0 top-0 bg-gradient-to-b from-transparent via-cyan-900/10 to-transparent"></div>
+      <AnimatedShaderBackground />
+      <section className="text-white h-auto py-20 w-full grid place-content-center relative top-0 z-10">
+        <div className="absolute bottom-0 left-0 right-0 top-0 bg-gradient-to-b from-transparent via-cyan-900/10 to-transparent z-0"></div>
 
         {/* Decorative squares */}
         <div className="absolute top-10 left-20 w-20 h-20 border-2 border-cyan-400/30 rounded-sm rotate-12"></div>
@@ -175,7 +177,7 @@ export function FeaturesSection() {
         </p>
       </section>
 
-      <div className="h-screen w-full">
+      <div className="h-screen w-full relative z-10">
         <DominoesListScroll items={dominoesItems} height={512} width={720} enableShadow={true} />
       </div>
     </div>
