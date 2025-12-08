@@ -8,6 +8,7 @@ import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useIsSmallScreen } from '@/lib/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
 /**
@@ -74,13 +75,13 @@ export interface TopNavProps {
  * Breadcrumb component with mobile collapse
  */
 function BreadcrumbNav({ breadcrumbs }: { breadcrumbs: Breadcrumb[] }) {
-  const [showFullPath, setShowFullPath] = React.useState(false);
   const router = useRouter();
 
   // On mobile, show only last item + back button
   // On desktop, show full breadcrumb trail
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-  const displayBreadcrumbs = isMobile && !showFullPath ? breadcrumbs.slice(-1) : breadcrumbs;
+  // Uses reactive hook that updates on resize/rotation (640px breakpoint - sm)
+  const isSmallScreen = useIsSmallScreen();
+  const displayBreadcrumbs = isSmallScreen ? breadcrumbs.slice(-1) : breadcrumbs;
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -135,9 +136,6 @@ function BreadcrumbNav({ breadcrumbs }: { breadcrumbs: Breadcrumb[] }) {
 function TabNav({ tabs }: { tabs: Tab[] }) {
   const router = useRouter();
   const tabListRef = React.useRef<HTMLDivElement>(null);
-  const [focusedIndex, setFocusedIndex] = React.useState(
-    tabs.findIndex((tab) => tab.isActive) || 0,
-  );
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent, currentIndex: number) => {
@@ -158,7 +156,6 @@ function TabNav({ tabs }: { tabs: Tab[] }) {
     }
 
     if (newIndex !== currentIndex) {
-      setFocusedIndex(newIndex);
       // Focus the new tab
       const tabElements = tabListRef.current?.querySelectorAll('[role="tab"]');
       if (tabElements?.[newIndex]) {
@@ -187,7 +184,7 @@ function TabNav({ tabs }: { tabs: Tab[] }) {
             aria-current={isActive ? 'page' : undefined}
             tabIndex={isActive ? 0 : -1}
             onKeyDown={(e) => handleKeyDown(e, index)}
-            onFocus={() => setFocusedIndex(index)}
+            onFocus={() => {}}
             onMouseEnter={() => {
               // Prefetch on hover for even faster navigation
               if (!isActive) {

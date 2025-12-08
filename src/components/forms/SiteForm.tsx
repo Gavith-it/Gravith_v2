@@ -18,8 +18,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { Site, SiteInput } from '@/types/sites';
 import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
+import type { Site, SiteInput } from '@/types/sites';
 
 interface SiteFormProps {
   mode: 'new' | 'edit';
@@ -55,6 +55,116 @@ const siteFormSchema = z
   });
 
 type SiteFormData = z.infer<typeof siteFormSchema>;
+
+// Budget input component that handles string display and number conversion
+interface BudgetInputFieldProps {
+  field: {
+    value: number | undefined;
+    onChange: (value: number | undefined) => void;
+    onBlur: () => void;
+  };
+  fieldState: {
+    invalid: boolean;
+  };
+  formId: string;
+}
+
+function BudgetInputField({ field, fieldState, formId }: BudgetInputFieldProps) {
+  // Keep value as string for input, convert to number on blur
+  const [displayValue, setDisplayValue] = React.useState<string>(() => {
+    return field.value?.toString() ?? '';
+  });
+  const isUserTypingRef = React.useRef<boolean>(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Only sync with field value when it's clearly an external change (form reset)
+  // Not when user is typing - this prevents numbers from reappearing
+  React.useEffect(() => {
+    // Skip sync if user is currently typing
+    if (isUserTypingRef.current) {
+      return;
+    }
+
+    const fieldValueStr = field.value?.toString() ?? '';
+    const currentDisplayStr = displayValue;
+
+    // Only sync if field value is different from what we're displaying
+    // This indicates an external change (form reset, initial load, etc.)
+    if (fieldValueStr !== currentDisplayStr) {
+      setDisplayValue(fieldValueStr);
+    }
+  }, [field.value, displayValue]);
+
+  return (
+    <Field data-invalid={fieldState.invalid}>
+      <FieldLabel htmlFor={`${formId}-budget`}>
+        Total Budget (₹) <span className="text-destructive">*</span>
+      </FieldLabel>
+      <Input
+        ref={inputRef}
+        id={`${formId}-budget`}
+        type="text"
+        inputMode="numeric"
+        aria-invalid={fieldState.invalid}
+        placeholder="50000000"
+        value={displayValue}
+        onChange={(e) => {
+          const value = e.target.value;
+          // Allow empty string and valid numbers only (integers for budget)
+          // Pattern: allows digits only, no decimals for budget
+          if (value === '' || /^\d+$/.test(value)) {
+            // Mark that user is typing
+            isUserTypingRef.current = true;
+
+            // Update display immediately - user has full control
+            setDisplayValue(value);
+
+            // Convert to number only if value is not empty
+            if (value === '') {
+              field.onChange(undefined);
+            } else {
+              const numValue = Number(value);
+              // Only update if it's a valid number
+              if (!isNaN(numValue) && numValue > 0) {
+                field.onChange(numValue);
+              }
+            }
+
+            // Reset typing flag after a short delay to allow sync on external changes
+            setTimeout(() => {
+              isUserTypingRef.current = false;
+            }, 100);
+          }
+        }}
+        onBlur={(e) => {
+          // Mark that user is no longer typing
+          isUserTypingRef.current = false;
+
+          // On blur, ensure the value is properly formatted
+          const value = e.target.value.trim();
+          if (value === '') {
+            setDisplayValue('');
+            field.onChange(undefined);
+          } else {
+            const numValue = Number(value);
+            if (!isNaN(numValue) && numValue > 0) {
+              const formattedValue = numValue.toString();
+              setDisplayValue(formattedValue);
+              field.onChange(numValue);
+            }
+            // If invalid, keep what user typed - validation will show error
+          }
+          field.onBlur();
+        }}
+        style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+      />
+      <FieldDescription>Total allocated budget for this project.</FieldDescription>
+      {fieldState.invalid && (
+        <FieldError>Please enter a valid budget amount (minimum ₹1,000).</FieldError>
+      )}
+    </Field>
+  );
+}
 
 export default function SiteForm({ mode, site, onSubmit, onCancel }: SiteFormProps) {
   const isEditMode = mode === 'edit';
@@ -237,26 +347,7 @@ export default function SiteForm({ mode, site, onSubmit, onCancel }: SiteFormPro
                 name="budget"
                 control={form.control}
                 render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor={`${formId}-budget`}>
-                      Total Budget (₹) <span className="text-destructive">*</span>
-                    </FieldLabel>
-                    <Input
-                      {...field}
-                      id={`${formId}-budget`}
-                      type="number"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="50000000"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === '' ? undefined : Number(value));
-                      }}
-                      value={field.value ?? ''}
-                      style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                    />
-                    <FieldDescription>Total allocated budget for this project.</FieldDescription>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
+                  <BudgetInputField field={field} fieldState={fieldState} formId={formId} />
                 )}
               />
 

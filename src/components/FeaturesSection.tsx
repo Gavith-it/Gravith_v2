@@ -16,8 +16,11 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 
+
 import AnimatedShaderBackground from './AnimatedShaderBackground';
 import DominoesListScroll from './dominoes-scroll';
+
+import { useIsMobile } from '@/lib/hooks/use-mobile';
 
 // Define gradient colors that match the Gavith Build theme
 const gradientColors = [
@@ -144,9 +147,14 @@ const features = [
 export function FeaturesSection() {
   const [dimensions, setDimensions] = useState({ height: 512, width: 720 });
   const resizeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const updateDimensions = () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
       const width = window.innerWidth;
       if (width < 768) {
         // Mobile
@@ -176,7 +184,7 @@ export function FeaturesSection() {
         clearTimeout(resizeTimeoutRef.current);
       }
     };
-  }, []);
+  }, [isMobile]); // Update when mobile state changes
 
   // Transform features data to match DominoesListScroll interface with full card data
   const dominoesItems = useMemo(
