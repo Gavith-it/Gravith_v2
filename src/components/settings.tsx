@@ -3,7 +3,7 @@
 import { User as UserIcon, Shield, Bell, Palette, Lock, Save } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { useTheme } from '@/components/theme-provider';
+
 
 import { SectionCard } from './layout/SectionCard';
 import { Badge } from './ui/badge';
@@ -16,15 +16,17 @@ import { Separator } from './ui/separator';
 import { Switch } from './ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
+import { useTheme } from '@/components/theme-provider';
+
 function ThemePreferenceControl() {
   const { theme, setTheme, effectiveTheme } = useTheme();
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
       <div className="space-y-1">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Theme</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Current: {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'} 
+        <p className="text-sm font-medium text-foreground">Theme</p>
+        <p className="text-xs text-muted-foreground">
+          Current: {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'}
           {theme === 'system' && ` (${effectiveTheme === 'dark' ? 'Dark' : 'Light'})`}
         </p>
       </div>
@@ -68,12 +70,14 @@ interface UserSettingsProps {
     organizationRole?: string;
     companyName: string;
   };
-  onUpdateUser?: (updates: Partial<{
-    username: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-  }>) => Promise<void> | void;
+  onUpdateUser?: (
+    updates: Partial<{
+      username: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+    }>,
+  ) => Promise<void> | void;
 }
 
 export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
@@ -144,7 +148,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       toast.error('New passwords do not match');
       return;
@@ -167,7 +171,9 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
       });
 
       if (!response.ok) {
-        const { error } = await response.json().catch(() => ({ error: 'Failed to update password' }));
+        const { error } = await response
+          .json()
+          .catch(() => ({ error: 'Failed to update password' }));
         throw new Error(error || 'Failed to update password');
       }
 
@@ -198,11 +204,11 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
   const handlePreferencesUpdate = async (key: string, value: string | boolean) => {
     const updatedPreferences = { ...preferences, [key]: value };
     setPreferences(updatedPreferences);
-    
+
     // Save to localStorage
     try {
       localStorage.setItem('userPreferences', JSON.stringify(updatedPreferences));
-      
+
       // Also save to API (optional, for future database storage)
       await fetch('/api/auth/preferences', {
         method: 'PATCH',
@@ -250,8 +256,8 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
               <SectionCard title="Profile Information">
                 <form onSubmit={handleProfileSubmit} className="space-y-6">
                   {/* User Avatar and Basic Info */}
-                  <div className="flex items-center gap-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border">
-                    <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full shadow-lg">
+                  <div className="flex items-center gap-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-xl border border-border">
+                    <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-500 dark:to-indigo-500 rounded-full shadow-lg">
                       <span className="text-white font-bold text-lg">
                         {fullName
                           ? fullName
@@ -264,7 +270,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                       </span>
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-xl font-semibold text-gray-900">
+                      <h3 className="text-xl font-semibold text-foreground">
                         {fullName || safeUser.username || 'User'}
                       </h3>
                       <div className="flex items-center gap-3 mt-2">
@@ -272,7 +278,9 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                           <Shield className="h-3 w-3" />
                           {safeUser.organizationRole || safeUser.role}
                         </Badge>
-                        <span className="text-sm text-gray-600">{safeUser.companyName}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {safeUser.companyName}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -280,7 +288,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                   {/* Form Fields */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="username" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="username" className="text-sm font-medium text-foreground">
                         Username
                       </Label>
                       <Input
@@ -290,12 +298,12 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                           setProfileForm((prev) => ({ ...prev, username: e.target.value }))
                         }
                         disabled
-                        className="bg-gray-50 dark:bg-gray-800"
+                        className="bg-muted"
                       />
-                      <p className="text-xs text-gray-500">Username cannot be changed</p>
+                      <p className="text-xs text-muted-foreground">Username cannot be changed</p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="email" className="text-sm font-medium text-foreground">
                         Email Address <span className="text-destructive">*</span>
                       </Label>
                       <Input
@@ -313,7 +321,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="firstName" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="firstName" className="text-sm font-medium text-foreground">
                         First Name
                       </Label>
                       <Input
@@ -326,7 +334,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="lastName" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="lastName" className="text-sm font-medium text-foreground">
                         Last Name
                       </Label>
                       <Input
@@ -342,25 +350,30 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
 
                   {fullName && (
                     <div className="space-y-2">
-                      <Label htmlFor="fullNameDisplay" className="text-sm font-medium text-gray-700">
+                      <Label
+                        htmlFor="fullNameDisplay"
+                        className="text-sm font-medium text-foreground"
+                      >
                         Full Name
                       </Label>
-                      <Input
-                        id="fullNameDisplay"
-                        value={fullName}
-                        disabled
-                        className="bg-gray-50 dark:bg-gray-800"
-                      />
-                      <p className="text-xs text-gray-500">Computed from First Name and Last Name</p>
+                      <Input id="fullNameDisplay" value={fullName} disabled className="bg-muted" />
+                      <p className="text-xs text-muted-foreground">
+                        Computed from First Name and Last Name
+                      </p>
                     </div>
                   )}
 
                   <div className="space-y-2">
-                    <Label htmlFor="company" className="text-sm font-medium text-gray-700">
+                    <Label htmlFor="company" className="text-sm font-medium text-foreground">
                       Company
                     </Label>
-                    <Input id="company" value={safeUser.companyName} disabled className="bg-gray-50" />
-                    <p className="text-xs text-gray-500">Company cannot be changed</p>
+                    <Input
+                      id="company"
+                      value={safeUser.companyName}
+                      disabled
+                      className="bg-muted"
+                    />
+                    <p className="text-xs text-muted-foreground">Company cannot be changed</p>
                   </div>
 
                   <Separator />
@@ -386,7 +399,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                     <div className="space-y-2">
                       <Label
                         htmlFor="currentPassword"
-                        className="text-sm font-medium text-gray-700"
+                        className="text-sm font-medium text-foreground"
                       >
                         Current Password
                       </Label>
@@ -403,7 +416,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="newPassword" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="newPassword" className="text-sm font-medium text-foreground">
                         New Password
                       </Label>
                       <Input
@@ -421,7 +434,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                     <div className="space-y-2">
                       <Label
                         htmlFor="confirmPassword"
-                        className="text-sm font-medium text-gray-700"
+                        className="text-sm font-medium text-foreground"
                       >
                         Confirm New Password
                       </Label>
@@ -441,8 +454,8 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                   <Separator />
 
                   <div className="flex justify-end">
-                    <Button 
-                      type="submit" 
+                    <Button
+                      type="submit"
                       className="bg-blue-600 hover:bg-blue-700 px-6"
                       disabled={isUpdatingPassword}
                     >
@@ -461,10 +474,12 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
             <div className="max-w-4xl mx-auto space-y-6">
               <SectionCard title="Notification Settings">
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-900">Email Notifications</p>
-                      <p className="text-xs text-gray-500">Receive notifications via email</p>
+                      <p className="text-sm font-medium text-foreground">Email Notifications</p>
+                      <p className="text-xs text-muted-foreground">
+                        Receive notifications via email
+                      </p>
                     </div>
                     <Switch
                       checked={preferences.emailNotifications}
@@ -474,10 +489,10 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-card">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-900">Push Notifications</p>
-                      <p className="text-xs text-gray-500">Receive browser notifications</p>
+                      <p className="text-sm font-medium text-foreground">Push Notifications</p>
+                      <p className="text-xs text-muted-foreground">Receive browser notifications</p>
                     </div>
                     <Switch
                       checked={preferences.pushNotifications}
@@ -501,7 +516,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="language" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="language" className="text-sm font-medium text-foreground">
                         Language
                       </Label>
                       <Select
@@ -520,7 +535,7 @@ export function SettingsPage({ user, onUpdateUser }: UserSettingsProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="timezone" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="timezone" className="text-sm font-medium text-foreground">
                         Timezone
                       </Label>
                       <Select
