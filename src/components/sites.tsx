@@ -1190,7 +1190,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                           <div className="space-y-2 mb-4">
                             <div className="flex justify-between items-center">
                               <span className="text-xs font-medium text-muted-foreground">
-                                Project Progress
+                                Overall Work Progress
                               </span>
                               <span className="text-sm font-bold text-foreground">
                                 {progressValue}%

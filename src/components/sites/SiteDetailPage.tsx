@@ -824,7 +824,9 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
         <CardContent className="p-6">
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-muted-foreground">Project Progress</span>
+              <span className="text-sm font-medium text-muted-foreground">
+                Overall Work Progress
+              </span>
               <span className="text-sm font-bold text-foreground">{averageProgress}%</span>
             </div>
             <Progress value={averageProgress} className="h-3" />
