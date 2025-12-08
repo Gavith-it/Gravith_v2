@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2, Building2, ExternalLink, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Building2, Loader2 } from 'lucide-react';
 import * as React from 'react';
 import { Controller, useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -647,48 +647,16 @@ export default function MaterialMasterForm({
                     Loading sites...
                   </div>
                 ) : sites.length === 0 ? (
-                  <div className="py-4 space-y-3">
+                  <div className="py-4">
                     <p className="text-center text-sm text-muted-foreground">
                       No sites available. Create a site first.
                     </p>
-                    <div className="flex justify-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          toast.info('Please navigate to Sites page to create a new site.', {
-                            description: 'You can return here after creating the site.',
-                          });
-                        }}
-                        className="gap-2"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        Create Site
-                      </Button>
-                    </div>
                   </div>
                 ) : siteAllocations.length === 0 ? (
-                  <div className="py-4 space-y-3">
+                  <div className="py-4">
                     <p className="text-center text-sm text-muted-foreground">
                       Click &quot;Add Site&quot; to create an allocation.
                     </p>
-                    <div className="flex justify-center gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          toast.info('Need to create a new site?', {
-                            description: 'Navigate to Sites page to add a new site.',
-                          });
-                        }}
-                        className="gap-2 text-xs"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Create Site
-                      </Button>
-                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
