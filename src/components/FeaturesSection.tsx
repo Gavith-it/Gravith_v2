@@ -14,7 +14,7 @@ import {
   Shield,
   TrendingUp,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 
 import AnimatedShaderBackground from './AnimatedShaderBackground';
 import DominoesListScroll from './dominoes-scroll';
@@ -143,6 +143,7 @@ const features = [
 
 export function FeaturesSection() {
   const [dimensions, setDimensions] = useState({ height: 512, width: 720 });
+  const resizeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -160,19 +161,36 @@ export function FeaturesSection() {
     };
 
     updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+
+    const handleResize = () => {
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+      resizeTimeoutRef.current = setTimeout(updateDimensions, 150);
+    };
+
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Transform features data to match DominoesListScroll interface with full card data
-  const dominoesItems = features.map((feature, index) => ({
-    title: feature.title,
-    description: feature.description,
-    image: feature.img,
-    color: gradientColors[index % gradientColors.length],
-    rotation: rotations[index % rotations.length],
-    icon: feature.icon,
-  }));
+  const dominoesItems = useMemo(
+    () =>
+      features.map((feature, index) => ({
+        title: feature.title,
+        description: feature.description,
+        image: feature.img,
+        color: gradientColors[index % gradientColors.length],
+        rotation: rotations[index % rotations.length],
+        icon: feature.icon,
+      })),
+    [],
+  );
 
   return (
     <div

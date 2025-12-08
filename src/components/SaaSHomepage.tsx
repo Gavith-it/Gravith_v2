@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, ArrowRight, Phone, Mail, MapPin } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 import gavithLogo from '../assets/40b9a52cc41bb9e286b6859d260d4a3571e6e982.png';
 
@@ -16,33 +16,40 @@ interface SaaSHomepageProps {
 }
 
 export function SaaSHomepage({ onGetStarted, onLogin }: SaaSHomepageProps) {
-  const [lastScrollY, setLastScrollY] = useState(0);
   const [headerVisible, setHeaderVisible] = useState(true);
+  const lastScrollYRef = useRef(0);
+  const tickingRef = useRef(false);
 
-  // Header hide/show on scroll
+  // Header hide/show on scroll with throttling
   useEffect(() => {
     const handleScroll = () => {
-      const currentScrollY = window.pageYOffset;
+      if (!tickingRef.current) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.pageYOffset;
 
-      if (currentScrollY > 100) {
-        if (currentScrollY > lastScrollY) {
-          // Scrolling down
-          setHeaderVisible(false);
-        } else {
-          // Scrolling up
-          setHeaderVisible(true);
-        }
-      } else {
-        // At the top
-        setHeaderVisible(true);
+          if (currentScrollY > 100) {
+            if (currentScrollY > lastScrollYRef.current) {
+              // Scrolling down
+              setHeaderVisible(false);
+            } else {
+              // Scrolling up
+              setHeaderVisible(true);
+            }
+          } else {
+            // At the top
+            setHeaderVisible(true);
+          }
+
+          lastScrollYRef.current = currentScrollY;
+          tickingRef.current = false;
+        });
+        tickingRef.current = true;
       }
-
-      setLastScrollY(currentScrollY);
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
+  }, []);
 
   const pricingFeatures = [
     'Unlimited Sites & Projects',

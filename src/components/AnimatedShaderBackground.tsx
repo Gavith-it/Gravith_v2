@@ -3,8 +3,9 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-const AnimatedShaderBackground = () => {
+const AnimatedShaderBackground = React.memo(() => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const isVisibleRef = useRef(true);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -96,10 +97,16 @@ const AnimatedShaderBackground = () => {
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
-    let frameId: number;
+    let frameId: number | null = null;
     let lastTime = 0;
+    let resizeTimeout: NodeJS.Timeout | null = null;
 
     const animate = (currentTime: number) => {
+      if (!isVisibleRef.current) {
+        frameId = null;
+        return;
+      }
+
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
       material.uniforms.iTime.value += deltaTime;
@@ -107,26 +114,64 @@ const AnimatedShaderBackground = () => {
       frameId = requestAnimationFrame(animate);
     };
 
-    frameId = requestAnimationFrame(animate);
+    const startAnimation = () => {
+      if (frameId === null && isVisibleRef.current) {
+        lastTime = performance.now();
+        frameId = requestAnimationFrame(animate);
+      }
+    };
+
+    const stopAnimation = () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+    };
+
+    // IntersectionObserver to pause animation when not visible
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          isVisibleRef.current = entry.isIntersecting;
+          if (entry.isIntersecting) {
+            startAnimation();
+          } else {
+            stopAnimation();
+          }
+        });
+      },
+      { threshold: 0.1 },
+    );
+
+    intersectionObserver.observe(container);
+    startAnimation();
 
     const handleResize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      renderer.setSize(width, height);
-      material.uniforms.iResolution.value.set(width, height);
-      // OrthographicCamera doesn't need aspect ratio updates
-      camera.updateProjectionMatrix();
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+      resizeTimeout = setTimeout(() => {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        renderer.setSize(width, height);
+        material.uniforms.iResolution.value.set(width, height);
+        camera.updateProjectionMatrix();
+      }, 150);
     };
 
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, { passive: true });
 
     return () => {
-      cancelAnimationFrame(frameId);
+      stopAnimation();
       window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
+      intersectionObserver.disconnect();
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
@@ -143,6 +188,8 @@ const AnimatedShaderBackground = () => {
       style={{ zIndex: 0 }}
     />
   );
-};
+});
+
+AnimatedShaderBackground.displayName = 'AnimatedShaderBackground';
 
 export default AnimatedShaderBackground;
