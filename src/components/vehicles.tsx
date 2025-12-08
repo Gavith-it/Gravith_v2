@@ -1402,9 +1402,14 @@ export function VehiclesPage({
                               </p>
                               <p className="text-2xl font-bold text-green-600">
                                 {refuelingRecords
-                                  .filter(
-                                    (r) => new Date(r.date).getMonth() === new Date().getMonth(),
-                                  )
+                                  .filter((r) => {
+                                    const recordDate = new Date(r.date);
+                                    const now = new Date();
+                                    return (
+                                      recordDate.getMonth() === now.getMonth() &&
+                                      recordDate.getFullYear() === now.getFullYear()
+                                    );
+                                  })
                                   .reduce((sum, r) => sum + r.quantity, 0)}
                                 L
                               </p>
@@ -1426,9 +1431,14 @@ export function VehiclesPage({
                               <p className="text-2xl font-bold text-primary">
                                 ₹
                                 {refuelingRecords
-                                  .filter(
-                                    (r) => new Date(r.date).getMonth() === new Date().getMonth(),
-                                  )
+                                  .filter((r) => {
+                                    const recordDate = new Date(r.date);
+                                    const now = new Date();
+                                    return (
+                                      recordDate.getMonth() === now.getMonth() &&
+                                      recordDate.getFullYear() === now.getFullYear()
+                                    );
+                                  })
                                   .reduce((sum, r) => sum + r.cost, 0)
                                   .toLocaleString()}
                               </p>
@@ -1448,11 +1458,18 @@ export function VehiclesPage({
                                 Avg Cost/Liter
                               </p>
                               <p className="text-2xl font-bold text-orange-600">
-                                ₹
-                                {(
-                                  refuelingRecords.reduce((sum, r) => sum + r.cost, 0) /
-                                  refuelingRecords.reduce((sum, r) => sum + r.quantity, 0)
-                                ).toFixed(2)}
+                                {(() => {
+                                  const totalCost = refuelingRecords.reduce(
+                                    (sum, r) => sum + r.cost,
+                                    0,
+                                  );
+                                  const totalQuantity = refuelingRecords.reduce(
+                                    (sum, r) => sum + r.quantity,
+                                    0,
+                                  );
+                                  if (totalQuantity === 0) return '₹0.00';
+                                  return `₹${(totalCost / totalQuantity).toFixed(2)}`;
+                                })()}
                               </p>
                             </div>
                             <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
@@ -1710,9 +1727,14 @@ export function VehiclesPage({
                             </p>
                             <p className="text-2xl font-bold text-green-600">
                               {usageRecords
-                                .filter(
-                                  (r) => new Date(r.date).getMonth() === new Date().getMonth(),
-                                )
+                                .filter((r) => {
+                                  const recordDate = new Date(r.date);
+                                  const now = new Date();
+                                  return (
+                                    recordDate.getMonth() === now.getMonth() &&
+                                    recordDate.getFullYear() === now.getFullYear()
+                                  );
+                                })
                                 .reduce((sum, r) => sum + r.totalDistance, 0)}{' '}
                               km
                             </p>
@@ -1734,9 +1756,14 @@ export function VehiclesPage({
                             <p className="text-2xl font-bold text-primary">
                               ₹
                               {usageRecords
-                                .filter(
-                                  (r) => new Date(r.date).getMonth() === new Date().getMonth(),
-                                )
+                                .filter((r) => {
+                                  const recordDate = new Date(r.date);
+                                  const now = new Date();
+                                  return (
+                                    recordDate.getMonth() === now.getMonth() &&
+                                    recordDate.getFullYear() === now.getFullYear()
+                                  );
+                                })
                                 .reduce((sum, r) => sum + (r.rentalCost || 0), 0)
                                 .toLocaleString()}
                             </p>
@@ -1756,11 +1783,18 @@ export function VehiclesPage({
                               Avg. Efficiency
                             </p>
                             <p className="text-2xl font-bold text-orange-600">
-                              {(
-                                usageRecords.reduce((sum, r) => sum + r.totalDistance, 0) /
-                                usageRecords.reduce((sum, r) => sum + r.fuelConsumed, 1)
-                              ).toFixed(2)}{' '}
-                              km/L
+                              {(() => {
+                                const totalDistance = usageRecords.reduce(
+                                  (sum, r) => sum + r.totalDistance,
+                                  0,
+                                );
+                                const totalFuel = usageRecords.reduce(
+                                  (sum, r) => sum + r.fuelConsumed,
+                                  0,
+                                );
+                                if (totalFuel === 0) return '0.00 km/L';
+                                return `${(totalDistance / totalFuel).toFixed(2)} km/L`;
+                              })()}
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
