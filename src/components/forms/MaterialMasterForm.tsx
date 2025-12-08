@@ -105,7 +105,11 @@ export default function MaterialMasterForm({
     swrConfig,
   );
 
-  const sites = React.useMemo(() => sitesData?.sites ?? [], [sitesData]);
+  // Filter to only active sites
+  const sites = React.useMemo(() => {
+    const allSites = sitesData?.sites ?? [];
+    return allSites.filter((site) => site.status === 'Active');
+  }, [sitesData]);
   const [hasOpeningBalance, setHasOpeningBalance] = React.useState(
     Boolean(defaultValues?.siteAllocations && defaultValues.siteAllocations.length > 0),
   );
@@ -239,6 +243,7 @@ export default function MaterialMasterForm({
     const usedSiteIds = siteAllocations
       .map((alloc, idx) => (idx !== currentIndex ? alloc.siteId : null))
       .filter((id): id is string => Boolean(id));
+    // Sites are already filtered to only active sites, just exclude already used sites
     return sites.filter((site) => !usedSiteIds.includes(site.id));
   };
 
@@ -620,7 +625,8 @@ export default function MaterialMasterForm({
                   <div>
                     <FieldLabel className="text-base font-medium">Site Allocations</FieldLabel>
                     <FieldDescription>
-                      Add sites and allocate opening balance quantity to each site.
+                      Add sites and allocate opening balance quantity to each site. Only active
+                      sites will be shown in the dropdown.
                     </FieldDescription>
                   </div>
                   <Button
@@ -688,7 +694,9 @@ export default function MaterialMasterForm({
                   <div className="space-y-3">
                     {siteAllocations.map((allocation, index) => {
                       const availableSites = getAvailableSites(index);
-                      const currentSite = sites.find((s) => s.id === allocation.siteId);
+                      // Get current site from all sites (including inactive) for edit mode
+                      const allSites = sitesData?.sites ?? [];
+                      const currentSite = allSites.find((s) => s.id === allocation.siteId);
                       // Filter out currentSite from availableSites to avoid duplicates
                       const sitesToShow = currentSite
                         ? availableSites.filter((site) => site.id !== currentSite.id)
