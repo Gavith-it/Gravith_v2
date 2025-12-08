@@ -1245,6 +1245,13 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                                 {budgetUsagePercent.toFixed(1)}%
                               </Badge>
                             </div>
+                            {sitesWithTransactions.has(site.id) && (
+                              <div className="pt-2 border-t border-border/30">
+                                <p className="text-xs text-muted-foreground text-center italic">
+                                  Cannot delete: Site has connected transactions
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
 
