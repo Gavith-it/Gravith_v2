@@ -862,12 +862,37 @@ export function VehiclesPage({
       return;
     }
 
+    if (!refuelingForm.vendor || refuelingForm.vendor.trim() === '') {
+      toast.error('Please select a vendor.');
+      return;
+    }
+
+    if (!refuelingForm.location || refuelingForm.location.trim() === '') {
+      toast.error('Please enter a location.');
+      return;
+    }
+
+    if (!refuelingForm.invoiceNumber || refuelingForm.invoiceNumber.trim() === '') {
+      toast.error('Please enter an invoice number.');
+      return;
+    }
+
     const quantity = Number(refuelingForm.quantity);
     const cost = Number(refuelingForm.cost);
     const odometerReading = Number(refuelingForm.odometerReading);
 
     if ([quantity, cost, odometerReading].some((value) => Number.isNaN(value))) {
       toast.error('Please enter valid numeric values.');
+      return;
+    }
+
+    if (quantity <= 0) {
+      toast.error('Quantity must be greater than zero.');
+      return;
+    }
+
+    if (cost <= 0) {
+      toast.error('Cost must be greater than zero.');
       return;
     }
 
@@ -2846,19 +2871,9 @@ export function VehiclesPage({
                           Vendor <span className="text-destructive">*</span>
                         </FieldLabel>
                         <Select
-                          value={
-                            vendorOptions.includes(refuelingForm.vendor)
-                              ? refuelingForm.vendor
-                              : refuelingForm.vendor
-                                ? '__custom__'
-                                : ''
-                          }
+                          value={refuelingForm.vendor}
                           onValueChange={(value) => {
-                            if (value === '__custom__') {
-                              setRefuelingForm((prev) => ({ ...prev, vendor: '' }));
-                            } else {
-                              setRefuelingForm((prev) => ({ ...prev, vendor: value }));
-                            }
+                            setRefuelingForm((prev) => ({ ...prev, vendor: value }));
                           }}
                         >
                           <SelectTrigger id="vendor">
@@ -2873,20 +2888,8 @@ export function VehiclesPage({
                                 {name}
                               </SelectItem>
                             ))}
-                            <SelectItem value="__custom__">Other (enter manually)</SelectItem>
                           </SelectContent>
                         </Select>
-                        {refuelingForm.vendor && !vendorOptions.includes(refuelingForm.vendor) && (
-                          <Input
-                            className="mt-2"
-                            value={refuelingForm.vendor}
-                            onChange={(e) =>
-                              setRefuelingForm((prev) => ({ ...prev, vendor: e.target.value }))
-                            }
-                            placeholder="Enter vendor name"
-                            aria-label="Vendor name"
-                          />
-                        )}
                         <FieldDescription>Fuel vendor or station name.</FieldDescription>
                       </Field>
                       <Field>
