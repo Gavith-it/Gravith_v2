@@ -754,10 +754,7 @@ export function MaterialReceiptForm({
                                         clearingFieldsRef.current.add(fieldKey);
                                         // Use null instead of undefined - React Hook Form handles null better for clearing
                                         field.onChange(null);
-                                        form.setValue(`lineItems.${index}.filledWeight`, null as number | null, {
-                                          shouldValidate: false,
-                                          shouldDirty: true,
-                                        });
+                                        form.resetField(`lineItems.${index}.filledWeight`, { defaultValue: 0 });
                                         // Remove from clearing set after a short delay
                                         setTimeout(() => {
                                           clearingFieldsRef.current.delete(fieldKey);
@@ -793,10 +790,7 @@ export function MaterialReceiptForm({
                                         } else {
                                           // If 0 or negative, clear the field
                                           field.onChange(null);
-                                          form.setValue(`lineItems.${index}.filledWeight`, null as number | null, {
-                                            shouldValidate: false,
-                                            shouldDirty: true,
-                                          });
+                                          form.resetField(`lineItems.${index}.filledWeight`, { defaultValue: 0 });
                                         }
                                       }
                                     }}
@@ -855,10 +849,7 @@ export function MaterialReceiptForm({
                                         clearingFieldsRef.current.add(fieldKey);
                                         // Use null instead of undefined - React Hook Form handles null better for clearing
                                         field.onChange(null);
-                                        form.setValue(`lineItems.${index}.emptyWeight`, null as number | null, {
-                                          shouldValidate: false,
-                                          shouldDirty: true,
-                                        });
+                                        form.resetField(`lineItems.${index}.emptyWeight`, { defaultValue: 0 });
                                         // Remove from clearing set after a short delay
                                         setTimeout(() => {
                                           clearingFieldsRef.current.delete(fieldKey);
@@ -893,10 +884,7 @@ export function MaterialReceiptForm({
                                       } else if (numValue < 0) {
                                         // If negative, clear the field
                                         field.onChange(null);
-                                        form.setValue(`lineItems.${index}.emptyWeight`, null as number | null, {
-                                          shouldValidate: false,
-                                          shouldDirty: true,
-                                        });
+                                        form.resetField(`lineItems.${index}.emptyWeight`, { defaultValue: 0 });
                                       }
                                     }}
                                     onBlur={(e) => {
@@ -953,10 +941,7 @@ export function MaterialReceiptForm({
                                         clearingFieldsRef.current.add(fieldKey);
                                         // Use null instead of undefined - React Hook Form handles null better for clearing
                                         field.onChange(null);
-                                        form.setValue(`lineItems.${index}.quantity`, null as number | null, {
-                                          shouldValidate: false,
-                                          shouldDirty: true,
-                                        });
+                                        form.resetField(`lineItems.${index}.quantity`, { defaultValue: 0 });
                                       // Remove from clearing set after a short delay
                                       setTimeout(() => {
                                         clearingFieldsRef.current.delete(fieldKey);
@@ -973,10 +958,7 @@ export function MaterialReceiptForm({
                                       } else {
                                         // If 0 or negative, clear the field
                                         field.onChange(null);
-                                        form.setValue(`lineItems.${index}.quantity`, null as number | null, {
-                                          shouldValidate: false,
-                                          shouldDirty: true,
-                                        });
+                                        form.resetField(`lineItems.${index}.quantity`, { defaultValue: 0 });
                                       }
                                     }
                                   }}
