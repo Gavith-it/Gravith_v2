@@ -299,7 +299,7 @@ export async function GET(request: Request) {
         .eq('organization_id', organizationId);
 
       // Get work progress entries to get site_id for each material consumption
-      let workProgressSiteMap = new Map<string, string>();
+      const workProgressSiteMap = new Map<string, string>();
       if (workProgressMaterialsData && workProgressMaterialsData.length > 0) {
         const workProgressIds = [
           ...new Set(
