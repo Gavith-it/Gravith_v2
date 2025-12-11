@@ -16,7 +16,7 @@ export interface MaterialMasterItem {
   unit: string;
   siteId?: string | null;
   siteName?: string | null;
-  quantity: number; // Represents OB/available quantity for display
+  quantity: number; // Represents OB/available quantity for display (backward compatibility)
   consumedQuantity: number; // Kept for work progress tracking
   standardRate: number;
   isActive: boolean;
@@ -27,8 +27,19 @@ export interface MaterialMasterItem {
   taxRateId?: string | null; // Tax rate code/ID from masters
   createdAt?: string;
   updatedAt?: string;
-  openingBalance?: number | null;
-  siteAllocations?: Array<{ siteId: string; siteName: string; quantity: number }>;
+  openingBalance?: number | null; // Opening Balance (OB) - initial stock
+  inwardQty?: number; // Total inward quantity from receipts
+  utilizedQty?: number; // Total utilized quantity from work progress
+  availableQty?: number; // Available quantity = OB + Inward - Utilized
+  siteAllocations?: Array<{
+    siteId: string;
+    siteName: string;
+    openingBalance?: number;
+    quantity?: number; // Backward compatibility
+    inwardQty: number;
+    utilizationQty: number;
+    availableQty: number;
+  }>;
 }
 
 export const masterMaterials: MaterialMasterItem[] = [

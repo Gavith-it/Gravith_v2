@@ -418,6 +418,64 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       );
     }
 
+    // Recalculate utilization_qty for affected materials
+    // Get old entry data before update
+    const { data: oldEntryData } = await supabase
+      .from('work_progress_entries')
+      .select('site_id')
+      .eq('id', id)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+
+    const { data: oldMaterialsData } = await supabase
+      .from('work_progress_materials')
+      .select('material_id')
+      .eq('work_progress_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    const oldSiteId: string | null = oldEntryData ? (oldEntryData as { site_id: string | null }).site_id : null;
+    const newSiteId: string | null = body.siteId !== undefined ? (body.siteId ?? null) : ((refreshedEntry as { site_id: string | null }).site_id ?? null);
+    const materialsToRecalculate = new Set<string>();
+
+    // Get materials from old entry
+    if (oldMaterialsData) {
+      (oldMaterialsData as Array<{ material_id: string | null }>).forEach((m) => {
+        if (m.material_id) materialsToRecalculate.add(m.material_id);
+      });
+    }
+
+    // Get materials from new entry
+    if (body.materials) {
+      body.materials.forEach((m) => {
+        if (m.materialId) materialsToRecalculate.add(m.materialId);
+      });
+    }
+
+    // Recalculate for old site if it changed
+    if (oldSiteId && oldSiteId !== newSiteId) {
+      try {
+        const materialIds: string[] = Array.from(materialsToRecalculate).filter((id): id is string => typeof id === 'string');
+        for (const materialId of materialIds) {
+          await recalculateUtilizationQty(supabase, ctx, materialId, oldSiteId);
+        }
+      } catch (error) {
+        console.error('Error recalculating utilization_qty for old site', error);
+      }
+    }
+
+    // Recalculate for new site
+    if (materialsToRecalculate.size > 0 && newSiteId) {
+      try {
+        const materialIds: string[] = Array.from(materialsToRecalculate).filter((id): id is string => typeof id === 'string');
+        for (const materialId of materialIds) {
+          await recalculateUtilizationQty(supabase, ctx, materialId, newSiteId);
+        }
+      } catch (error) {
+        console.error('Error recalculating utilization_qty for new site', error);
+        // Don't fail the update if utilization_qty update fails
+      }
+    }
+
     const response = NextResponse.json({
       entry: mapRowToWorkProgress(refreshedEntry as unknown as WorkProgressRow),
     });
@@ -440,6 +498,82 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   }
 }
 
+// Helper function to recalculate utilization_qty from all work progress entries for a material+site combination
+async function recalculateUtilizationQty(
+  supabase: SupabaseServerClient,
+  ctx: { organizationId: string; userId: string },
+  materialId: string,
+  siteId: string | null | undefined,
+) {
+  try {
+    if (!siteId) {
+      return;
+    }
+
+    // First, get all work progress entry IDs for this site
+    const { data: workProgressEntries, error: entriesError } = await supabase
+      .from('work_progress_entries')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('organization_id', ctx.organizationId);
+
+    if (entriesError) {
+      console.error('Error fetching work progress entries for utilization_qty calculation', entriesError);
+      return;
+    }
+
+    const entryIds = (workProgressEntries ?? []).map((entry) => entry.id);
+    let totalUtilizationQty = 0;
+
+    if (entryIds.length > 0) {
+      // Sum all material quantities consumed in work progress entries for this material+site combination
+      const { data: materialsData, error: materialsError } = await supabase
+        .from('work_progress_materials')
+        .select('quantity')
+        .eq('material_id', materialId)
+        .eq('organization_id', ctx.organizationId)
+        .in('work_progress_id', entryIds);
+
+      if (materialsError) {
+        console.error('Error fetching work progress materials for utilization_qty calculation', materialsError);
+        return;
+      }
+
+      totalUtilizationQty = (materialsData ?? []).reduce(
+        (sum, material) => sum + Number((material as { quantity: number | string | null }).quantity ?? 0),
+        0,
+      );
+    }
+
+    // Check if allocation exists
+    const { data: existingAllocation, error: allocationError } = await supabase
+      .from('material_site_allocations')
+      .select('id')
+      .eq('material_id', materialId)
+      .eq('site_id', siteId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+
+    if (allocationError && allocationError.code !== 'PGRST116') {
+      console.error('Error checking site allocation', allocationError);
+      return;
+    }
+
+    if (existingAllocation) {
+      const { error: updateError } = await supabase
+        .from('material_site_allocations')
+        .update({ utilization_qty: totalUtilizationQty, updated_by: ctx.userId })
+        .eq('id', String(existingAllocation.id));
+
+      if (updateError) {
+        console.error('Error updating site allocation utilization_qty', updateError);
+      }
+    }
+  } catch (error) {
+    console.error('Error recalculating utilization_qty', error);
+  }
+}
+
 export async function DELETE(_: NextRequest, { params }: RouteContext) {
   try {
     const { id } = await params;
@@ -454,6 +588,14 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Insufficient permissions.' }, { status: 403 });
     }
 
+    // Get entry data before deleting to recalculate utilization_qty
+    const { data: entryData } = await supabase
+      .from('work_progress_entries')
+      .select('site_id, materials:work_progress_materials(material_id)')
+      .eq('id', id)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('work_progress_entries')
       .delete()
@@ -463,6 +605,26 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
     if (error) {
       console.error('Error deleting work progress entry', error);
       return NextResponse.json({ error: 'Failed to delete work progress entry.' }, { status: 500 });
+    }
+
+    // Recalculate utilization_qty for affected materials
+    if (entryData && !('error' in entryData)) {
+      const entryDataTyped = entryData as unknown as { site_id: string | null; materials?: Array<{ material_id: string | null }> };
+      const siteId = entryDataTyped.site_id;
+      const materials = Array.isArray(entryDataTyped.materials) ? entryDataTyped.materials : [];
+      
+      if (siteId) {
+        try {
+          for (const material of materials) {
+            if (material.material_id) {
+              await recalculateUtilizationQty(supabase, ctx, material.material_id, siteId);
+            }
+          }
+        } catch (error) {
+          console.error('Error recalculating utilization_qty', error);
+          // Don't fail the deletion if utilization_qty update fails
+        }
+      }
     }
 
     const response = NextResponse.json({ success: true });

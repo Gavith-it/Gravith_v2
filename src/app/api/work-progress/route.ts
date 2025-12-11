@@ -279,6 +279,112 @@ export async function GET(request: Request) {
   }
 }
 
+// Helper function to recalculate utilization_qty from all work progress entries for a material+site combination
+async function recalculateUtilizationQty(
+  supabase: SupabaseServerClient,
+  ctx: { organizationId: string; userId: string },
+  materialId: string,
+  siteId: string | null | undefined,
+) {
+  try {
+    if (!siteId) {
+      // For unallocated work progress, we don't update site allocations
+      return;
+    }
+
+    let totalUtilizationQty = 0;
+
+    // First, get all work progress entry IDs for this site
+    const { data: workProgressEntries, error: entriesError } = await supabase
+      .from('work_progress_entries')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('organization_id', ctx.organizationId);
+
+    if (entriesError) {
+      console.error('Error fetching work progress entries for utilization_qty calculation', entriesError);
+      return;
+    }
+
+    const entryIds = (workProgressEntries ?? []).map((entry) => entry.id);
+
+    if (entryIds.length === 0) {
+      // No work progress entries for this site, utilization is 0
+      totalUtilizationQty = 0;
+    } else {
+      // Sum all material quantities consumed in work progress entries for this material+site combination
+      const { data: materialsData, error: materialsError } = await supabase
+        .from('work_progress_materials')
+        .select('quantity')
+        .eq('material_id', materialId)
+        .eq('organization_id', ctx.organizationId)
+        .in('work_progress_id', entryIds);
+
+      if (materialsError) {
+        console.error('Error fetching work progress materials for utilization_qty calculation', materialsError);
+        return;
+      }
+
+      // Calculate total utilization from materials data
+      totalUtilizationQty = (materialsData ?? []).reduce(
+        (sum, material) => sum + Number((material as { quantity: number | string | null }).quantity ?? 0),
+        0,
+      );
+    }
+
+    // Check if allocation exists
+    const { data: existingAllocation, error: allocationError } = await supabase
+      .from('material_site_allocations')
+      .select('id')
+      .eq('material_id', materialId)
+      .eq('site_id', siteId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+
+    if (allocationError && allocationError.code !== 'PGRST116') {
+      // PGRST116 is "not found" which is fine
+      console.error('Error checking site allocation', allocationError);
+      return;
+    }
+
+    if (existingAllocation) {
+      // Update existing allocation with new utilization_qty
+      // The database trigger will auto-calculate available_qty
+      const { error: updateError } = await supabase
+        .from('material_site_allocations')
+        .update({ utilization_qty: totalUtilizationQty, updated_by: ctx.userId })
+        .eq('id', String(existingAllocation.id));
+
+      if (updateError) {
+        console.error('Error updating site allocation utilization_qty', updateError);
+      }
+    } else if (totalUtilizationQty > 0) {
+      // Create new allocation if we have utilization but no allocation
+      // This shouldn't normally happen, but handle it gracefully
+      const { error: insertError } = await supabase
+        .from('material_site_allocations')
+        .insert({
+          material_id: materialId,
+          site_id: siteId,
+          opening_balance: 0,
+          inward_qty: 0,
+          utilization_qty: totalUtilizationQty,
+          available_qty: 0, // Will be recalculated by trigger (0 - totalUtilizationQty = 0)
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          updated_by: ctx.userId,
+        });
+
+      if (insertError) {
+        console.error('Error creating site allocation for utilization', insertError);
+      }
+    }
+  } catch (error) {
+    console.error('Error recalculating utilization_qty', error);
+    // Don't fail the work progress operation if utilization_qty update fails
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -453,6 +559,20 @@ export async function POST(request: Request) {
         { error: 'Failed to load created work progress entry.' },
         { status: 500 },
       );
+    }
+
+    // Recalculate utilization_qty for each material+site combination
+    if (body.materials && body.materials.length > 0 && body.siteId) {
+      try {
+        for (const material of body.materials) {
+          if (material.materialId) {
+            await recalculateUtilizationQty(supabase, ctx, material.materialId, body.siteId);
+          }
+        }
+      } catch (error) {
+        console.error('Error recalculating utilization_qty', error);
+        // Don't fail the work progress creation if utilization_qty update fails
+      }
     }
 
     const response = NextResponse.json(

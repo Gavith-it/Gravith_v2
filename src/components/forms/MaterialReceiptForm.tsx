@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import * as z from 'zod';
 
 import { fetcher, swrConfig } from '../../lib/swr';
@@ -69,11 +69,24 @@ export function MaterialReceiptForm({
   const formId = isEditMode ? 'receipt-edit-form' : 'receipt-new-form';
   const [isClient, setIsClient] = useState(false);
   const [lineItemOBs, setLineItemOBs] = useState<Record<number, number | null>>({});
+  // Track which fields are being actively cleared to prevent value restoration
+  const clearingFieldsRef = React.useRef<Set<string>>(new Set());
 
   // Fetch materials and sites using SWR
-  const { data: materialsData, isLoading: isLoadingMaterials } = useSWR<{
+  // Use limit=100 (max allowed by API) to get all materials in one request
+  const { data: materialsData, isLoading: isLoadingMaterials, mutate: mutateMaterials } = useSWR<{
     materials: MaterialMaster[];
-  }>('/api/materials', fetcher, swrConfig);
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>('/api/materials?page=1&limit=100', fetcher, {
+    ...swrConfig,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+  });
   const { data: sitesData, isLoading: isLoadingSites } = useSWR<{ sites: Site[] }>(
     '/api/sites',
     fetcher,
@@ -124,6 +137,12 @@ export function MaterialReceiptForm({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Refresh materials when form opens (when editingReceipt changes or form is first rendered)
+  useEffect(() => {
+    // Invalidate and revalidate materials cache to get latest materials
+    void mutateMaterials(undefined, { revalidate: true });
+  }, [mutateMaterials, editingReceipt?.id]); // Refresh when editingReceipt changes (dialog opens)
 
   // Show error toasts if fetch fails
   useEffect(() => {
@@ -303,6 +322,9 @@ export function MaterialReceiptForm({
             toast.success(`${receiptsData.length} material receipt(s) recorded successfully!`);
           }
 
+          // Refresh materials list after successful submission
+          void mutateMaterials(undefined, { revalidate: true });
+          
           onSubmit?.(receiptsData[0]);
         }
       } catch (error) {
@@ -316,49 +338,88 @@ export function MaterialReceiptForm({
   );
 
   // Update material names when materials are selected in line items
+  // Only update when materialId changes, not on initial load in edit mode
   const lineItemsWatch = form.watch('lineItems');
+  const previousMaterialIdsRef = React.useRef<Record<number, string>>({});
+  
   useEffect(() => {
     lineItemsWatch.forEach((item, index) => {
       if (item.materialId) {
-        const material = materialOptions.find((option) => option.id === item.materialId);
-        if (material && material.name !== item.materialName) {
-          form.setValue(`lineItems.${index}.materialName`, material.name, { shouldValidate: true });
+        const previousMaterialId = previousMaterialIdsRef.current[index];
+        // Only update if materialId actually changed (not on initial load)
+        if (previousMaterialId !== item.materialId) {
+          const material = materialOptions.find((option) => option.id === item.materialId);
+          if (material) {
+            form.setValue(`lineItems.${index}.materialName`, material.name, { shouldValidate: true });
+          }
+          previousMaterialIdsRef.current[index] = item.materialId;
+        } else if (previousMaterialId === item.materialId) {
+          // MaterialId hasn't changed, but verify the name is still correct
+          const material = materialOptions.find((option) => option.id === item.materialId);
+          if (material && material.name !== item.materialName) {
+            // Only update if the material exists and name doesn't match
+            form.setValue(`lineItems.${index}.materialName`, material.name, { shouldValidate: true });
+          }
         }
+      } else {
+        // Clear previous materialId if current is empty
+        delete previousMaterialIdsRef.current[index];
       }
     });
   }, [form, materialOptions, lineItemsWatch]);
+  
+  // Initialize previousMaterialIdsRef when form loads in edit mode
+  useEffect(() => {
+    if (isEditMode && editingReceipt) {
+      previousMaterialIdsRef.current[0] = editingReceipt.materialId;
+    }
+  }, [isEditMode, editingReceipt]);
 
   // Auto-populate quantity field with net weight when filled and empty weights are entered
+  // Only auto-populate when both weights are valid and greater than 0
+  // Skip auto-population if any weight is undefined or 0 (user is clearing the field)
   useEffect(() => {
     lineItemsWatch.forEach((item, index) => {
       const filledWeight = item.filledWeight;
       const emptyWeight = item.emptyWeight;
       const currentQuantity = item.quantity;
+      const isClearingQuantity = clearingFieldsRef.current.has(`quantity-${index}`);
 
-      // Check if both weights are valid numbers
+      // Only auto-populate if both weights are valid positive numbers (not undefined, not 0)
+      // Skip if either weight is undefined, 0, or NaN (user is clearing the field)
       if (
         typeof filledWeight === 'number' &&
         typeof emptyWeight === 'number' &&
         !isNaN(filledWeight) &&
         !isNaN(emptyWeight) &&
         filledWeight > 0 &&
-        emptyWeight >= 0
+        emptyWeight >= 0 // emptyWeight can be 0, but we skip auto-population if it's 0
       ) {
         const netWeight = filledWeight - emptyWeight;
 
-        // Only update if net weight is positive and quantity is empty or different
+        // Only update if net weight is positive
         if (netWeight > 0) {
-          // Update if quantity is undefined, null, or doesn't match net weight
+          // Don't auto-populate if quantity field is being actively cleared
+          if (isClearingQuantity) {
+            return;
+          }
+          
+          // Only auto-update if quantity is undefined, null, or significantly different
+          // Skip if quantity is 0 (user might be clearing it)
+          // This prevents overwriting user input while still auto-populating empty fields
           if (
             currentQuantity === undefined ||
             currentQuantity === null ||
             isNaN(currentQuantity) ||
-            Math.abs(currentQuantity - netWeight) > 0.01 // Allow small floating point differences
+            (typeof currentQuantity === 'number' && currentQuantity > 0 && Math.abs(currentQuantity - netWeight) > 0.01) // Only update if significantly different
           ) {
-            form.setValue(`lineItems.${index}.quantity`, Number(netWeight.toFixed(2)), {
-              shouldValidate: false,
-              shouldDirty: true,
-            });
+            // Don't auto-populate if quantity is 0 (user is clearing)
+            if (currentQuantity !== 0) {
+              form.setValue(`lineItems.${index}.quantity`, Number(netWeight.toFixed(2)), {
+                shouldValidate: false,
+                shouldDirty: true,
+              });
+            }
           }
         }
       }
@@ -676,42 +737,91 @@ export function MaterialReceiptForm({
                             render={({ field, fieldState }) => {
                               const emptyWeight = form.watch(`lineItems.${index}.emptyWeight`);
                               return (
-                                <Field data-invalid={fieldState.invalid}>
+                                <Field data-invalid={fieldState.invalid && fieldState.isTouched}>
                                   <FieldLabel>
                                     Filled Weight <span className="text-destructive">*</span>
                                   </FieldLabel>
                                   <Input
-                                    {...field}
                                     type="number"
                                     step="0.01"
                                     placeholder="Enter filled weight"
                                     onChange={(event) => {
-                                      const value = event.target.value;
-                                      const numValue = value === '' ? undefined : Number(value);
-                                      field.onChange(numValue);
+                                      const rawValue = event.target.value;
+                                      const fieldKey = `filledWeight-${index}`;
+                                      // Allow empty string - this clears the input visually
+                                      if (rawValue === '' || rawValue === null || rawValue === undefined) {
+                                        // Mark as clearing to prevent restoration
+                                        clearingFieldsRef.current.add(fieldKey);
+                                        // Use null instead of undefined - React Hook Form handles null better for clearing
+                                        field.onChange(null);
+                                        form.setValue(`lineItems.${index}.filledWeight`, null as number | null, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
+                                        // Remove from clearing set after a short delay
+                                        setTimeout(() => {
+                                          clearingFieldsRef.current.delete(fieldKey);
+                                        }, 100);
+                                        return;
+                                      }
+                                      // Remove from clearing set when user starts typing
+                                      clearingFieldsRef.current.delete(fieldKey);
+                                      const numValue = parseFloat(rawValue);
+                                      if (!isNaN(numValue)) {
+                                        if (numValue > 0) {
+                                          // Use field.onChange for immediate update
+                                          field.onChange(numValue);
 
-                                      // Auto-update quantity with net weight
-                                      if (
-                                        numValue !== undefined &&
-                                        typeof emptyWeight === 'number' &&
-                                        !isNaN(emptyWeight)
-                                      ) {
-                                        const netWeight = numValue - emptyWeight;
-                                        if (netWeight > 0) {
-                                          form.setValue(
-                                            `lineItems.${index}.quantity`,
-                                            Number(netWeight.toFixed(2)),
-                                            {
-                                              shouldValidate: false,
-                                            },
-                                          );
+                                          // Auto-update quantity with net weight
+                                          if (
+                                            typeof emptyWeight === 'number' &&
+                                            !isNaN(emptyWeight) &&
+                                            emptyWeight >= 0
+                                          ) {
+                                            const netWeight = numValue - emptyWeight;
+                                            if (netWeight > 0) {
+                                              form.setValue(
+                                                `lineItems.${index}.quantity`,
+                                                Number(netWeight.toFixed(2)),
+                                                {
+                                                  shouldValidate: false,
+                                                  shouldDirty: true,
+                                                },
+                                              );
+                                            }
+                                          }
+                                        } else {
+                                          // If 0 or negative, clear the field
+                                          field.onChange(null);
+                                          form.setValue(`lineItems.${index}.filledWeight`, null as number | null, {
+                                            shouldValidate: false,
+                                            shouldDirty: true,
+                                          });
                                         }
                                       }
                                     }}
+                                    onBlur={(e) => {
+                                      // On blur, only validate - don't restore values if field was intentionally cleared
+                                      const value = e.target.value;
+                                      const fieldKey = `filledWeight-${index}`;
+                                      const isClearing = clearingFieldsRef.current.has(fieldKey);
+                                      const fieldValue = field.value;
+                                      // Only set to 0 if field is empty AND was never intentionally cleared (not null)
+                                      // If fieldValue is null, it means user intentionally cleared it - don't restore
+                                      if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
+                                        field.onChange(0);
+                                        form.setValue(`lineItems.${index}.filledWeight`, 0, {
+                                          shouldValidate: true,
+                                        });
+                                      }
+                                      field.onBlur();
+                                    }}
+                                    name={field.name}
+                                    ref={field.ref}
                                     value={
-                                      field.value === 0 || field.value === undefined
+                                      field.value === undefined || field.value === null || field.value === 0 || isNaN(Number(field.value))
                                         ? ''
-                                        : field.value
+                                        : String(field.value)
                                     }
                                     style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                   />
@@ -728,42 +838,89 @@ export function MaterialReceiptForm({
                             render={({ field, fieldState }) => {
                               const filledWeight = form.watch(`lineItems.${index}.filledWeight`);
                               return (
-                                <Field data-invalid={fieldState.invalid}>
+                                <Field data-invalid={fieldState.invalid && fieldState.isTouched}>
                                   <FieldLabel>
                                     Empty Weight <span className="text-destructive">*</span>
                                   </FieldLabel>
                                   <Input
-                                    {...field}
                                     type="number"
                                     step="0.01"
                                     placeholder="Enter empty weight"
                                     onChange={(event) => {
-                                      const value = event.target.value;
-                                      const numValue = value === '' ? undefined : Number(value);
-                                      field.onChange(numValue);
+                                      const rawValue = event.target.value;
+                                      const fieldKey = `emptyWeight-${index}`;
+                                      // Allow empty string - this clears the input visually
+                                      if (rawValue === '' || rawValue === null || rawValue === undefined) {
+                                        // Mark as clearing to prevent restoration
+                                        clearingFieldsRef.current.add(fieldKey);
+                                        // Use null instead of undefined - React Hook Form handles null better for clearing
+                                        field.onChange(null);
+                                        form.setValue(`lineItems.${index}.emptyWeight`, null as number | null, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
+                                        // Remove from clearing set after a short delay
+                                        setTimeout(() => {
+                                          clearingFieldsRef.current.delete(fieldKey);
+                                        }, 100);
+                                        return;
+                                      }
+                                      // Remove from clearing set when user starts typing
+                                      clearingFieldsRef.current.delete(fieldKey);
+                                      const numValue = parseFloat(rawValue);
+                                      if (!isNaN(numValue) && numValue >= 0) {
+                                        // Use field.onChange for immediate update
+                                        field.onChange(numValue);
 
-                                      // Auto-update quantity with net weight
-                                      if (
-                                        numValue !== undefined &&
-                                        typeof filledWeight === 'number' &&
-                                        !isNaN(filledWeight)
-                                      ) {
-                                        const netWeight = filledWeight - numValue;
-                                        if (netWeight > 0) {
-                                          form.setValue(
-                                            `lineItems.${index}.quantity`,
-                                            Number(netWeight.toFixed(2)),
-                                            {
-                                              shouldValidate: false,
-                                            },
-                                          );
+                                        // Auto-update quantity with net weight
+                                        if (
+                                          typeof filledWeight === 'number' &&
+                                          !isNaN(filledWeight) &&
+                                          filledWeight > 0
+                                        ) {
+                                          const netWeight = filledWeight - numValue;
+                                          if (netWeight > 0) {
+                                            form.setValue(
+                                              `lineItems.${index}.quantity`,
+                                              Number(netWeight.toFixed(2)),
+                                              {
+                                                shouldValidate: false,
+                                                shouldDirty: true,
+                                              },
+                                            );
+                                          }
                                         }
+                                      } else if (numValue < 0) {
+                                        // If negative, clear the field
+                                        field.onChange(null);
+                                        form.setValue(`lineItems.${index}.emptyWeight`, null as number | null, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
                                       }
                                     }}
+                                    onBlur={(e) => {
+                                      // On blur, only validate - don't restore values if field was intentionally cleared
+                                      const value = e.target.value;
+                                      const fieldKey = `emptyWeight-${index}`;
+                                      const isClearing = clearingFieldsRef.current.has(fieldKey);
+                                      const fieldValue = field.value;
+                                      // Only set to 0 if field is empty AND was never intentionally cleared (not null)
+                                      // If fieldValue is null, it means user intentionally cleared it - don't restore
+                                      if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
+                                        field.onChange(0);
+                                        form.setValue(`lineItems.${index}.emptyWeight`, 0, {
+                                          shouldValidate: true,
+                                        });
+                                      }
+                                      field.onBlur();
+                                    }}
+                                    name={field.name}
+                                    ref={field.ref}
                                     value={
-                                      field.value === 0 || field.value === undefined
+                                      field.value === undefined || field.value === null || isNaN(Number(field.value))
                                         ? ''
-                                        : field.value
+                                        : String(field.value)
                                     }
                                     style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                   />
@@ -778,25 +935,74 @@ export function MaterialReceiptForm({
                             name={`lineItems.${index}.quantity`}
                             control={form.control}
                             render={({ field, fieldState }) => (
-                              <Field data-invalid={fieldState.invalid}>
+                              <Field data-invalid={fieldState.invalid && fieldState.isTouched}>
                                 <FieldLabel>
                                   Quantity <span className="text-destructive">*</span>
                                 </FieldLabel>
                                 <Input
-                                  {...field}
                                   type="number"
                                   step="0.01"
                                   min="0"
                                   placeholder={`Enter quantity in ${materialUnit || 'material unit'}`}
                                   onChange={(event) => {
-                                    const value = event.target.value;
-                                    field.onChange(value === '' ? undefined : Number(value));
+                                    const rawValue = event.target.value;
+                                    const fieldKey = `quantity-${index}`;
+                                    // Allow empty string - this clears the input visually
+                                    if (rawValue === '' || rawValue === null || rawValue === undefined) {
+                                        // Mark as clearing to prevent restoration
+                                        clearingFieldsRef.current.add(fieldKey);
+                                        // Use null instead of undefined - React Hook Form handles null better for clearing
+                                        field.onChange(null);
+                                        form.setValue(`lineItems.${index}.quantity`, null as number | null, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
+                                      // Remove from clearing set after a short delay
+                                      setTimeout(() => {
+                                        clearingFieldsRef.current.delete(fieldKey);
+                                      }, 100);
+                                      return;
+                                    }
+                                    // Remove from clearing set when user starts typing
+                                    clearingFieldsRef.current.delete(fieldKey);
+                                    const numValue = parseFloat(rawValue);
+                                    if (!isNaN(numValue)) {
+                                      if (numValue > 0) {
+                                        // Use field.onChange for immediate update
+                                        field.onChange(numValue);
+                                      } else {
+                                        // If 0 or negative, clear the field
+                                        field.onChange(null);
+                                        form.setValue(`lineItems.${index}.quantity`, null as number | null, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
+                                      }
+                                    }
                                   }}
-                                  value={
-                                    field.value === 0 || field.value === undefined
-                                      ? ''
-                                      : field.value
-                                  }
+                                  onBlur={(e) => {
+                                    // On blur, only validate - don't restore values if field was intentionally cleared
+                                    const value = e.target.value;
+                                    const fieldKey = `quantity-${index}`;
+                                    const isClearing = clearingFieldsRef.current.has(fieldKey);
+                                    const fieldValue = field.value;
+                                    // Only set to 0 if field is empty AND was never intentionally cleared (not null)
+                                    // If fieldValue is null, it means user intentionally cleared it - don't restore
+                                    if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
+                                      field.onChange(0);
+                                      form.setValue(`lineItems.${index}.quantity`, 0, {
+                                        shouldValidate: true,
+                                      });
+                                    }
+                                    field.onBlur();
+                                  }}
+                                  name={field.name}
+                                  ref={field.ref}
+                                    value={
+                                      field.value === undefined || field.value === null || field.value === 0 || isNaN(Number(field.value))
+                                        ? ''
+                                        : String(field.value)
+                                    }
                                   style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -865,3 +1071,4 @@ export function MaterialReceiptForm({
     </Card>
   );
 }
+

@@ -42,6 +42,8 @@ import type { SharedMaterial } from '@/lib/contexts';
 import { useMaterialReceipts, useMaterials, useVendors } from '@/lib/contexts';
 import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 import type { MaterialMaster } from '@/types/entities';
+import useSWR from 'swr';
+import { fetcher, swrConfig } from '@/lib/swr';
 
 interface PurchaseFormProps {
   selectedSite?: string;
@@ -106,11 +108,28 @@ export function PurchaseForm({
   onCancel,
 }: PurchaseFormProps) {
   const { addMaterial, updateMaterial, materials } = useMaterials();
-  const { receipts, linkReceiptToPurchase } = useMaterialReceipts();
+  const { receipts, linkReceiptToPurchase, refresh: refreshReceipts } = useMaterialReceipts();
   const { vendors, isLoading: isVendorsLoading } = useVendors();
   const isEditMode = !!editingMaterial;
   const formId = isEditMode ? 'purchase-edit-form' : 'purchase-new-form';
   const [isClient, setIsClient] = React.useState(false);
+  
+  // Fetch materials master data to look up material names
+  const { data: materialsData } = useSWR<{
+    materials: MaterialMaster[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>('/api/materials?page=1&limit=100', fetcher, {
+    ...swrConfig,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+  
+  const materialMasterOptions = materialsData?.materials ?? [];
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
@@ -131,13 +150,22 @@ export function PurchaseForm({
 
   React.useEffect(() => {
     setIsClient(true);
-  }, []);
+    // Refresh receipts when form opens to ensure new receipts are loaded
+    void refreshReceipts();
+  }, [refreshReceipts]);
 
   // Material options loading removed - users now type material names freely
 
-  // Get selected vendor
+  // Get selected vendor (must be declared before useEffects that use it)
   const selectedVendor = form.watch('vendor');
   const linkedReceiptIds = form.watch('linkedReceiptIds') || [];
+
+  // Refresh receipts when vendor changes to ensure we have the latest receipts for that vendor
+  React.useEffect(() => {
+    if (selectedVendor) {
+      void refreshReceipts();
+    }
+  }, [selectedVendor, refreshReceipts]);
 
   // Get receipts filtered by selected vendor (include linked receipts in edit mode)
   const unlinkedReceipts = React.useMemo(() => {
@@ -294,6 +322,10 @@ export function PurchaseForm({
         return;
       }
 
+      // Look up current material name from material master (in case material was renamed)
+      const materialFromMaster = materialMasterOptions.find((m) => m.id === firstReceipt.materialId);
+      const currentMaterialName = materialFromMaster?.name ?? firstReceipt.materialName;
+
       // Determine site name: use selectedSite prop if available, otherwise use receipt's site name
       // If neither is available, show an error
       const siteName = selectedSite || firstReceipt.siteName;
@@ -316,7 +348,7 @@ export function PurchaseForm({
 
       const materialData: Omit<SharedMaterial, 'id'> = {
         materialId: firstReceipt.materialId,
-        materialName: firstReceipt.materialName,
+        materialName: currentMaterialName, // Use current name from material master, not stale receipt name
         site: siteName.trim(),
         quantity: totalQuantity,
         unit: 'kg', // Default unit from receipts

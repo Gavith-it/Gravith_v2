@@ -401,13 +401,21 @@ export function MaterialReceiptsPage({
   };
 
   // Get purchases that don't have a receipt linked
-  const availablePurchases = useMemo(
-    () =>
-      materials.filter(
-        (material) => !scopedReceipts.some((receipt) => receipt.linkedPurchaseId === material.id),
-      ),
-    [materials, scopedReceipts],
-  );
+  // When linking a specific receipt, filter by materialId to match the receipt's material
+  const availablePurchases = useMemo(() => {
+    let filtered = materials.filter(
+      (material) => !scopedReceipts.some((receipt) => receipt.linkedPurchaseId === material.id),
+    );
+    
+    // If a receipt is selected for linking, filter purchases by materialId
+    if (selectedReceiptForLink?.materialId) {
+      filtered = filtered.filter(
+        (material) => material.materialId === selectedReceiptForLink.materialId,
+      );
+    }
+    
+    return filtered;
+  }, [materials, scopedReceipts, selectedReceiptForLink]);
 
   const renderTabs = showTabs ? (
     <PurchaseTabs

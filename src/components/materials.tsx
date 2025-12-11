@@ -16,6 +16,8 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Receipt,
+  Hammer,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -28,6 +30,8 @@ import { formatDate } from '../lib/utils';
 import MaterialMasterForm from './forms/MaterialMasterForm';
 import { getActiveTaxRates } from './shared/masterData';
 import type { MaterialMasterItem } from './shared/materialMasterData';
+import { MaterialReceiptsDialog } from './dialogs/MaterialReceiptsDialog';
+import { MaterialUtilizationDialog } from './dialogs/MaterialUtilizationDialog';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -146,6 +150,10 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<MaterialAdvancedFilterState>(
     () => createDefaultMaterialAdvancedFilters(),
   );
+  const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
+  const [utilizationDialogOpen, setUtilizationDialogOpen] = useState(false);
+  const [selectedMaterialForDialog, setSelectedMaterialForDialog] =
+    useState<MaterialMasterItem | null>(null);
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -1032,6 +1040,9 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                       <TableHead className="min-w-[250px]">Material</TableHead>
                       <TableHead className="min-w-[120px]">Category</TableHead>
                       <TableHead className="min-w-[80px]">Unit</TableHead>
+                      <TableHead className="min-w-[100px] text-right">Opening Balance</TableHead>
+                      <TableHead className="min-w-[100px] text-right">Inward Qty</TableHead>
+                      <TableHead className="min-w-[100px] text-right">Utilised Qty</TableHead>
                       <TableHead className="min-w-[120px] text-right">Available Qty</TableHead>
                       <TableHead className="min-w-[120px] text-right">Rate (₹)</TableHead>
                       <TableHead className="min-w-[100px]">HSN Code</TableHead>
@@ -1288,10 +1299,14 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                         return unitMap[unit.toLowerCase()] || unit;
                       };
 
-                      // Calculate available quantity based on context
-                      // If filterBySite is provided, use site-specific OB from allocations
-                      // Otherwise, use total OB
+                      // Calculate quantities based on context
+                      // If filterBySite is provided, use site-specific quantities from allocations
+                      // Otherwise, use aggregate quantities from API or sum across all sites
+                      let openingBalance: number;
+                      let inwardQty: number;
+                      let utilizedQty: number;
                       let availableQuantity: number;
+
                       if (
                         filterBySite &&
                         material.siteAllocations &&
@@ -1313,11 +1328,37 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                             allocSiteName === normalizedFilterSiteId
                           );
                         });
-                        // Use site-specific OB if found, otherwise 0
-                        availableQuantity = siteAllocation?.quantity ?? 0;
+                        // Use site-specific quantities if found, otherwise 0
+                        openingBalance = siteAllocation?.openingBalance ?? 0;
+                        inwardQty = siteAllocation?.inwardQty ?? 0;
+                        utilizedQty = siteAllocation?.utilizationQty ?? 0;
+                        // Calculate available quantity: Opening Balance + Inward - Utilization
+                        availableQuantity = Math.max(0, openingBalance + inwardQty - utilizedQty);
                       } else {
-                        // No site filter or no allocations - use total OB
-                        availableQuantity = material.openingBalance ?? material.quantity ?? 0;
+                        // No site filter - use aggregate quantities from API or sum across all sites
+                        if (material.siteAllocations && material.siteAllocations.length > 0) {
+                          openingBalance = material.siteAllocations.reduce(
+                            (sum, alloc) => sum + (alloc.openingBalance ?? 0),
+                            0,
+                          );
+                          inwardQty = material.siteAllocations.reduce(
+                            (sum, alloc) => sum + (alloc.inwardQty ?? 0),
+                            0,
+                          );
+                          utilizedQty = material.siteAllocations.reduce(
+                            (sum, alloc) => sum + (alloc.utilizationQty ?? 0),
+                            0,
+                          );
+                          // Calculate available quantity: Opening Balance + Inward - Utilization
+                          availableQuantity = Math.max(0, openingBalance + inwardQty - utilizedQty);
+                        } else {
+                          // Fallback to API-level quantities or backward compatibility
+                          openingBalance = material.openingBalance ?? 0;
+                          inwardQty = material.inwardQty ?? 0;
+                          utilizedQty = material.utilizedQty ?? 0;
+                          // Calculate available quantity: Opening Balance + Inward - Utilization
+                          availableQuantity = Math.max(0, openingBalance + inwardQty - utilizedQty);
+                        }
                       }
 
                       // Get tax rate info from masters
@@ -1355,6 +1396,36 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                           </TableCell>
                           <TableCell className="text-sm font-medium">
                             {getShortUnit(material.unit)}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold whitespace-nowrap">
+                            <span>
+                              {openingBalance.toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {getShortUnit(material.unit)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold whitespace-nowrap">
+                            <span>
+                              {inwardQty.toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {getShortUnit(material.unit)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold whitespace-nowrap">
+                            <span>
+                              {utilizedQty.toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {getShortUnit(material.unit)}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right font-semibold whitespace-nowrap">
                             <span>
@@ -1436,6 +1507,50 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     <p>{material.isActive ? 'Deactivate' : 'Activate'} material</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedMaterialForDialog(material);
+                                        setReceiptsDialogOpen(true);
+                                      }}
+                                      className="h-8 w-8 p-0 transition-all hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                                      aria-label="View material receipts"
+                                    >
+                                      <Receipt className="h-3 w-3 text-muted-foreground hover:text-blue-600" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>View material receipts</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedMaterialForDialog(material);
+                                        setUtilizationDialogOpen(true);
+                                      }}
+                                      className="h-8 w-8 p-0 transition-all hover:bg-orange-100 dark:hover:bg-orange-900/30"
+                                      aria-label="View material utilization"
+                                    >
+                                      <Hammer className="h-3 w-3 text-muted-foreground hover:text-orange-600" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>View material utilization</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -1742,6 +1857,36 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         }}
         isDirty={!isMaterialAdvancedFilterDefault(draftAdvancedFilters)}
       />
+      {/* Material Receipts Dialog */}
+      {selectedMaterialForDialog && (
+        <MaterialReceiptsDialog
+          materialId={selectedMaterialForDialog.id}
+          materialName={selectedMaterialForDialog.name}
+          siteId={filterBySite}
+          open={receiptsDialogOpen}
+          onOpenChange={(open) => {
+            setReceiptsDialogOpen(open);
+            if (!open) {
+              setSelectedMaterialForDialog(null);
+            }
+          }}
+        />
+      )}
+      {/* Material Utilization Dialog */}
+      {selectedMaterialForDialog && (
+        <MaterialUtilizationDialog
+          materialId={selectedMaterialForDialog.id}
+          materialName={selectedMaterialForDialog.name}
+          siteId={filterBySite}
+          open={utilizationDialogOpen}
+          onOpenChange={(open) => {
+            setUtilizationDialogOpen(open);
+            if (!open) {
+              setSelectedMaterialForDialog(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

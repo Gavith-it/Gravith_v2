@@ -39,6 +39,9 @@ type SiteAllocationRow = {
   material_id: string;
   site_id: string;
   opening_balance: number | string | null;
+  inward_qty: number | string | null;
+  utilization_qty: number | string | null;
+  available_qty: number | string | null;
   organization_id: string;
   created_at: string | null;
   updated_at: string | null;
@@ -180,31 +183,57 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const body = (await request.json()) as Partial<MaterialMasterInput> & {
       standardRate?: number;
       openingBalance?: number | null;
-      siteAllocations?: Array<{ siteId: string; siteName: string; quantity: number }>;
+      siteAllocations?: Array<{
+        siteId: string;
+        siteName?: string;
+        openingBalance?: number;
+        quantity?: number;
+        inwardQty?: number;
+        utilizationQty?: number;
+        availableQty?: number;
+      }>;
     };
 
     // Validate site allocations if provided
     if (body.siteAllocations && body.siteAllocations.length > 0) {
-      const calculatedOB = body.siteAllocations.reduce(
-        (sum, alloc) => sum + (alloc.quantity || 0),
-        0,
-      );
-
-      if (
-        body.openingBalance !== undefined &&
-        body.openingBalance !== null &&
-        Math.abs(calculatedOB - body.openingBalance) > 0.01
-      ) {
-        return NextResponse.json(
-          { error: 'Opening balance does not match sum of site allocations.' },
-          { status: 400 },
-        );
-      }
-
       for (const allocation of body.siteAllocations) {
-        if (!allocation.siteId || !allocation.quantity || allocation.quantity <= 0) {
+        if (!allocation.siteId) {
           return NextResponse.json(
-            { error: 'Each site allocation must have a valid site and quantity > 0.' },
+            { error: 'Each site allocation must have a valid site.' },
+            { status: 400 },
+          );
+        }
+
+        // Validate quantities - openingBalance is required, inwardQty and utilizationQty are read-only
+        const openingBalance = allocation.openingBalance ?? allocation.quantity ?? 0;
+        const inwardQty = allocation.inwardQty ?? 0;
+        const utilizationQty = allocation.utilizationQty ?? 0;
+
+        if (openingBalance <= 0) {
+          return NextResponse.json(
+            { error: 'Opening balance must be greater than zero.' },
+            { status: 400 },
+          );
+        }
+
+        if (inwardQty < 0) {
+          return NextResponse.json(
+            { error: 'Inward quantity must be greater than or equal to zero.' },
+            { status: 400 },
+          );
+        }
+
+        if (utilizationQty < 0) {
+          return NextResponse.json(
+            { error: 'Utilization quantity must be greater than or equal to zero.' },
+            { status: 400 },
+          );
+        }
+
+        // Validate utilization doesn't exceed available (Opening Balance + Inward)
+        if (utilizationQty > openingBalance + inwardQty) {
+          return NextResponse.json(
+            { error: 'Utilization quantity cannot exceed available quantity (Opening Balance + Inward).' },
             { status: 400 },
           );
         }
@@ -267,9 +296,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (body.siteAllocations !== undefined) {
       // If siteAllocations is explicitly provided (even if empty array), use it
       if (body.siteAllocations && body.siteAllocations.length > 0) {
-        // Calculate opening balance from site allocations
+        // Calculate opening balance from site allocations (sum of opening balances)
         const calculatedOpeningBalance = body.siteAllocations.reduce(
-          (sum, alloc) => sum + (alloc.quantity || 0),
+          (sum, alloc) => sum + (alloc.openingBalance ?? alloc.quantity ?? 0),
           0,
         );
         updatePayload['opening_balance'] = calculatedOpeningBalance;
@@ -325,39 +354,133 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     // Handle site allocations update if provided
     if (body.siteAllocations !== undefined) {
-      // Delete existing allocations
-      const { error: deleteError } = await supabase
-        .from('material_site_allocations')
-        .delete()
-        .eq('material_id', id)
-        .eq('organization_id', ctx.organizationId);
-
-      if (deleteError) {
-        console.error('Error deleting existing site allocations', deleteError);
-        return NextResponse.json({ error: 'Failed to update site allocations.' }, { status: 500 });
-      }
-
-      // Insert new allocations only if provided and not empty
-      if (body.siteAllocations && body.siteAllocations.length > 0) {
-        const allocationPayloads = body.siteAllocations.map((allocation) => ({
-          material_id: id,
-          site_id: allocation.siteId,
-          opening_balance: allocation.quantity,
-          organization_id: ctx.organizationId,
-          created_by: ctx.userId,
-          updated_by: ctx.userId,
-        }));
-
-        const { error: allocationsError } = await supabase
+      if (body.siteAllocations.length === 0) {
+        // Empty array means delete all allocations
+        const { error: deleteError } = await supabase
           .from('material_site_allocations')
-          .insert(allocationPayloads);
+          .delete()
+          .eq('material_id', id)
+          .eq('organization_id', ctx.organizationId);
 
-        if (allocationsError) {
-          console.error('Error creating site allocations', allocationsError);
-          return NextResponse.json(
-            { error: 'Failed to create site allocations.' },
-            { status: 500 },
-          );
+        if (deleteError) {
+          console.error('Error deleting site allocations', deleteError);
+          return NextResponse.json({ error: 'Failed to delete site allocations.' }, { status: 500 });
+        }
+      } else {
+        // Fetch existing allocations to preserve values that aren't being updated
+        const { data: existingAllocations } = await supabase
+          .from('material_site_allocations')
+          .select('site_id, opening_balance, inward_qty, utilization_qty, available_qty')
+          .eq('material_id', id)
+          .eq('organization_id', ctx.organizationId);
+
+        const existingAllocationsMap = new Map<string, {
+          site_id: string;
+          opening_balance: number | string | null;
+          inward_qty: number | string | null;
+          utilization_qty: number | string | null;
+          available_qty: number | string | null;
+        }>();
+        (existingAllocations || []).forEach((alloc) => {
+          const typedAlloc = alloc as {
+            site_id: unknown;
+            opening_balance: unknown;
+            inward_qty: unknown;
+            utilization_qty: unknown;
+            available_qty: unknown;
+          };
+          existingAllocationsMap.set(String(typedAlloc.site_id), {
+            site_id: String(typedAlloc.site_id),
+            opening_balance: typedAlloc.opening_balance as number | string | null,
+            inward_qty: typedAlloc.inward_qty as number | string | null,
+            utilization_qty: typedAlloc.utilization_qty as number | string | null,
+            available_qty: typedAlloc.available_qty as number | string | null,
+          });
+        });
+
+        // Use upsert to update existing or insert new allocations
+        const allocationPayloads = body.siteAllocations.map((allocation) => {
+          // Get existing allocation for this site to preserve values
+          const existing = existingAllocationsMap.get(allocation.siteId) as {
+            site_id: string;
+            opening_balance: number | string | null;
+            inward_qty: number | string | null;
+            utilization_qty: number | string | null;
+            available_qty: number | string | null;
+          } | undefined;
+          
+          // Use openingBalance from form, fallback to existing, then quantity for backward compatibility
+          const openingBalance = Number(allocation.openingBalance ?? existing?.opening_balance ?? allocation.quantity ?? 0);
+          // ALWAYS preserve existing inwardQty (it's read-only and managed by receipts)
+          // Only use provided inwardQty if there's no existing allocation (new allocation)
+          const inwardQty = existing 
+            ? Number(existing.inward_qty ?? 0)
+            : (allocation.inwardQty ?? 0);
+          // Use utilizationQty from request (it's being updated), fallback to existing
+          const utilizationQty = allocation.utilizationQty !== undefined && allocation.utilizationQty !== null
+            ? allocation.utilizationQty
+            : (existing?.utilization_qty ? Number(existing.utilization_qty) : 0);
+          // Available qty = Opening Balance + Inward - Utilization (calculated by trigger)
+          const availableQty = Math.max(0, openingBalance + inwardQty - utilizationQty);
+
+          return {
+            material_id: id,
+            site_id: allocation.siteId,
+            opening_balance: openingBalance,
+            inward_qty: inwardQty,
+            utilization_qty: utilizationQty,
+            available_qty: availableQty,
+            organization_id: ctx.organizationId,
+            created_by: ctx.userId,
+            updated_by: ctx.userId,
+          };
+        });
+
+        // Update or insert each allocation
+        for (const payload of allocationPayloads) {
+          // Check if allocation exists
+          const { data: existing } = await supabase
+            .from('material_site_allocations')
+            .select('id')
+            .eq('material_id', payload.material_id)
+            .eq('site_id', payload.site_id)
+            .eq('organization_id', payload.organization_id)
+            .maybeSingle();
+
+          if (existing) {
+            // Update existing allocation
+            const { error: updateError } = await supabase
+              .from('material_site_allocations')
+              .update({
+                opening_balance: payload.opening_balance,
+                inward_qty: payload.inward_qty,
+                utilization_qty: payload.utilization_qty,
+                available_qty: payload.available_qty,
+                updated_by: payload.updated_by,
+              })
+              .eq('id', String(existing.id));
+
+            if (updateError) {
+              console.error('Error updating site allocation', updateError);
+              return NextResponse.json(
+                { error: 'Failed to update site allocation.' },
+                { status: 500 },
+              );
+            }
+          } else {
+            // Insert new allocation
+            const { error: insertError } = await supabase
+              .from('material_site_allocations')
+              .insert(payload);
+
+            if (insertError) {
+              console.error('Error creating site allocation', insertError);
+              return NextResponse.json(
+                { error: 'Failed to create site allocation.' },
+                { status: 500 },
+              );
+            }
+          }
         }
       }
     }
@@ -365,11 +488,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Fetch site allocations for response
     const { data: allocationsData } = await supabase
       .from('material_site_allocations')
-      .select('material_id, site_id, opening_balance')
+      .select('material_id, site_id, opening_balance, inward_qty, utilization_qty, available_qty')
       .eq('material_id', id)
       .eq('organization_id', ctx.organizationId);
 
-    let siteAllocationsResponse: Array<{ siteId: string; siteName: string; quantity: number }> = [];
+    let siteAllocationsResponse: Array<{
+      siteId: string;
+      siteName: string;
+      openingBalance?: number;
+      quantity?: number;
+      inwardQty: number;
+      utilizationQty: number;
+      availableQty: number;
+    }> = [];
     if (allocationsData && allocationsData.length > 0) {
       const siteIds = [...new Set((allocationsData as SiteAllocationRow[]).map((a) => a.site_id))];
       const { data: sitesData } = await supabase
@@ -383,11 +514,22 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         siteNameMap.set(site.id, site.name);
       });
 
-      siteAllocationsResponse = (allocationsData as SiteAllocationRow[]).map((allocation) => ({
-        siteId: allocation.site_id,
-        siteName: siteNameMap.get(allocation.site_id) || '',
-        quantity: Number(allocation.opening_balance ?? 0),
-      }));
+      siteAllocationsResponse = (allocationsData as SiteAllocationRow[]).map((allocation) => {
+        const openingBalance = Number(allocation.opening_balance ?? 0);
+        const inwardQty = Number(allocation.inward_qty ?? 0);
+        const utilizationQty = Number(allocation.utilization_qty ?? 0);
+        const availableQty = Number(allocation.available_qty ?? Math.max(0, openingBalance + inwardQty - utilizationQty));
+
+        return {
+          siteId: allocation.site_id,
+          siteName: siteNameMap.get(allocation.site_id) || '',
+          openingBalance,
+          quantity: openingBalance, // Backward compatibility
+          inwardQty,
+          utilizationQty,
+          availableQty,
+        };
+      });
     }
 
     const material = mapRowToMaterial(updated as MaterialRow);

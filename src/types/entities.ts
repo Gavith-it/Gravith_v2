@@ -105,8 +105,19 @@ export interface MaterialMaster {
   updatedAt: string;
   createdDate: string;
   lastUpdated: string;
-  openingBalance?: number | null;
-  siteAllocations?: Array<{ siteId: string; siteName: string; quantity: number }>;
+  openingBalance?: number | null; // Opening Balance (OB) - initial stock
+  inwardQty?: number; // Total inward quantity from receipts
+  utilizedQty?: number; // Total utilized quantity from work progress
+  availableQty?: number; // Available quantity = OB + Inward - Utilized
+  siteAllocations?: Array<{
+    siteId: string;
+    siteName: string;
+    openingBalance?: number;
+    quantity?: number; // Kept for backward compatibility
+    inwardQty: number;
+    utilizationQty: number;
+    availableQty: number;
+  }>;
 }
 
 /**

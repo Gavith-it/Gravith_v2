@@ -82,7 +82,11 @@ type MaterialMasterFormData = Omit<z.infer<typeof materialMasterFormSchema>, 'st
 type SiteAllocation = {
   siteId: string;
   siteName: string;
-  quantity: number;
+  quantity?: number; // Kept for backward compatibility
+  openingBalance?: number; // Opening balance for this site
+  inwardQty: number; // Read-only, from receipts
+  utilizationQty: number; // Read-only, from work progress
+  availableQty: number; // Read-only, calculated
 };
 
 export default function MaterialMasterForm({
@@ -159,7 +163,7 @@ export default function MaterialMasterForm({
   React.useEffect(() => {
     if (hasOpeningBalance && validationError) {
       const validAllocations = siteAllocations.filter(
-        (alloc) => alloc.siteId && alloc.quantity > 0,
+        (alloc) => alloc.siteId && alloc.openingBalance !== undefined && alloc.openingBalance > 0,
       );
       if (validAllocations.length > 0) {
         setValidationError(null);
@@ -181,7 +185,17 @@ export default function MaterialMasterForm({
         defaultValues.siteAllocations && defaultValues.siteAllocations.length > 0,
       );
       setHasOpeningBalance(hasOB);
-      setSiteAllocations(defaultValues.siteAllocations || []);
+      // Map existing allocations to new format with opening balance
+      const mappedAllocations = (defaultValues.siteAllocations || []).map((alloc) => ({
+        siteId: alloc.siteId,
+        siteName: alloc.siteName,
+        openingBalance: alloc.openingBalance ?? alloc.quantity ?? 0,
+        inwardQty: alloc.inwardQty ?? 0,
+        utilizationQty: alloc.utilizationQty ?? 0,
+        availableQty: alloc.availableQty ?? Math.max(0, (alloc.openingBalance ?? alloc.quantity ?? 0) - (alloc.utilizationQty ?? 0)),
+        quantity: alloc.quantity, // Backward compatibility
+      }));
+      setSiteAllocations(mappedAllocations);
       const taxRateId =
         defaultValues.taxRateId ||
         (defaultValues.taxRate && typeof defaultValues.taxRate === 'number'
@@ -206,7 +220,10 @@ export default function MaterialMasterForm({
       {
         siteId: '',
         siteName: '',
-        quantity: 0,
+        openingBalance: undefined,
+        inwardQty: 0,
+        utilizationQty: 0,
+        availableQty: 0,
       },
     ]);
     // Clear validation error when user adds an allocation
@@ -219,8 +236,8 @@ export default function MaterialMasterForm({
 
   const handleSiteAllocationChange = (
     index: number,
-    field: 'siteId' | 'quantity',
-    value: string | number,
+    field: 'siteId' | 'openingBalance',
+    value: string | number | undefined,
   ) => {
     const updated = [...siteAllocations];
     if (field === 'siteId') {
@@ -230,10 +247,18 @@ export default function MaterialMasterForm({
         siteId: value as string,
         siteName: selectedSite?.name || '',
       };
-    } else {
+    } else if (field === 'openingBalance') {
+      const openingBalance = value === undefined || value === null ? undefined : Math.max(0, Number(value));
+      const utilizationQty = updated[index].utilizationQty ?? 0;
+      const inwardQty = updated[index].inwardQty ?? 0;
+      // Available qty = Opening Balance + Inward - Utilization
+      const openingBalanceValue = openingBalance ?? 0;
+      const availableQty = Math.max(0, openingBalanceValue + inwardQty - utilizationQty);
       updated[index] = {
         ...updated[index],
-        quantity: Number(value),
+        openingBalance,
+        availableQty,
+        quantity: openingBalanceValue, // Backward compatibility
       };
     }
     setSiteAllocations(updated);
@@ -247,7 +272,19 @@ export default function MaterialMasterForm({
     return sites.filter((site) => !usedSiteIds.includes(site.id));
   };
 
-  const totalAllocatedOB = siteAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+  const totalOpeningBalance = siteAllocations.reduce((sum, alloc) => {
+    const ob = alloc.openingBalance === undefined ? 0 : alloc.openingBalance;
+    return sum + ob;
+  }, 0);
+  const totalInwardQty = siteAllocations.reduce((sum, alloc) => sum + (alloc.inwardQty ?? 0), 0);
+  const totalUtilizationQty = siteAllocations.reduce(
+    (sum, alloc) => sum + (alloc.utilizationQty ?? 0),
+    0,
+  );
+  const totalAvailableQty = siteAllocations.reduce(
+    (sum, alloc) => sum + (alloc.availableQty ?? 0),
+    0,
+  );
 
   async function handleFormSubmit(data: MaterialMasterFormData) {
     // Set loading state immediately for instant visual feedback
@@ -256,7 +293,7 @@ export default function MaterialMasterForm({
     try {
       // Filter out invalid allocations first (empty or incomplete)
       const validAllocations = siteAllocations.filter(
-        (alloc) => alloc.siteId && alloc.quantity > 0,
+        (alloc) => alloc.siteId && alloc.openingBalance !== undefined && alloc.openingBalance > 0,
       );
 
       // Validate site allocations if opening balance is enabled
@@ -265,7 +302,7 @@ export default function MaterialMasterForm({
         // User can delete some allocations and keep others - that's fine
         if (validAllocations.length === 0) {
           const errorMsg =
-            'Please add at least one site allocation with valid quantity for opening balance, or turn off the opening balance toggle.';
+            'Please add at least one site allocation with valid opening balance, or turn off the opening balance toggle.';
           setValidationError(errorMsg);
           toast.error(errorMsg);
           setIsSubmitting(false);
@@ -278,19 +315,19 @@ export default function MaterialMasterForm({
         // Validate each remaining allocation (only check valid ones)
         for (const [index, allocation] of siteAllocations.entries()) {
           // Skip validation for empty/incomplete allocations (they'll be filtered out)
-          if (!allocation.siteId && !allocation.quantity) {
+          if (!allocation.siteId && (allocation.openingBalance === undefined || allocation.openingBalance === 0)) {
             continue; // Empty allocation row, will be filtered out
           }
 
           // If allocation has some data but is incomplete, show error
-          if (allocation.siteId && (!allocation.quantity || allocation.quantity <= 0)) {
-            const errorMsg = `Please enter a valid quantity (> 0) for allocation ${index + 1}.`;
+          if (allocation.siteId && (allocation.openingBalance === undefined || allocation.openingBalance <= 0)) {
+            const errorMsg = `Please enter a valid opening balance (> 0) for allocation ${index + 1}.`;
             setValidationError(errorMsg);
             toast.error(errorMsg);
             setIsSubmitting(false);
             return;
           }
-          if (!allocation.siteId && allocation.quantity > 0) {
+          if (!allocation.siteId && allocation.openingBalance !== undefined && allocation.openingBalance > 0) {
             const errorMsg = `Please select a site for allocation ${index + 1}.`;
             setValidationError(errorMsg);
             toast.error(errorMsg);
@@ -314,10 +351,27 @@ export default function MaterialMasterForm({
       if (hasOpeningBalance) {
         // Toggle is ON - use valid allocations (user can delete some and keep others)
         if (validAllocations.length > 0) {
-          // Recalculate total from valid allocations only
-          const totalOB = validAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+          // Recalculate total from valid allocations only (sum of opening balances)
+          const totalOB = validAllocations.reduce((sum, alloc) => {
+            const ob = alloc.openingBalance ?? 0;
+            return sum + ob;
+          }, 0);
           materialData.openingBalance = totalOB;
-          materialData.siteAllocations = validAllocations;
+          // Map to include opening balance and read-only quantities
+          materialData.siteAllocations = validAllocations.map((alloc) => {
+            const openingBalance = alloc.openingBalance ?? 0;
+            const inwardQty = alloc.inwardQty ?? 0;
+            const utilizationQty = alloc.utilizationQty ?? 0;
+            return {
+              siteId: alloc.siteId,
+              siteName: alloc.siteName,
+              openingBalance: openingBalance,
+              inwardQty: inwardQty, // Read-only, from receipts
+              utilizationQty: utilizationQty, // Read-only, from work progress
+              availableQty: alloc.availableQty ?? Math.max(0, openingBalance + inwardQty - utilizationQty),
+              quantity: openingBalance, // Backward compatibility
+            };
+          });
           // Clear validation error on successful validation
           setValidationError(null);
         } else {
@@ -611,7 +665,10 @@ export default function MaterialMasterForm({
                         Add Opening Balance
                       </FieldLabel>
                       <p className="text-sm text-muted-foreground">
-                        Allocate opening balance quantity across one or multiple sites.
+                        Allocate material opening balance across one or multiple sites. Available
+                        quantity is calculated automatically. Inward and utilization quantities are
+                        managed by receipts and work progress respectively and can be viewed in the
+                        materials table.
                       </p>
                     </div>
                   </div>
@@ -625,8 +682,11 @@ export default function MaterialMasterForm({
                   <div>
                     <FieldLabel className="text-base font-medium">Site Allocations</FieldLabel>
                     <FieldDescription>
-                      Add sites and allocate opening balance quantity to each site. Only active
-                      sites will be shown in the dropdown.
+                      Add sites and set opening balance for each site. Available quantity is
+                      calculated automatically (Opening Balance + Inward - Utilization). Inward
+                      and utilization quantities are managed by receipts and work progress
+                      respectively and can be viewed in the materials table. Only active sites
+                      will be shown in the dropdown.
                     </FieldDescription>
                   </div>
                   <Button
@@ -675,7 +735,8 @@ export default function MaterialMasterForm({
                           key={index}
                           className="flex items-start gap-3 rounded-lg border bg-background p-3"
                         >
-                          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="flex-1 grid grid-cols-1 gap-3">
+                            {/* Site Selection */}
                             <div className="space-y-1.5">
                               <Label
                                 htmlFor={`${formId}-site-allocation-${index}`}
@@ -720,26 +781,56 @@ export default function MaterialMasterForm({
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="space-y-1.5">
-                              <Label htmlFor={`${formId}-ob-quantity-${index}`} className="text-sm">
-                                OB Quantity <span className="text-destructive">*</span>
-                              </Label>
-                              <Input
-                                id={`${formId}-ob-quantity-${index}`}
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                placeholder="0"
-                                value={allocation.quantity || ''}
-                                onChange={(e) =>
-                                  handleSiteAllocationChange(
-                                    index,
-                                    'quantity',
-                                    e.target.value === '' ? 0 : Number(e.target.value),
-                                  )
-                                }
-                                style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                              />
+
+                            {/* Two Quantity Fields */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {/* Opening Balance (Editable) */}
+                              <div className="space-y-1.5">
+                                <Label
+                                  htmlFor={`${formId}-opening-balance-${index}`}
+                                  className="text-sm"
+                                >
+                                  Opening Balance <span className="text-destructive">*</span>
+                                </Label>
+                                <Input
+                                  id={`${formId}-opening-balance-${index}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Enter opening balance"
+                                  value={allocation.openingBalance === undefined || allocation.openingBalance === 0 ? '' : allocation.openingBalance}
+                                  onChange={(e) => {
+                                    const value = e.target.value === '' ? undefined : Number(e.target.value);
+                                    handleSiteAllocationChange(
+                                      index,
+                                      'openingBalance',
+                                      value === undefined || isNaN(value) ? undefined : value,
+                                    );
+                                  }}
+                                  style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                                />
+                              </div>
+
+                              {/* Available Quantity (Read-only) */}
+                              <div className="space-y-1.5">
+                                <Label
+                                  htmlFor={`${formId}-available-qty-${index}`}
+                                  className="text-sm"
+                                >
+                                  Available Quantity
+                                </Label>
+                                <Input
+                                  id={`${formId}-available-qty-${index}`}
+                                  type="number"
+                                  value={allocation.availableQty ?? 0}
+                                  disabled
+                                  readOnly
+                                  className="bg-muted cursor-not-allowed"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Calculated automatically (Opening Balance + Inward - Utilization)
+                                </p>
+                              </div>
                             </div>
                           </div>
                           <Button
@@ -759,14 +850,28 @@ export default function MaterialMasterForm({
                 )}
 
                 {siteAllocations.length > 0 && (
-                  <div className="rounded-lg bg-primary/5 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Total Opening Balance:</span>
-                      <span className="text-base font-bold text-primary">
-                        {totalAllocatedOB.toLocaleString(undefined, {
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
+                  <div className="rounded-lg bg-primary/5 p-4 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Total Opening Balance:
+                        </span>
+                        <span className="text-base font-bold text-primary">
+                          {totalOpeningBalance.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Total Available Quantity:
+                        </span>
+                        <span className="text-base font-bold text-green-600">
+                          {totalAvailableQty.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}

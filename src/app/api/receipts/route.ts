@@ -103,96 +103,88 @@ export async function GET(request: Request) {
   }
 }
 
-// Helper function to update opening balance for a single receipt
-async function updateOpeningBalance(
+// Helper function to recalculate inward_qty from all receipts for a material+site combination
+async function recalculateInwardQty(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ctx: { organizationId: string; userId: string },
   materialId: string,
   siteId: string | null | undefined,
-  receiptQuantity: number,
 ) {
   try {
-    if (siteId === 'unallocated' || !siteId) {
-      // For unallocated: update material_masters.opening_balance directly
-      const { data: material } = await supabase
-        .from('material_masters')
-        .select('opening_balance')
-        .eq('id', materialId)
-        .eq('organization_id', ctx.organizationId)
-        .maybeSingle();
+    if (!siteId) {
+      // For unallocated receipts, we don't update site allocations
+      // They remain unallocated
+      return;
+    }
 
-      const currentOB = Number(material?.opening_balance ?? 0);
-      const newOB = currentOB + receiptQuantity;
+    // Sum all receipt quantities for this material+site combination
+    const { data: receipts, error: receiptsError } = await supabase
+      .from('material_receipts')
+      .select('quantity')
+      .eq('material_id', materialId)
+      .eq('site_id', siteId)
+      .eq('organization_id', ctx.organizationId);
 
-      await supabase
-        .from('material_masters')
-        .update({ opening_balance: newOB, updated_by: ctx.userId })
-        .eq('id', materialId)
-        .eq('organization_id', ctx.organizationId);
-    } else {
-      // For allocated sites: update material_site_allocations
-      const { data: existingAllocation, error: allocationError } = await supabase
+    if (receiptsError) {
+      console.error('Error fetching receipts for inward_qty calculation', receiptsError);
+      return;
+    }
+
+    const totalInwardQty = (receipts ?? []).reduce(
+      (sum, receipt) => sum + Number(receipt.quantity ?? 0),
+      0,
+    );
+
+    // Check if allocation exists
+    const { data: existingAllocation, error: allocationError } = await supabase
+      .from('material_site_allocations')
+      .select('id, opening_balance')
+      .eq('material_id', materialId)
+      .eq('site_id', siteId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+
+    if (allocationError && allocationError.code !== 'PGRST116') {
+      // PGRST116 is "not found" which is fine
+      console.error('Error checking site allocation', allocationError);
+      return;
+    }
+
+    if (existingAllocation) {
+      // Update existing allocation with new inward_qty
+      // The database trigger will auto-calculate available_qty
+      const { error: updateError } = await supabase
         .from('material_site_allocations')
-        .select('id, opening_balance')
-        .eq('material_id', materialId)
-        .eq('site_id', siteId)
-        .eq('organization_id', ctx.organizationId)
-        .maybeSingle();
+        .update({ inward_qty: totalInwardQty, updated_by: ctx.userId })
+        .eq('id', String(existingAllocation.id));
 
-      if (allocationError) {
-        console.error('Error checking site allocation', allocationError);
-      } else if (existingAllocation) {
-        // Update existing allocation
-        const newOB = Number(existingAllocation.opening_balance ?? 0) + receiptQuantity;
-        const { error: updateError } = await supabase
-          .from('material_site_allocations')
-          .update({ opening_balance: newOB, updated_by: ctx.userId })
-          .eq('id', String(existingAllocation.id));
-
-        if (updateError) {
-          console.error('Error updating site allocation OB', updateError);
-        }
-      } else {
-        // Create new allocation
-        const { error: insertError } = await supabase
-          .from('material_site_allocations')
-          .insert({
-            material_id: materialId,
-            site_id: siteId,
-            opening_balance: receiptQuantity,
-            organization_id: ctx.organizationId,
-            created_by: ctx.userId,
-            updated_by: ctx.userId,
-          });
-
-        if (insertError) {
-          console.error('Error creating site allocation', insertError);
-        }
+      if (updateError) {
+        console.error('Error updating site allocation inward_qty', updateError);
       }
-
-      // Recalculate total opening_balance for material_masters
-      const { data: allAllocations } = await supabase
+    } else if (totalInwardQty > 0) {
+      // Create new allocation if we have receipts but no allocation
+      // Use opening_balance = 0, inward_qty = total from receipts
+      const { error: insertError } = await supabase
         .from('material_site_allocations')
-        .select('opening_balance')
-        .eq('material_id', materialId)
-        .eq('organization_id', ctx.organizationId);
+        .insert({
+          material_id: materialId,
+          site_id: siteId,
+          opening_balance: 0, // No OB, only receipts
+          inward_qty: totalInwardQty,
+          utilization_qty: 0,
+          available_qty: totalInwardQty, // Will be recalculated by trigger
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          updated_by: ctx.userId,
+        });
 
-      if (allAllocations) {
-        const totalOB = allAllocations.reduce(
-          (sum, alloc) => sum + Number(alloc.opening_balance ?? 0),
-          0,
-        );
-
-        await supabase
-          .from('material_masters')
-          .update({ opening_balance: totalOB, updated_by: ctx.userId })
-          .eq('id', materialId)
-          .eq('organization_id', ctx.organizationId);
+      if (insertError) {
+        console.error('Error creating site allocation', insertError);
       }
     }
-  } catch (obError) {
-    console.error('Error updating opening balance', obError);
-    // Don't fail the receipt creation if OB update fails
+  } catch (error) {
+    console.error('Error recalculating inward_qty', error);
+    // Don't fail the receipt operation if inward_qty update fails
   }
 }
 
@@ -309,17 +301,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create receipt(s).' }, { status: 500 });
     }
 
-    // Update Opening Balance for each receipt
-    for (let i = 0; i < payloads.length; i++) {
-      const payload = payloads[i];
-      const receiptData = receiptsData[i];
-      await updateOpeningBalance(
-        supabase,
-        ctx,
-        payload.material_id,
-        payload.site_id,
-        payload.quantity,
-      );
+    // Recalculate inward_qty for each unique material+site combination
+    const materialSiteCombos = new Set<string>();
+    for (const payload of payloads) {
+      if (payload.site_id) {
+        materialSiteCombos.add(`${payload.material_id}:${payload.site_id}`);
+      }
+    }
+
+    for (const combo of materialSiteCombos) {
+      const [materialId, siteId] = combo.split(':');
+      await recalculateInwardQty(supabase, ctx, materialId, siteId);
     }
 
     const receipts = data.map((row) => mapRowToReceipt(row as ReceiptRow));

@@ -27,7 +27,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate as mutateSWR } from 'swr';
 
 import { fetcher, swrConfig } from '../lib/swr';
 
@@ -124,7 +124,7 @@ interface WorkProgressProps {
 
 export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
   const searchParams = useSearchParams();
-  const { materials, updateMaterial, refresh: refreshMaterials } = useMaterials();
+  const { materials: purchaseMaterials, updateMaterial, refresh: refreshMaterials } = useMaterials();
   const {
     entries: workProgressEntriesRaw,
     isLoading: isWorkProgressLoading,
@@ -132,6 +132,105 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     updateEntry: updateWorkProgressEntry,
     deleteEntry: deleteWorkProgressEntry,
   } = useWorkProgress();
+
+  // Fetch material masters using SWR for auto-update when new materials are added
+  const { data: materialsData, mutate: mutateMaterials } = useSWR<{
+    materials: Array<{
+      id: string;
+      name: string;
+      category: string;
+      unit: string;
+      siteId?: string | null;
+      siteName?: string | null;
+      openingBalance?: number | null;
+      quantity?: number;
+      siteAllocations?: Array<{
+        siteId: string;
+        siteName: string;
+        openingBalance?: number;
+        quantity?: number;
+        inwardQty: number;
+        utilizationQty: number;
+        availableQty: number;
+      }>;
+    }>;
+    pagination?: { page: number; limit: number; total: number; totalPages: number };
+  }>('/api/materials?page=1&limit=100', fetcher, swrConfig);
+
+  // Transform material masters to format expected by work progress
+  // Create entries for each site allocation so materials appear for all sites they're allocated to
+  const materials = useMemo(() => {
+    const masterMaterials: Array<{
+      id: string;
+      materialId: string;
+      materialName: string;
+      site: string;
+      siteId?: string;
+      quantity: number;
+      unit: string;
+      unitRate: number;
+      costPerUnit: number;
+      totalAmount: number;
+      remainingQuantity: number;
+      consumedQuantity: number;
+      category: string;
+    }> = [];
+
+    materialsData?.materials?.forEach((master) => {
+      if (master.siteAllocations && master.siteAllocations.length > 0) {
+        // Create an entry for each site allocation
+        master.siteAllocations.forEach((allocation) => {
+          // Calculate available quantity correctly: Opening Balance + Inward - Utilization
+          const openingBalance = allocation.openingBalance ?? 0;
+          const inwardQty = allocation.inwardQty ?? 0;
+          const utilizationQty = allocation.utilizationQty ?? 0;
+          const availableQty = Math.max(0, openingBalance + inwardQty - utilizationQty);
+          
+          if (availableQty > 0) {
+            masterMaterials.push({
+              id: `${master.id}-${allocation.siteId}`, // Unique ID per site
+              materialId: master.id,
+              materialName: master.name,
+              site: allocation.siteName,
+              siteId: allocation.siteId,
+              quantity: availableQty,
+              unit: master.unit,
+              unitRate: 0,
+              costPerUnit: 0,
+              totalAmount: 0,
+              remainingQuantity: availableQty,
+              consumedQuantity: 0,
+              category: master.category,
+            });
+          }
+        });
+      } else if (master.siteName) {
+        // Fallback for materials without site allocations (backward compatibility)
+        // Calculate available quantity from openingBalance or quantity
+        const availableQty = master.openingBalance ?? master.quantity ?? 0;
+        if (availableQty > 0) {
+          masterMaterials.push({
+            id: master.id,
+            materialId: master.id,
+            materialName: master.name,
+            site: master.siteName,
+            siteId: master.siteId ?? undefined,
+            quantity: availableQty,
+            unit: master.unit,
+            unitRate: 0,
+            costPerUnit: 0,
+            totalAmount: 0,
+            remainingQuantity: availableQty,
+            consumedQuantity: 0,
+            category: master.category,
+          });
+        }
+      }
+    });
+
+    // Combine with purchase materials (for backward compatibility)
+    return [...masterMaterials, ...purchaseMaterials];
+  }, [materialsData, purchaseMaterials]);
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -471,9 +570,16 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       photos: form.photos,
       materials: form.materialsUsed.map((material) => {
         const purchase = materials.find((m) => m.id === material.purchaseId);
+        // For material masters, use materialId and set purchaseId to null
+        // For purchases, use purchaseId and materialId can be null
+        const actualMaterialId = material.materialId || purchase?.materialId || null;
+        // If we have a materialId (material master), set purchaseId to null
+        // Otherwise, use the purchaseId (for purchases)
+        const actualPurchaseId = actualMaterialId ? null : (material.purchaseId || null);
+        
         return {
-          materialId: material.materialId || purchase?.materialId || null,
-          purchaseId: material.purchaseId || null,
+          materialId: actualMaterialId,
+          purchaseId: actualPurchaseId,
           materialName: material.materialName,
           unit: material.unit,
           quantity: material.quantity,
@@ -643,28 +749,103 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
           const purchase = materials.find((m) => m.id === purchaseId);
           if (!purchase) continue;
 
-          const ordered = purchase.quantity ?? 0;
-          const previousConsumed =
-            purchase.consumedQuantity ??
-            Math.max(0, ordered - (purchase.remainingQuantity ?? ordered));
-          const previousRemaining =
-            purchase.remainingQuantity ?? Math.max(0, ordered - previousConsumed);
+          // Check if this is a material master (has materialId) or a purchase
+          if (purchase.materialId) {
+            // It's a material master - update site allocation instead
+            try {
+              // Extract siteId from composite ID or use the material's siteId
+              const siteId = ('siteId' in purchase ? purchase.siteId : undefined) || workProgressForm.siteId;
+              if (!siteId) {
+                console.error('Site ID not found for material master');
+                continue;
+              }
 
-          const updatedConsumed = Math.min(ordered, Math.max(0, previousConsumed + delta));
-          const consumedDelta = updatedConsumed - previousConsumed;
-          const updatedRemaining = Math.max(0, ordered - updatedConsumed);
-          const remainingDelta = updatedRemaining - previousRemaining;
+              // Get current site allocation data
+              const masterMaterial = materialsData?.materials?.find(
+                (m) => m.id === purchase.materialId,
+              );
+              const siteAllocation = masterMaterial?.siteAllocations?.find(
+                (a) => a.siteId === siteId,
+              );
 
-          try {
-            await updateMaterial(purchase.id, {
-              ...purchase,
-              consumedQuantity: updatedConsumed,
-              remainingQuantity: updatedRemaining,
-            });
-            accumulateMasterAdjustment(purchase.materialId, consumedDelta, remainingDelta);
-          } catch (error) {
-            console.error('Failed to update material consumption', error);
-            toast.error('Failed to update material consumption.');
+              if (!siteAllocation) {
+                console.error('Site allocation not found');
+                continue;
+              }
+
+              // Calculate new utilization quantity (apply delta)
+              const currentUtilization = siteAllocation.utilizationQty ?? 0;
+              const newUtilization = Math.max(0, currentUtilization + delta);
+              const openingBalance = siteAllocation.openingBalance ?? siteAllocation.quantity ?? 0;
+              const inwardQty = siteAllocation.inwardQty ?? 0;
+              const availableQty = openingBalance + inwardQty;
+
+              // Validate utilization doesn't exceed available (Opening Balance + Inward)
+              if (newUtilization > availableQty) {
+                toast.error(
+                  `Utilization quantity cannot exceed available quantity (Opening Balance + Inward) for ${purchase.materialName}`,
+                );
+                continue;
+              }
+
+              // Update the material master with new site allocation
+              // openingBalance is already declared above, reuse it
+              const response = await fetch(`/api/materials/${purchase.materialId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  siteAllocations: [
+                    {
+                      siteId,
+                      siteName: siteAllocation.siteName,
+                      openingBalance: openingBalance,
+                      inwardQty: inwardQty,
+                      utilizationQty: newUtilization,
+                    },
+                  ],
+                }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(
+                  (errorData as { error?: string })?.error || 'Failed to update site allocation',
+                );
+              }
+
+              // Refresh materials data
+              await mutateMaterials();
+              // Also invalidate the single material endpoint cache
+              await mutateSWR(`/api/materials/${purchase.materialId}`);
+            } catch (error) {
+              console.error('Failed to update material master consumption', error);
+              toast.error('Failed to update material consumption.');
+            }
+          } else {
+            // It's a purchase - update purchase as before
+            const ordered = purchase.quantity ?? 0;
+            const previousConsumed =
+              purchase.consumedQuantity ??
+              Math.max(0, ordered - (purchase.remainingQuantity ?? ordered));
+            const previousRemaining =
+              purchase.remainingQuantity ?? Math.max(0, ordered - previousConsumed);
+
+            const updatedConsumed = Math.min(ordered, Math.max(0, previousConsumed + delta));
+            const consumedDelta = updatedConsumed - previousConsumed;
+            const updatedRemaining = Math.max(0, ordered - updatedConsumed);
+            const remainingDelta = updatedRemaining - previousRemaining;
+
+            try {
+              await updateMaterial(purchase.id, {
+                ...purchase,
+                consumedQuantity: updatedConsumed,
+                remainingQuantity: updatedRemaining,
+              });
+              accumulateMasterAdjustment(purchase.materialId, consumedDelta, remainingDelta);
+            } catch (error) {
+              console.error('Failed to update material consumption', error);
+              toast.error('Failed to update material consumption.');
+            }
           }
         }
       } else {
@@ -675,32 +856,107 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
           const existingMaterial = materials.find((m) => m.id === material.purchaseId);
           if (!existingMaterial) continue;
 
-          const totalOrdered = existingMaterial.quantity ?? 0;
-          const prevConsumed =
-            existingMaterial.consumedQuantity ??
-            Math.max(0, totalOrdered - (existingMaterial.remainingQuantity ?? totalOrdered));
-          const previousRemaining =
-            existingMaterial.remainingQuantity ?? Math.max(0, totalOrdered - prevConsumed);
+          // Check if this is a material master (has materialId) or a purchase
+          if (material.materialId && existingMaterial.materialId) {
+            // It's a material master - update site allocation instead
+            try {
+              // Extract siteId from composite ID or use the material's siteId
+              const siteId = ('siteId' in existingMaterial ? existingMaterial.siteId : undefined) || workProgressForm.siteId;
+              if (!siteId) {
+                console.error('Site ID not found for material master');
+                continue;
+              }
 
-          const newConsumedQuantity = Math.min(
-            totalOrdered,
-            Math.max(0, prevConsumed + material.quantity),
-          );
-          const newRemainingQuantity = Math.max(0, totalOrdered - newConsumedQuantity);
+              // Get current site allocation data
+              const masterMaterial = materialsData?.materials?.find(
+                (m) => m.id === material.materialId,
+              );
+              const siteAllocation = masterMaterial?.siteAllocations?.find(
+                (a) => a.siteId === siteId,
+              );
 
-          const consumedDelta = newConsumedQuantity - prevConsumed;
-          const remainingDelta = newRemainingQuantity - previousRemaining;
+              if (!siteAllocation) {
+                console.error('Site allocation not found');
+                continue;
+              }
 
-          try {
-            await updateMaterial(existingMaterial.id, {
-              ...existingMaterial,
-              consumedQuantity: newConsumedQuantity,
-              remainingQuantity: newRemainingQuantity,
-            });
-            accumulateMasterAdjustment(existingMaterial.materialId, consumedDelta, remainingDelta);
-          } catch (error) {
-            console.error('Failed to update material consumption', error);
-            toast.error('Failed to update material consumption.');
+              // Calculate new utilization quantity
+              const currentUtilization = siteAllocation.utilizationQty ?? 0;
+              const newUtilization = currentUtilization + material.quantity;
+              const openingBalance = siteAllocation.openingBalance ?? siteAllocation.quantity ?? 0;
+              const inwardQty = siteAllocation.inwardQty ?? 0;
+              const availableQty = openingBalance + inwardQty;
+
+              // Validate utilization doesn't exceed available (Opening Balance + Inward)
+              if (newUtilization > availableQty) {
+                toast.error(
+                  `Utilization quantity cannot exceed available quantity (Opening Balance + Inward) for ${material.materialName}`,
+                );
+                continue;
+              }
+
+              // Update the material master with new site allocation
+              // openingBalance is already declared above, reuse it
+              const response = await fetch(`/api/materials/${material.materialId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  siteAllocations: [
+                    {
+                      siteId,
+                      siteName: siteAllocation.siteName,
+                      openingBalance: openingBalance,
+                      inwardQty: inwardQty,
+                      utilizationQty: newUtilization,
+                    },
+                  ],
+                }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(
+                  (errorData as { error?: string })?.error || 'Failed to update site allocation',
+                );
+              }
+
+              // Refresh materials data
+              await mutateMaterials();
+              // Also invalidate the single material endpoint cache
+              await mutateSWR(`/api/materials/${material.materialId}`);
+            } catch (error) {
+              console.error('Failed to update material master consumption', error);
+              toast.error('Failed to update material consumption.');
+            }
+          } else {
+            // It's a purchase - update purchase as before
+            const totalOrdered = existingMaterial.quantity ?? 0;
+            const prevConsumed =
+              existingMaterial.consumedQuantity ??
+              Math.max(0, totalOrdered - (existingMaterial.remainingQuantity ?? totalOrdered));
+            const previousRemaining =
+              existingMaterial.remainingQuantity ?? Math.max(0, totalOrdered - prevConsumed);
+
+            const newConsumedQuantity = Math.min(
+              totalOrdered,
+              Math.max(0, prevConsumed + material.quantity),
+            );
+            const newRemainingQuantity = Math.max(0, totalOrdered - newConsumedQuantity);
+
+            const consumedDelta = newConsumedQuantity - prevConsumed;
+            const remainingDelta = newRemainingQuantity - previousRemaining;
+
+            try {
+              await updateMaterial(existingMaterial.id, {
+                ...existingMaterial,
+                consumedQuantity: newConsumedQuantity,
+                remainingQuantity: newRemainingQuantity,
+              });
+              accumulateMasterAdjustment(existingMaterial.materialId, consumedDelta, remainingDelta);
+            } catch (error) {
+              console.error('Failed to update material consumption', error);
+              toast.error('Failed to update material consumption.');
+            }
           }
         }
       }
@@ -848,13 +1104,30 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
     }));
   };
 
-  // Get available materials for selected site
+  // Get available materials for selected site (deduplicated by material name)
   const getAvailableMaterials = () => {
     if (!workProgressForm.siteName && !workProgressForm.siteId) return [];
-    return materials.filter((m) => {
-      const matchesSite = m.site === workProgressForm.siteName;
+    const filtered = materials.filter((m) => {
+      // Match by site name or site ID
+      const materialSiteId = (m as { siteId?: string }).siteId;
+      const matchesSite =
+        m.site === workProgressForm.siteName ||
+        m.site === workProgressForm.siteId ||
+        materialSiteId === workProgressForm.siteId ||
+        materialSiteId === workProgressForm.siteName;
       const hasStock = (m.remainingQuantity || 0) > 0;
       return matchesSite && hasStock;
+    });
+    
+    // Deduplicate by material name - keep only the first occurrence of each material name
+    const seen = new Set<string>();
+    return filtered.filter((m) => {
+      const materialName = m.materialName?.toLowerCase().trim() || '';
+      if (seen.has(materialName)) {
+        return false; // Skip duplicate
+      }
+      seen.add(materialName);
+      return true;
     });
   };
 
