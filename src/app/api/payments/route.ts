@@ -138,14 +138,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid payment status.' }, { status: 400 });
     }
 
+    // Ensure empty strings are converted to null for optional fields
+    const normalizedSiteId = siteId && siteId.trim().length > 0 ? siteId.trim() : null;
+    const normalizedSiteName = siteName && siteName.trim().length > 0 ? siteName.trim() : null;
+
     const payload = {
-      client_name: clientName,
-      amount,
+      client_name: clientName.trim(),
+      amount: Math.round(amount * 100) / 100, // Round to 2 decimal places
       status: normalizedStatus,
-      due_date: dueDate ?? null,
-      paid_date: paidDate ?? null,
-      site_id: siteId ?? null,
-      site_name: siteName ?? null,
+      due_date: dueDate && dueDate.trim().length > 0 ? dueDate.trim() : null,
+      paid_date: paidDate && paidDate.trim().length > 0 ? paidDate.trim() : null,
+      site_id: normalizedSiteId,
+      site_name: normalizedSiteName,
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       updated_by: ctx.userId,
@@ -159,7 +163,12 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error('Error creating payment:', error);
-      return NextResponse.json({ error: 'Failed to create payment.' }, { status: 500 });
+      console.error('Payload that failed:', JSON.stringify(payload, null, 2));
+      const errorMessage = error?.message || 'Failed to create payment.';
+      return NextResponse.json(
+        { error: errorMessage || 'Failed to create payment.' },
+        { status: 500 },
+      );
     }
 
     const payment = mapRowToPayment(data as PaymentRow);
