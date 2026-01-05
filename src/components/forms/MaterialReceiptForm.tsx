@@ -778,16 +778,12 @@ export function MaterialReceiptForm({
                                         // Mark as clearing to prevent restoration
                                         clearingFieldsRef.current.add(fieldKey);
                                         // Use field.onChange directly to clear immediately
-                                        field.onChange(undefined);
+                                        field.onChange(0);
                                         // Also update form state to ensure it's cleared
-                                        form.setValue(
-                                          `lineItems.${index}.filledWeight`,
-                                          undefined,
-                                          {
-                                            shouldValidate: false,
-                                            shouldDirty: true,
-                                          },
-                                        );
+                                        form.setValue(`lineItems.${index}.filledWeight`, 0, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
                                         // Remove from clearing set after a short delay
                                         setTimeout(() => {
                                           clearingFieldsRef.current.delete(fieldKey);
@@ -822,15 +818,11 @@ export function MaterialReceiptForm({
                                           }
                                         } else {
                                           // If 0 or negative, clear the field
-                                          field.onChange(undefined);
-                                          form.setValue(
-                                            `lineItems.${index}.filledWeight`,
-                                            undefined,
-                                            {
-                                              shouldValidate: false,
-                                              shouldDirty: true,
-                                            },
-                                          );
+                                          field.onChange(0);
+                                          form.setValue(`lineItems.${index}.filledWeight`, 0, {
+                                            shouldValidate: false,
+                                            shouldDirty: true,
+                                          });
                                         }
                                       }
                                     }}
@@ -890,9 +882,9 @@ export function MaterialReceiptForm({
                                         // Mark as clearing to prevent restoration
                                         clearingFieldsRef.current.add(fieldKey);
                                         // Use field.onChange directly to clear immediately
-                                        field.onChange(undefined);
+                                        field.onChange(0);
                                         // Also update form state to ensure it's cleared
-                                        form.setValue(`lineItems.${index}.emptyWeight`, undefined, {
+                                        form.setValue(`lineItems.${index}.emptyWeight`, 0, {
                                           shouldValidate: false,
                                           shouldDirty: true,
                                         });
@@ -929,8 +921,8 @@ export function MaterialReceiptForm({
                                         }
                                       } else if (numValue < 0) {
                                         // If negative, clear the field
-                                        field.onChange(undefined);
-                                        form.setValue(`lineItems.${index}.emptyWeight`, undefined, {
+                                        field.onChange(0);
+                                        form.setValue(`lineItems.${index}.emptyWeight`, 0, {
                                           shouldValidate: false,
                                           shouldDirty: true,
                                         });
@@ -990,9 +982,9 @@ export function MaterialReceiptForm({
                                       // Mark as clearing to prevent restoration
                                       clearingFieldsRef.current.add(fieldKey);
                                       // Use field.onChange directly to clear immediately
-                                      field.onChange(undefined);
+                                      field.onChange(0);
                                       // Also update form state to ensure it's cleared
-                                      form.setValue(`lineItems.${index}.quantity`, undefined, {
+                                      form.setValue(`lineItems.${index}.quantity`, 0, {
                                         shouldValidate: false,
                                         shouldDirty: true,
                                       });
@@ -1011,8 +1003,8 @@ export function MaterialReceiptForm({
                                         field.onChange(numValue);
                                       } else {
                                         // If 0 or negative, clear the field
-                                        field.onChange(undefined);
-                                        form.setValue(`lineItems.${index}.quantity`, undefined, {
+                                        field.onChange(0);
+                                        form.setValue(`lineItems.${index}.quantity`, 0, {
                                           shouldValidate: false,
                                           shouldDirty: true,
                                         });
