@@ -240,6 +240,7 @@ export function VehiclesPage({
     status: 'available' as Vehicle['status'],
     isRental: false,
     vendor: '',
+    rentalCostPerDay: '',
     make: '',
     model: '',
     lastMaintenanceDate: '',
@@ -747,6 +748,7 @@ export function VehiclesPage({
       status: 'available',
       isRental: false,
       vendor: '',
+      rentalCostPerDay: '',
       make: '',
       model: '',
       lastMaintenanceDate: '',
@@ -763,8 +765,29 @@ export function VehiclesPage({
       return;
     }
 
+    if (vehicleForm.isRental && !vehicleForm.rentalCostPerDay.trim()) {
+      toast.error('Rental cost per day is required for rental vehicles.');
+      return;
+    }
+
+    if (
+      vehicleForm.isRental &&
+      vehicleForm.rentalCostPerDay.trim() &&
+      (isNaN(parseFloat(vehicleForm.rentalCostPerDay)) ||
+        parseFloat(vehicleForm.rentalCostPerDay) <= 0)
+    ) {
+      toast.error('Rental cost per day must be a positive number.');
+      return;
+    }
+
     setIsSavingVehicle(true);
     try {
+      const rentalCostPerDayValue = vehicleForm.rentalCostPerDay
+        ? parseFloat(vehicleForm.rentalCostPerDay)
+        : null;
+      const rentalCostPerDay =
+        rentalCostPerDayValue && !isNaN(rentalCostPerDayValue) ? rentalCostPerDayValue : null;
+
       if (editingVehicle) {
         await updateVehicle(editingVehicle.id, {
           vehicleNumber: vehicleForm.vehicleNumber.trim(),
@@ -772,6 +795,7 @@ export function VehiclesPage({
           status: vehicleForm.status,
           isRental: vehicleForm.isRental,
           vendor: vehicleForm.vendor.trim() || null,
+          rentalCostPerDay: vehicleForm.isRental ? rentalCostPerDay : null,
           make: vehicleForm.make.trim() || null,
           model: vehicleForm.model.trim() || null,
           lastMaintenanceDate: vehicleForm.lastMaintenanceDate || null,
@@ -785,6 +809,7 @@ export function VehiclesPage({
           status: vehicleForm.status,
           isRental: vehicleForm.isRental,
           vendor: vehicleForm.vendor.trim() || null,
+          rentalCostPerDay: vehicleForm.isRental ? rentalCostPerDay : null,
           make: vehicleForm.make.trim() || null,
           model: vehicleForm.model.trim() || null,
           lastMaintenanceDate: vehicleForm.lastMaintenanceDate || null,
@@ -810,6 +835,7 @@ export function VehiclesPage({
       status: vehicle.status,
       isRental: vehicle.isRental,
       vendor: vehicle.vendor || '',
+      rentalCostPerDay: vehicle.rentalCostPerDay?.toString() || '',
       make: vehicle.make || '',
       model: vehicle.model || '',
       lastMaintenanceDate: vehicle.lastMaintenanceDate || '',
@@ -2666,6 +2692,77 @@ export function VehiclesPage({
                       </Select>
                       <FieldDescription>Current status of the vehicle.</FieldDescription>
                     </Field>
+
+                    {/* Rental Information */}
+                    <Field>
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <FieldLabel htmlFor="is-rental">Is Rental Vehicle</FieldLabel>
+                          <FieldDescription>
+                            Mark this vehicle as a rental if it&apos;s leased or rented from a
+                            vendor.
+                          </FieldDescription>
+                        </div>
+                        <Switch
+                          id="is-rental"
+                          checked={vehicleForm.isRental}
+                          onCheckedChange={(checked) =>
+                            setVehicleForm((prev) => ({
+                              ...prev,
+                              isRental: checked,
+                              // Clear rental cost if unchecking rental
+                              rentalCostPerDay: checked ? prev.rentalCostPerDay : '',
+                              vendor: checked ? prev.vendor : '',
+                            }))
+                          }
+                        />
+                      </div>
+                    </Field>
+
+                    {vehicleForm.isRental && (
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Field>
+                          <FieldLabel htmlFor="rental-cost-per-day">
+                            Rental Cost Per Day <span className="text-destructive">*</span>
+                          </FieldLabel>
+                          <Input
+                            id="rental-cost-per-day"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={vehicleForm.rentalCostPerDay}
+                            onChange={(event) =>
+                              setVehicleForm((prev) => ({
+                                ...prev,
+                                rentalCostPerDay: event.target.value,
+                              }))
+                            }
+                            placeholder="1000"
+                          />
+                          <FieldDescription>
+                            Daily rental cost for this vehicle (required for rental vehicles).
+                          </FieldDescription>
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="vendor">Vendor</FieldLabel>
+                          <Input
+                            id="vendor"
+                            value={vehicleForm.vendor}
+                            onChange={(event) =>
+                              setVehicleForm((prev) => ({
+                                ...prev,
+                                vendor: event.target.value,
+                              }))
+                            }
+                            placeholder="Vendor name (optional)"
+                          />
+                          <FieldDescription>
+                            Name of the vendor providing this rental vehicle (optional).
+                          </FieldDescription>
+                        </Field>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="vehicle-make">Make</FieldLabel>
