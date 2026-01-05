@@ -44,6 +44,7 @@ const expenseSchema = z.object({
   approvedBy: z.string().optional(),
   purchaseId: z.string().optional(),
   materialId: z.string().optional(),
+  status: z.enum(['paid', 'pending', 'overdue']).optional(),
 });
 
 export type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -80,6 +81,7 @@ export function ExpenseForm({
       siteName: defaultValues?.siteName || lockedSite || '',
       receipt: '',
       approvedBy: '',
+      status: (defaultValues?.status as 'paid' | 'pending' | 'overdue') || 'pending',
       ...defaultValues,
     },
   });
@@ -460,6 +462,31 @@ export function ExpenseForm({
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Status <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value || 'pending'}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="overdue">Overdue</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
           </form>
         </Form>

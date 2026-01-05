@@ -225,6 +225,7 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           siteName: formData.siteName,
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
+          status: formData.status || 'pending',
         });
 
         if (updated && viewingExpense?.id === updated.id) {
@@ -244,7 +245,7 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           siteName: formData.siteName,
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
-          status: 'pending',
+          status: formData.status || 'pending',
         });
 
         toast.success('Expense added successfully');
@@ -760,6 +761,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                         siteName: dialogState.editingItem.siteName || '',
                         receipt: dialogState.editingItem.receipt || '',
                         approvedBy: dialogState.editingItem.approvedBy || '',
+                        status:
+                          (dialogState.editingItem.status as 'paid' | 'pending' | 'overdue') ||
+                          'pending',
                       }
                     : undefined
                 }
