@@ -1103,10 +1103,8 @@ export function VehiclesPage({
     try {
       await removeUsageRecord(recordId);
       toast.success('Usage record deleted successfully.');
-
-      // Force refresh to ensure data consistency (context already refreshes, but this ensures it)
-      // This prevents the record from reappearing on page refresh
-      await refreshUsageRecords();
+      // Note: No refresh needed - optimistic update already removes it from UI
+      // Refresh would fetch cached data that might still include the deleted record
     } catch (error) {
       console.error('Failed to delete usage record', error);
       toast.error(

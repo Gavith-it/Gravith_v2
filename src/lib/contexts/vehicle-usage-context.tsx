@@ -159,16 +159,9 @@ export function VehicleUsageProvider({ children }: { children: ReactNode }) {
           throw new Error(payload.error || 'Failed to delete usage record.');
         }
 
-        // Refresh data from server to ensure consistency after successful deletion
-        // This ensures that if the page is refreshed, the deleted record won't reappear
-        try {
-          const freshData = await fetchUsageRecords();
-          setRecords(freshData);
-        } catch (refreshError) {
-          // If refresh fails, that's okay - the optimistic update already removed it
-          console.warn('Failed to refresh usage records after deletion:', refreshError);
-        }
-
+        // No refresh needed - optimistic update already removed it from UI
+        // Refresh would fetch cached data that might still include the deleted record
+        // The record will be gone on next page load or manual refresh
         return true;
       } catch (error) {
         // Rollback optimistic update on error (if not already rolled back)
