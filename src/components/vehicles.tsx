@@ -1789,17 +1789,53 @@ export function VehiclesPage({
                             </p>
                             <p className="text-2xl font-bold text-primary">
                               ₹
-                              {usageRecords
-                                .filter((r) => {
+                              {(() => {
+                                const now = new Date();
+                                const monthlyRecords = usageRecords.filter((r) => {
                                   const recordDate = new Date(r.date);
-                                  const now = new Date();
                                   return (
                                     recordDate.getMonth() === now.getMonth() &&
                                     recordDate.getFullYear() === now.getFullYear()
                                   );
-                                })
-                                .reduce((sum, r) => sum + (r.rentalCost || 0), 0)
-                                .toLocaleString()}
+                                });
+
+                                return monthlyRecords
+                                  .reduce((sum, record) => {
+                                    // Only calculate cost for rental vehicles
+                                    if (!record.isRental) return sum;
+
+                                    // Try to use stored rentalCost if available
+                                    if (record.rentalCost && record.rentalCost > 0) {
+                                      return sum + record.rentalCost;
+                                    }
+
+                                    // Calculate from rentalCostPerDay if available
+                                    const vehicle = vehicles.find((v) => v.id === record.vehicleId);
+                                    if (vehicle?.isRental && vehicle?.rentalCostPerDay) {
+                                      // Calculate hours used from startTime and endTime
+                                      try {
+                                        const startTime = new Date(
+                                          `${record.date}T${record.startTime}`,
+                                        );
+                                        const endTime = new Date(
+                                          `${record.date}T${record.endTime}`,
+                                        );
+                                        const hoursUsed =
+                                          (endTime.getTime() - startTime.getTime()) /
+                                          (1000 * 60 * 60);
+                                        const daysUsed = hoursUsed / 24;
+                                        const usageCost = vehicle.rentalCostPerDay * daysUsed;
+                                        return sum + usageCost;
+                                      } catch {
+                                        // If time calculation fails, assume 1 day
+                                        return sum + vehicle.rentalCostPerDay;
+                                      }
+                                    }
+
+                                    return sum;
+                                  }, 0)
+                                  .toLocaleString();
+                              })()}
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
@@ -1814,15 +1850,24 @@ export function VehiclesPage({
                         <div className="flex items-center justify-between">
                           <div className="space-y-2">
                             <p className="text-sm font-medium text-muted-foreground">
-                              Avg. Efficiency
+                              Monthly Avg. Efficiency
                             </p>
                             <p className="text-2xl font-bold text-orange-600">
                               {(() => {
-                                const totalDistance = usageRecords.reduce(
+                                const now = new Date();
+                                const monthlyRecords = usageRecords.filter((r) => {
+                                  const recordDate = new Date(r.date);
+                                  return (
+                                    recordDate.getMonth() === now.getMonth() &&
+                                    recordDate.getFullYear() === now.getFullYear()
+                                  );
+                                });
+
+                                const totalDistance = monthlyRecords.reduce(
                                   (sum, r) => sum + r.totalDistance,
                                   0,
                                 );
-                                const totalFuel = usageRecords.reduce(
+                                const totalFuel = monthlyRecords.reduce(
                                   (sum, r) => sum + r.fuelConsumed,
                                   0,
                                 );
