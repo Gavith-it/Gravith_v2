@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import type { Vendor } from '@/types';
 import { fetchJson } from '../utils/fetch';
+
+import type { Vendor } from '@/types';
 
 interface VendorsContextType {
   vendors: Vendor[];
@@ -48,7 +49,10 @@ type VendorPayload = {
 
 type VendorUpdatePayload = Partial<VendorPayload>;
 
-async function fetchVendors(page = 1, limit = 50): Promise<{
+async function fetchVendors(
+  page = 1,
+  limit = 50,
+): Promise<{
   vendors: Vendor[];
   pagination?: {
     page: number;
@@ -90,12 +94,18 @@ async function fetchVendors(page = 1, limit = 50): Promise<{
 export function VendorsProvider({ children }: { children: ReactNode }) {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [pagination, setPagination] = useState<{
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  } | undefined>(undefined);
+  const [pagination, setPagination] = useState<
+    | {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      }
+    | undefined
+  >(undefined);
+
+  // Use ref to prevent duplicate calls in React Strict Mode
+  const hasInitialized = React.useRef(false);
 
   const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
@@ -113,7 +123,11 @@ export function VendorsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // Only initialize once, even in React Strict Mode
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      void refresh();
+    }
   }, [refresh]);
 
   const addVendor = useCallback(async (vendor: VendorPayload): Promise<Vendor | null> => {
@@ -153,9 +167,7 @@ export function VendorsProvider({ children }: { children: ReactNode }) {
         throw new Error(payload.error || 'Failed to update vendor.');
       }
 
-      setVendors((prev) =>
-        prev.map((vendor) => (vendor.id === id ? payload.vendor! : vendor)),
-      );
+      setVendors((prev) => prev.map((vendor) => (vendor.id === id ? payload.vendor! : vendor)));
 
       return payload.vendor ?? null;
     },
@@ -198,7 +210,16 @@ export function VendorsProvider({ children }: { children: ReactNode }) {
       toggleVendorStatus,
       pagination,
     }),
-    [vendors, isLoading, refresh, addVendor, updateVendor, deleteVendor, toggleVendorStatus, pagination],
+    [
+      vendors,
+      isLoading,
+      refresh,
+      addVendor,
+      updateVendor,
+      deleteVendor,
+      toggleVendorStatus,
+      pagination,
+    ],
   );
 
   return <VendorsContext.Provider value={value}>{children}</VendorsContext.Provider>;

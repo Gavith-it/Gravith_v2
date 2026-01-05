@@ -1,17 +1,10 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { fetchJson } from '../utils/fetch';
-import { toast } from 'sonner';
 
 import type { MaterialReceipt } from '@/types';
 
@@ -25,10 +18,7 @@ interface MaterialReceiptsContextType {
   addReceipts: (
     receipts: Array<Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>>,
   ) => Promise<MaterialReceipt[]>;
-  updateReceipt: (
-    id: string,
-    updates: Partial<MaterialReceipt>,
-  ) => Promise<MaterialReceipt | null>;
+  updateReceipt: (id: string, updates: Partial<MaterialReceipt>) => Promise<MaterialReceipt | null>;
   deleteReceipt: (id: string) => Promise<boolean>;
   linkReceiptToPurchase: (receiptId: string, purchaseId: string) => Promise<boolean>;
   unlinkReceipt: (receiptId: string) => Promise<boolean>;
@@ -58,6 +48,9 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
   const [receipts, setReceipts] = useState<MaterialReceipt[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Use ref to prevent duplicate calls in React Strict Mode
+  const hasInitialized = React.useRef(false);
+
   const refresh = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -72,7 +65,11 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // Only initialize once, even in React Strict Mode
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      void refresh();
+    }
   }, [refresh]);
 
   const addReceipt = useCallback(
@@ -102,7 +99,9 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
 
   const addReceipts = useCallback(
     async (
-      receiptsData: Array<Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>>,
+      receiptsData: Array<
+        Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>
+      >,
     ): Promise<MaterialReceipt[]> => {
       const response = await fetch('/api/receipts', {
         method: 'POST',
@@ -185,9 +184,7 @@ export function MaterialReceiptsProvider({ children }: { children: ReactNode }) 
         return true;
       } catch (error) {
         console.error('Error linking receipt to purchase', error);
-        toast.error(
-          error instanceof Error ? error.message : 'Failed to link receipt to purchase.',
-        );
+        toast.error(error instanceof Error ? error.message : 'Failed to link receipt to purchase.');
         return false;
       }
     },

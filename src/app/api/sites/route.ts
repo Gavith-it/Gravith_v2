@@ -93,10 +93,10 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get total count for pagination
+    // Get total count for pagination (optimized: use 'id' instead of '*' for faster counting)
     const { count, error: countError } = await supabase
       .from('sites')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', organizationId);
 
     if (countError) {

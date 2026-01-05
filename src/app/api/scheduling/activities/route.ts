@@ -6,7 +6,6 @@ import type { ActivityRow } from '../_utils';
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectActivity } from '@/types';
 
-
 const ACTIVITY_SELECT = `
   id,
   site_id,
@@ -69,15 +68,18 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
 
-    // Get total count for pagination
+    // Get total count for pagination (optimized: use 'id' instead of '*' for faster counting)
     const { count, error: countError } = await supabase
       .from('project_activities')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', ctx.organizationId);
 
     if (countError) {
@@ -113,10 +115,7 @@ export async function GET(request: Request) {
     });
 
     // Add cache headers: cache for 60 seconds, revalidate in background
-    response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
-    );
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
 
     return response;
   } catch (error) {

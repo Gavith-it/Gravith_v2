@@ -192,7 +192,9 @@ export default function MaterialMasterForm({
         openingBalance: alloc.openingBalance ?? alloc.quantity ?? 0,
         inwardQty: alloc.inwardQty ?? 0,
         utilizationQty: alloc.utilizationQty ?? 0,
-        availableQty: alloc.availableQty ?? Math.max(0, (alloc.openingBalance ?? alloc.quantity ?? 0) - (alloc.utilizationQty ?? 0)),
+        availableQty:
+          alloc.availableQty ??
+          Math.max(0, (alloc.openingBalance ?? alloc.quantity ?? 0) - (alloc.utilizationQty ?? 0)),
         quantity: alloc.quantity, // Backward compatibility
       }));
       setSiteAllocations(mappedAllocations);
@@ -248,7 +250,8 @@ export default function MaterialMasterForm({
         siteName: selectedSite?.name || '',
       };
     } else if (field === 'openingBalance') {
-      const openingBalance = value === undefined || value === null ? undefined : Math.max(0, Number(value));
+      const openingBalance =
+        value === undefined || value === null ? undefined : Math.max(0, Number(value));
       const utilizationQty = updated[index].utilizationQty ?? 0;
       const inwardQty = updated[index].inwardQty ?? 0;
       // Available qty = Opening Balance + Inward - Utilization
@@ -315,19 +318,29 @@ export default function MaterialMasterForm({
         // Validate each remaining allocation (only check valid ones)
         for (const [index, allocation] of siteAllocations.entries()) {
           // Skip validation for empty/incomplete allocations (they'll be filtered out)
-          if (!allocation.siteId && (allocation.openingBalance === undefined || allocation.openingBalance === 0)) {
+          if (
+            !allocation.siteId &&
+            (allocation.openingBalance === undefined || allocation.openingBalance === 0)
+          ) {
             continue; // Empty allocation row, will be filtered out
           }
 
           // If allocation has some data but is incomplete, show error
-          if (allocation.siteId && (allocation.openingBalance === undefined || allocation.openingBalance <= 0)) {
+          if (
+            allocation.siteId &&
+            (allocation.openingBalance === undefined || allocation.openingBalance <= 0)
+          ) {
             const errorMsg = `Please enter a valid opening balance (> 0) for allocation ${index + 1}.`;
             setValidationError(errorMsg);
             toast.error(errorMsg);
             setIsSubmitting(false);
             return;
           }
-          if (!allocation.siteId && allocation.openingBalance !== undefined && allocation.openingBalance > 0) {
+          if (
+            !allocation.siteId &&
+            allocation.openingBalance !== undefined &&
+            allocation.openingBalance > 0
+          ) {
             const errorMsg = `Please select a site for allocation ${index + 1}.`;
             setValidationError(errorMsg);
             toast.error(errorMsg);
@@ -368,7 +381,8 @@ export default function MaterialMasterForm({
               openingBalance: openingBalance,
               inwardQty: inwardQty, // Read-only, from receipts
               utilizationQty: utilizationQty, // Read-only, from work progress
-              availableQty: alloc.availableQty ?? Math.max(0, openingBalance + inwardQty - utilizationQty),
+              availableQty:
+                alloc.availableQty ?? Math.max(0, openingBalance + inwardQty - utilizationQty),
               quantity: openingBalance, // Backward compatibility
             };
           });
@@ -683,10 +697,10 @@ export default function MaterialMasterForm({
                     <FieldLabel className="text-base font-medium">Site Allocations</FieldLabel>
                     <FieldDescription>
                       Add sites and set opening balance for each site. Available quantity is
-                      calculated automatically (Opening Balance + Inward - Utilization). Inward
-                      and utilization quantities are managed by receipts and work progress
-                      respectively and can be viewed in the materials table. Only active sites
-                      will be shown in the dropdown.
+                      calculated automatically (Opening Balance + Inward - Utilization). Inward and
+                      utilization quantities are managed by receipts and work progress respectively
+                      and can be viewed in the materials table. Only active sites will be shown in
+                      the dropdown.
                     </FieldDescription>
                   </div>
                   <Button
@@ -798,15 +812,19 @@ export default function MaterialMasterForm({
                                   min="0"
                                   step="0.01"
                                   placeholder="Enter opening balance"
-                                  value={allocation.openingBalance === undefined || allocation.openingBalance === 0 ? '' : allocation.openingBalance}
-                                  onChange={(e) => {
-                                    const value = e.target.value === '' ? undefined : Number(e.target.value);
+                                  value={
+                                    allocation.openingBalance === undefined ||
+                                    allocation.openingBalance === 0
+                                      ? ''
+                                      : allocation.openingBalance
+                                  }
+                                  onChange={(e) =>
                                     handleSiteAllocationChange(
                                       index,
                                       'openingBalance',
-                                      value === undefined || isNaN(value) ? undefined : value,
-                                    );
-                                  }}
+                                      e.target.value === '' ? undefined : Number(e.target.value),
+                                    )
+                                  }
                                   style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                               </div>

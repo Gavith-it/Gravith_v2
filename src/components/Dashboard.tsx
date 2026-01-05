@@ -29,6 +29,7 @@ import {
 } from '../lib/utils';
 import { formatDateOnly } from '../lib/utils/date';
 
+
 import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
 import type { ExpenseFormData } from './forms/ExpenseForm';
@@ -44,6 +45,7 @@ import { Card, CardContent } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
+import { useVehicles } from '@/lib/contexts';
 import type { DashboardData, DashboardRecentActivity } from '@/types/dashboard';
 import type { Vehicle } from '@/types/entities';
 import type { MaterialMasterInput } from '@/types/materials';
@@ -111,8 +113,8 @@ const quickActions = [
   },
   {
     id: '5',
-    title: 'Site Update',
-    description: 'Log site progress',
+    title: 'Work Progress',
+    description: 'Log work progress and activities',
     icon: Building2,
     color: 'bg-purple-500',
     action: 'sites',
@@ -153,16 +155,23 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     isLoading,
   } = useSWR<DashboardData>('/api/dashboard/overview', fetcher, swrConfig);
 
-  // Fetch vehicles and sites for Vehicle Usage form
-  const { data: vehiclesData } = useSWR<{ vehicles: Vehicle[] }>(
-    '/api/vehicles',
+  // Use vehicles from context provider (already loaded) instead of duplicate API call
+  const { vehicles: vehiclesFromContext, isLoading: isVehiclesLoading } = useVehicles();
+
+  // Lazy load sites only when Vehicle Usage form dialog is opened
+  const [shouldLoadSites, setShouldLoadSites] = React.useState(false);
+  const { data: sitesData } = useSWR<{ sites: Array<{ id: string; name: string }> }>(
+    shouldLoadSites ? '/api/sites' : null, // Only fetch when needed
     fetcher,
     swrConfig,
   );
-  const { data: sitesData } = useSWR<{ sites: Array<{ id: string; name: string }> }>(
-    '/api/sites',
-    fetcher,
-    swrConfig,
+
+  // Use vehicles from context, fallback to empty array
+  const vehiclesData = React.useMemo(
+    () => ({
+      vehicles: vehiclesFromContext || [],
+    }),
+    [vehiclesFromContext],
   );
 
   // Convert SWR error to string for display
@@ -190,6 +199,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const purchaseDialog = useDialogState();
   const vehicleUsageDialog = useDialogState();
   const activityDialog = useDialogState();
+
+  // Load sites when vehicle usage dialog opens (must be after dialog state declaration)
+  React.useEffect(() => {
+    if (vehicleUsageDialog.isDialogOpen && !shouldLoadSites) {
+      setShouldLoadSites(true);
+    }
+  }, [vehicleUsageDialog.isDialogOpen, shouldLoadSites]);
 
   // Loading states for form submissions
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
@@ -248,7 +264,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       // Close dialog immediately for better UX
       expenseDialog.closeDialog();
-      toast.success('Expense created successfully');
+      toast.success('Expense added successfully!', {
+        description: 'Your expense entry has been recorded via Quick Action.',
+      });
 
       // Invalidate cache in background (non-blocking)
       mutate((key) => typeof key === 'string' && key.startsWith('/api/expenses'), undefined, {
@@ -297,7 +315,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       // Close dialog immediately for better UX
       materialMasterDialog.closeDialog();
-      toast.success('Material created successfully');
+      toast.success('Material Master added successfully!', {
+        description: 'Your material has been added to the database via Quick Action.',
+      });
 
       // Invalidate cache in background (non-blocking)
       mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), undefined, {
@@ -315,8 +335,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
   const handlePurchaseSubmit = async (_data: Record<string, unknown>) => {
     // PurchaseForm handles its own submission internally using contexts
-    // This callback is just for notification and cleanup
-    // The form will show its own success/error toasts
+    // The form will show its own success/error toasts with Quick Action message
     purchaseDialog.closeDialog();
 
     // Invalidate purchases and materials cache
@@ -400,7 +419,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       // Close dialog immediately for better UX
       vehicleUsageDialog.closeDialog();
-      toast.success('Vehicle usage recorded successfully');
+      toast.success('Vehicle Check-in recorded successfully!', {
+        description: 'Vehicle usage has been logged via Quick Action.',
+      });
 
       // Invalidate cache in background (non-blocking)
       mutate((key) => typeof key === 'string' && key.startsWith('/api/vehicles'), undefined, {
@@ -480,7 +501,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       // Close dialog immediately for better UX
       activityDialog.closeDialog();
-      toast.success('Work progress entry created successfully');
+      toast.success('Work Progress added successfully!', {
+        description: 'Work progress has been logged via Quick Action.',
+      });
 
       // Invalidate cache in background (non-blocking)
       mutate((key) => typeof key === 'string' && key.startsWith('/api/work-progress'), undefined, {
@@ -1128,8 +1151,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       </FormDialog>
 
       <FormDialog
-        title="Site Update"
-        description="Log site progress and activities"
+        title="Work Progress"
+        description="Log work progress and activities"
         isOpen={activityDialog.isDialogOpen}
         onOpenChange={(open) => (open ? activityDialog.openDialog() : activityDialog.closeDialog())}
         maxWidth="max-w-2xl"

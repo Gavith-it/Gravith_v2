@@ -21,17 +21,42 @@ import {
   BarChart3,
   Layers,
 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Suspense } from 'react';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 
 import { fetcher, swrConfig } from '../../lib/swr';
 
+
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
-import { ExpenseForm, type ExpenseFormData } from '@/components/forms/ExpenseForm';
-import MaterialMasterForm from '@/components/forms/MaterialMasterForm';
+import type { ExpenseFormData } from '@/components/forms/ExpenseForm';
+
+// Lazy-load forms for better code splitting
+const ExpenseForm = dynamic(
+  () => import('@/components/forms/ExpenseForm').then((mod) => ({ default: mod.ExpenseForm })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      </div>
+    ),
+  },
+);
+
+const MaterialMasterForm = dynamic(() => import('@/components/forms/MaterialMasterForm'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+    </div>
+  ),
+});
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SectionCard } from '@/components/layout/SectionCard';
 import {

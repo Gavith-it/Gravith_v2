@@ -74,7 +74,11 @@ export function MaterialReceiptForm({
 
   // Fetch materials and sites using SWR
   // Use limit=100 (max allowed by API) to get all materials in one request
-  const { data: materialsData, isLoading: isLoadingMaterials, mutate: mutateMaterials } = useSWR<{
+  const {
+    data: materialsData,
+    isLoading: isLoadingMaterials,
+    mutate: mutateMaterials,
+  } = useSWR<{
     materials: MaterialMaster[];
     pagination?: {
       page: number;
@@ -110,6 +114,7 @@ export function MaterialReceiptForm({
             {
               vehicleNumber: editingReceipt.vehicleNumber,
               materialId: editingReceipt.materialId,
+              // materialName will be updated from material master in useEffect
               materialName: editingReceipt.materialName,
               filledWeight: editingReceipt.filledWeight,
               emptyWeight: editingReceipt.emptyWeight,
@@ -235,6 +240,10 @@ export function MaterialReceiptForm({
           // Edit mode: update first receipt, create new ones for additional line items
           const firstItem = data.lineItems[0];
           const netWeight = firstItem.filledWeight - firstItem.emptyWeight;
+          // Get current material name from material master
+          const firstMaterial = materialOptions.find((m) => m.id === firstItem.materialId);
+          const currentFirstMaterialName = firstMaterial?.name || firstItem.materialName;
+
           const receiptData: Omit<
             MaterialReceipt,
             'id' | 'createdAt' | 'updatedAt' | 'organizationId'
@@ -243,7 +252,7 @@ export function MaterialReceiptForm({
             receiptNumber: data.receiptNumber ?? null,
             vehicleNumber: firstItem.vehicleNumber,
             materialId: firstItem.materialId,
-            materialName: firstItem.materialName,
+            materialName: currentFirstMaterialName, // Use current material master name
             filledWeight: firstItem.filledWeight,
             emptyWeight: firstItem.emptyWeight,
             netWeight,
@@ -260,12 +269,16 @@ export function MaterialReceiptForm({
           if (data.lineItems.length > 1) {
             const additionalReceipts = data.lineItems.slice(1).map((item) => {
               const itemNetWeight = item.filledWeight - item.emptyWeight;
+              // Get current material name from material master
+              const material = materialOptions.find((m) => m.id === item.materialId);
+              const currentMaterialName = material?.name || item.materialName;
+
               return {
                 date: formatDateOnly(data.date),
                 receiptNumber: data.receiptNumber ?? null,
                 vehicleNumber: item.vehicleNumber,
                 materialId: item.materialId,
-                materialName: item.materialName,
+                materialName: currentMaterialName, // Use current material master name
                 filledWeight: item.filledWeight,
                 emptyWeight: item.emptyWeight,
                 netWeight: itemNetWeight,
@@ -291,14 +304,19 @@ export function MaterialReceiptForm({
           onSubmit?.(receiptData);
         } else {
           // Create mode: create multiple receipts
+          // Ensure we use the current material master name, not the form value
           const receiptsData = data.lineItems.map((item) => {
             const netWeight = item.filledWeight - item.emptyWeight;
+            // Get current material name from material master
+            const material = materialOptions.find((m) => m.id === item.materialId);
+            const currentMaterialName = material?.name || item.materialName;
+
             return {
               date: formatDateOnly(data.date),
               receiptNumber: data.receiptNumber ?? null,
               vehicleNumber: item.vehicleNumber,
               materialId: item.materialId,
-              materialName: item.materialName,
+              materialName: currentMaterialName, // Use current material master name
               filledWeight: item.filledWeight,
               emptyWeight: item.emptyWeight,
               netWeight,
@@ -322,9 +340,6 @@ export function MaterialReceiptForm({
             toast.success(`${receiptsData.length} material receipt(s) recorded successfully!`);
           }
 
-          // Refresh materials list after successful submission
-          void mutateMaterials(undefined, { revalidate: true });
-          
           onSubmit?.(receiptsData[0]);
         }
       } catch (error) {
@@ -334,14 +349,14 @@ export function MaterialReceiptForm({
         );
       }
     },
-    [addReceipt, addReceipts, editingReceipt, onSubmit, updateReceipt],
+    [addReceipt, addReceipts, editingReceipt, materialOptions, onSubmit, updateReceipt],
   );
 
   // Update material names when materials are selected in line items
   // Only update when materialId changes, not on initial load in edit mode
   const lineItemsWatch = form.watch('lineItems');
   const previousMaterialIdsRef = React.useRef<Record<number, string>>({});
-  
+
   useEffect(() => {
     lineItemsWatch.forEach((item, index) => {
       if (item.materialId) {
@@ -350,7 +365,9 @@ export function MaterialReceiptForm({
         if (previousMaterialId !== item.materialId) {
           const material = materialOptions.find((option) => option.id === item.materialId);
           if (material) {
-            form.setValue(`lineItems.${index}.materialName`, material.name, { shouldValidate: true });
+            form.setValue(`lineItems.${index}.materialName`, material.name, {
+              shouldValidate: true,
+            });
           }
           previousMaterialIdsRef.current[index] = item.materialId;
         } else if (previousMaterialId === item.materialId) {
@@ -358,7 +375,9 @@ export function MaterialReceiptForm({
           const material = materialOptions.find((option) => option.id === item.materialId);
           if (material && material.name !== item.materialName) {
             // Only update if the material exists and name doesn't match
-            form.setValue(`lineItems.${index}.materialName`, material.name, { shouldValidate: true });
+            form.setValue(`lineItems.${index}.materialName`, material.name, {
+              shouldValidate: true,
+            });
           }
         }
       } else {
@@ -367,7 +386,7 @@ export function MaterialReceiptForm({
       }
     });
   }, [form, materialOptions, lineItemsWatch]);
-  
+
   // Initialize previousMaterialIdsRef when form loads in edit mode
   useEffect(() => {
     if (isEditMode && editingReceipt) {
@@ -383,7 +402,6 @@ export function MaterialReceiptForm({
       const filledWeight = item.filledWeight;
       const emptyWeight = item.emptyWeight;
       const currentQuantity = item.quantity;
-      const isClearingQuantity = clearingFieldsRef.current.has(`quantity-${index}`);
 
       // Only auto-populate if both weights are valid positive numbers (not undefined, not 0)
       // Skip if either weight is undefined, 0, or NaN (user is clearing the field)
@@ -400,10 +418,11 @@ export function MaterialReceiptForm({
         // Only update if net weight is positive
         if (netWeight > 0) {
           // Don't auto-populate if quantity field is being actively cleared
+          const isClearingQuantity = clearingFieldsRef.current.has(`quantity-${index}`);
           if (isClearingQuantity) {
             return;
           }
-          
+
           // Only auto-update if quantity is undefined, null, or significantly different
           // Skip if quantity is 0 (user might be clearing it)
           // This prevents overwriting user input while still auto-populating empty fields
@@ -411,7 +430,9 @@ export function MaterialReceiptForm({
             currentQuantity === undefined ||
             currentQuantity === null ||
             isNaN(currentQuantity) ||
-            (typeof currentQuantity === 'number' && currentQuantity > 0 && Math.abs(currentQuantity - netWeight) > 0.01) // Only update if significantly different
+            (typeof currentQuantity === 'number' &&
+              currentQuantity > 0 &&
+              Math.abs(currentQuantity - netWeight) > 0.01) // Only update if significantly different
           ) {
             // Don't auto-populate if quantity is 0 (user is clearing)
             if (currentQuantity !== 0) {
@@ -749,12 +770,24 @@ export function MaterialReceiptForm({
                                       const rawValue = event.target.value;
                                       const fieldKey = `filledWeight-${index}`;
                                       // Allow empty string - this clears the input visually
-                                      if (rawValue === '' || rawValue === null || rawValue === undefined) {
+                                      if (
+                                        rawValue === '' ||
+                                        rawValue === null ||
+                                        rawValue === undefined
+                                      ) {
                                         // Mark as clearing to prevent restoration
                                         clearingFieldsRef.current.add(fieldKey);
-                                        // Use null instead of undefined - React Hook Form handles null better for clearing
-                                        field.onChange(null);
-                                        form.resetField(`lineItems.${index}.filledWeight`, { defaultValue: 0 });
+                                        // Use field.onChange directly to clear immediately
+                                        field.onChange(undefined);
+                                        // Also update form state to ensure it's cleared
+                                        form.setValue(
+                                          `lineItems.${index}.filledWeight`,
+                                          undefined,
+                                          {
+                                            shouldValidate: false,
+                                            shouldDirty: true,
+                                          },
+                                        );
                                         // Remove from clearing set after a short delay
                                         setTimeout(() => {
                                           clearingFieldsRef.current.delete(fieldKey);
@@ -789,20 +822,22 @@ export function MaterialReceiptForm({
                                           }
                                         } else {
                                           // If 0 or negative, clear the field
-                                          field.onChange(null);
-                                          form.resetField(`lineItems.${index}.filledWeight`, { defaultValue: 0 });
+                                          field.onChange(undefined);
+                                          form.setValue(
+                                            `lineItems.${index}.filledWeight`,
+                                            undefined,
+                                            {
+                                              shouldValidate: false,
+                                              shouldDirty: true,
+                                            },
+                                          );
                                         }
                                       }
                                     }}
                                     onBlur={(e) => {
-                                      // On blur, only validate - don't restore values if field was intentionally cleared
+                                      // On blur, validate if empty or invalid
                                       const value = e.target.value;
-                                      const fieldKey = `filledWeight-${index}`;
-                                      const isClearing = clearingFieldsRef.current.has(fieldKey);
-                                      const fieldValue = field.value;
-                                      // Only set to 0 if field is empty AND was never intentionally cleared (not null)
-                                      // If fieldValue is null, it means user intentionally cleared it - don't restore
-                                      if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
+                                      if (value === '' || value === null || value === undefined) {
                                         field.onChange(0);
                                         form.setValue(`lineItems.${index}.filledWeight`, 0, {
                                           shouldValidate: true,
@@ -813,7 +848,10 @@ export function MaterialReceiptForm({
                                     name={field.name}
                                     ref={field.ref}
                                     value={
-                                      field.value === undefined || field.value === null || field.value === 0 || isNaN(Number(field.value))
+                                      field.value === undefined ||
+                                      field.value === null ||
+                                      field.value === 0 ||
+                                      (typeof field.value === 'number' && isNaN(field.value))
                                         ? ''
                                         : String(field.value)
                                     }
@@ -844,12 +882,20 @@ export function MaterialReceiptForm({
                                       const rawValue = event.target.value;
                                       const fieldKey = `emptyWeight-${index}`;
                                       // Allow empty string - this clears the input visually
-                                      if (rawValue === '' || rawValue === null || rawValue === undefined) {
+                                      if (
+                                        rawValue === '' ||
+                                        rawValue === null ||
+                                        rawValue === undefined
+                                      ) {
                                         // Mark as clearing to prevent restoration
                                         clearingFieldsRef.current.add(fieldKey);
-                                        // Use null instead of undefined - React Hook Form handles null better for clearing
-                                        field.onChange(null);
-                                        form.resetField(`lineItems.${index}.emptyWeight`, { defaultValue: 0 });
+                                        // Use field.onChange directly to clear immediately
+                                        field.onChange(undefined);
+                                        // Also update form state to ensure it's cleared
+                                        form.setValue(`lineItems.${index}.emptyWeight`, undefined, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
                                         // Remove from clearing set after a short delay
                                         setTimeout(() => {
                                           clearingFieldsRef.current.delete(fieldKey);
@@ -883,19 +929,17 @@ export function MaterialReceiptForm({
                                         }
                                       } else if (numValue < 0) {
                                         // If negative, clear the field
-                                        field.onChange(null);
-                                        form.resetField(`lineItems.${index}.emptyWeight`, { defaultValue: 0 });
+                                        field.onChange(undefined);
+                                        form.setValue(`lineItems.${index}.emptyWeight`, undefined, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
                                       }
                                     }}
                                     onBlur={(e) => {
-                                      // On blur, only validate - don't restore values if field was intentionally cleared
+                                      // On blur, validate if empty
                                       const value = e.target.value;
-                                      const fieldKey = `emptyWeight-${index}`;
-                                      const isClearing = clearingFieldsRef.current.has(fieldKey);
-                                      const fieldValue = field.value;
-                                      // Only set to 0 if field is empty AND was never intentionally cleared (not null)
-                                      // If fieldValue is null, it means user intentionally cleared it - don't restore
-                                      if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
+                                      if (value === '' || value === null || value === undefined) {
                                         field.onChange(0);
                                         form.setValue(`lineItems.${index}.emptyWeight`, 0, {
                                           shouldValidate: true,
@@ -906,7 +950,9 @@ export function MaterialReceiptForm({
                                     name={field.name}
                                     ref={field.ref}
                                     value={
-                                      field.value === undefined || field.value === null || isNaN(Number(field.value))
+                                      field.value === undefined ||
+                                      field.value === null ||
+                                      (typeof field.value === 'number' && isNaN(field.value))
                                         ? ''
                                         : String(field.value)
                                     }
@@ -936,12 +982,20 @@ export function MaterialReceiptForm({
                                     const rawValue = event.target.value;
                                     const fieldKey = `quantity-${index}`;
                                     // Allow empty string - this clears the input visually
-                                    if (rawValue === '' || rawValue === null || rawValue === undefined) {
-                                        // Mark as clearing to prevent restoration
-                                        clearingFieldsRef.current.add(fieldKey);
-                                        // Use null instead of undefined - React Hook Form handles null better for clearing
-                                        field.onChange(null);
-                                        form.resetField(`lineItems.${index}.quantity`, { defaultValue: 0 });
+                                    if (
+                                      rawValue === '' ||
+                                      rawValue === null ||
+                                      rawValue === undefined
+                                    ) {
+                                      // Mark as clearing to prevent restoration
+                                      clearingFieldsRef.current.add(fieldKey);
+                                      // Use field.onChange directly to clear immediately
+                                      field.onChange(undefined);
+                                      // Also update form state to ensure it's cleared
+                                      form.setValue(`lineItems.${index}.quantity`, undefined, {
+                                        shouldValidate: false,
+                                        shouldDirty: true,
+                                      });
                                       // Remove from clearing set after a short delay
                                       setTimeout(() => {
                                         clearingFieldsRef.current.delete(fieldKey);
@@ -957,20 +1011,18 @@ export function MaterialReceiptForm({
                                         field.onChange(numValue);
                                       } else {
                                         // If 0 or negative, clear the field
-                                        field.onChange(null);
-                                        form.resetField(`lineItems.${index}.quantity`, { defaultValue: 0 });
+                                        field.onChange(undefined);
+                                        form.setValue(`lineItems.${index}.quantity`, undefined, {
+                                          shouldValidate: false,
+                                          shouldDirty: true,
+                                        });
                                       }
                                     }
                                   }}
                                   onBlur={(e) => {
-                                    // On blur, only validate - don't restore values if field was intentionally cleared
+                                    // On blur, validate if empty or invalid
                                     const value = e.target.value;
-                                    const fieldKey = `quantity-${index}`;
-                                    const isClearing = clearingFieldsRef.current.has(fieldKey);
-                                    const fieldValue = field.value;
-                                    // Only set to 0 if field is empty AND was never intentionally cleared (not null)
-                                    // If fieldValue is null, it means user intentionally cleared it - don't restore
-                                    if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
+                                    if (value === '' || value === null || value === undefined) {
                                       field.onChange(0);
                                       form.setValue(`lineItems.${index}.quantity`, 0, {
                                         shouldValidate: true,
@@ -980,11 +1032,14 @@ export function MaterialReceiptForm({
                                   }}
                                   name={field.name}
                                   ref={field.ref}
-                                    value={
-                                      field.value === undefined || field.value === null || field.value === 0 || isNaN(Number(field.value))
-                                        ? ''
-                                        : String(field.value)
-                                    }
+                                  value={
+                                    field.value === undefined ||
+                                    field.value === null ||
+                                    field.value === 0 ||
+                                    (typeof field.value === 'number' && isNaN(field.value))
+                                      ? ''
+                                      : String(field.value)
+                                  }
                                   style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
                                 />
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -1053,4 +1108,3 @@ export function MaterialReceiptForm({
     </Card>
   );
 }
-

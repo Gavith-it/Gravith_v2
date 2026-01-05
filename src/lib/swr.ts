@@ -42,8 +42,10 @@ export const fetcher = async <T = unknown>(url: string): Promise<T> => {
 export const swrConfig = {
   revalidateOnFocus: false, // Don't refetch on window focus
   revalidateOnReconnect: true, // Refetch when internet reconnects
-  dedupingInterval: 30000, // Dedupe requests within 30 seconds
+  dedupingInterval: 60000, // Dedupe requests within 60 seconds (increased for better performance)
   keepPreviousData: true, // Show previous data while loading new
   errorRetryCount: 3, // Retry failed requests 3 times
   errorRetryInterval: 5000, // Wait 5 seconds between retries
+  // Add focusThrottleInterval to prevent rapid refetches
+  focusThrottleInterval: 5000, // Throttle focus revalidation to 5 seconds
 } as const;

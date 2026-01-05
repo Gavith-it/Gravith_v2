@@ -4,8 +4,9 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AppShell } from '@/components/AppShell';
 import { AuthErrorBoundary } from '@/components/AuthErrorBoundary';
-import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
+import { AuthProvider } from '@/lib/auth-context';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -46,6 +47,7 @@ export default function RootLayout({
               <AppShell>{children}</AppShell>
             </AuthErrorBoundary>
           </AuthProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

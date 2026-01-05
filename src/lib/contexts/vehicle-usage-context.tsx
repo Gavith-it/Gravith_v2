@@ -60,6 +60,9 @@ export function VehicleUsageProvider({ children }: { children: ReactNode }) {
   const [records, setRecords] = useState<VehicleUsage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Use ref to prevent duplicate calls in React Strict Mode
+  const hasInitialized = React.useRef(false);
+
   const refresh = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -74,7 +77,11 @@ export function VehicleUsageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // Only initialize once, even in React Strict Mode
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      void refresh();
+    }
   }, [refresh]);
 
   const addRecord = useCallback(async (record: VehicleUsageInput): Promise<VehicleUsage | null> => {

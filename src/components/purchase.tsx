@@ -24,6 +24,7 @@ import { PurchaseTabs } from './layout/PurchaseTabs';
 import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseForm } from './shared/PurchaseForm';
 
+
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +51,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMaterialReceipts } from '@/lib/contexts';
 import { useMaterials } from '@/lib/contexts';
 import type { SharedMaterial } from '@/lib/contexts';
 
@@ -60,6 +62,7 @@ interface PurchasePageProps {
 export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const searchParams = useSearchParams();
   const { materials, deleteMaterial, isLoading } = useMaterials();
+  const { receipts } = useMaterialReceipts();
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -311,6 +314,19 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
       return;
     }
 
+    // Check if purchase is linked to receipts BEFORE showing confirmation
+    const linkedReceipts = receipts.filter((receipt) => receipt.linkedPurchaseId === materialId);
+
+    if (linkedReceipts.length > 0) {
+      alert(
+        `Cannot delete purchase: "${target.materialName}"\n\n` +
+          `This purchase is connected or linked to ${linkedReceipts.length} material receipt(s). ` +
+          `Please unlink the material receipts first before deleting this purchase.`,
+      );
+      return;
+    }
+
+    // If not linked, show confirmation dialog
     const confirmed = window.confirm(
       `Are you sure you want to delete purchase for "${target.materialName}"? This action cannot be undone.`,
     );
@@ -323,9 +339,19 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
       toast.success('Purchase deleted successfully.');
     } catch (error) {
       console.error('Failed to delete purchase', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Unable to delete purchase. Please try again.',
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unable to delete purchase. Please try again.';
+
+      // Check if error is about linked receipts (fallback check)
+      if (errorMessage.includes('linked to') && errorMessage.includes('material receipt')) {
+        alert(
+          `Cannot delete purchase: "${target.materialName}"\n\n` +
+            `This purchase is connected or linked to one or more material receipts. ` +
+            `Please unlink the material receipts first before deleting this purchase.`,
+        );
+      } else {
+        toast.error(errorMessage);
+      }
     }
   };
 

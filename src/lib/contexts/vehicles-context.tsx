@@ -17,8 +17,9 @@ interface VehiclesContextType {
   pagination?: {
     page: number;
     limit: number;
-    total: number;
-    totalPages: number;
+    hasMore: boolean;
+    // total?: number;      // Uncomment if using count query in API
+    // totalPages?: number; // Uncomment if using count query in API
   };
 }
 
@@ -59,8 +60,9 @@ async function fetchVehicles(
   pagination?: {
     page: number;
     limit: number;
-    total: number;
-    totalPages: number;
+    hasMore: boolean;
+    // total?: number;      // Uncomment if using count query in API
+    // totalPages?: number; // Uncomment if using count query in API
   };
 }> {
   const payload = (await fetchJson<{
@@ -68,8 +70,9 @@ async function fetchVehicles(
     pagination?: {
       page: number;
       limit: number;
-      total: number;
-      totalPages: number;
+      hasMore: boolean;
+      // total?: number;      // Uncomment if using count query in API
+      // totalPages?: number; // Uncomment if using count query in API
     };
     error?: string;
   }>(`/api/vehicles?page=${page}&limit=${limit}`).catch(() => ({}))) as {
@@ -77,8 +80,9 @@ async function fetchVehicles(
     pagination?: {
       page: number;
       limit: number;
-      total: number;
-      totalPages: number;
+      hasMore: boolean;
+      // total?: number;      // Uncomment if using count query in API
+      // totalPages?: number; // Uncomment if using count query in API
     };
     error?: string;
   };
@@ -100,29 +104,50 @@ export function VehiclesProvider({ children }: { children: ReactNode }) {
     | {
         page: number;
         limit: number;
-        total: number;
-        totalPages: number;
+        hasMore: boolean;
+        // total?: number;      // Uncomment if using count query in API
+        // totalPages?: number; // Uncomment if using count query in API
       }
     | undefined
   >(undefined);
 
-  const refresh = useCallback(async (page = 1, limit = 50) => {
-    try {
-      setIsLoading(true);
-      const result = await fetchVehicles(page, limit);
-      setVehicles(result.vehicles);
-      setPagination(result.pagination);
-    } catch (error) {
-      console.error('Error loading vehicles', error);
-      setVehicles([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // Use ref to track current fetch to prevent duplicate calls
+  const currentFetchRef = React.useRef<{
+    page: number;
+    limit: number;
+    promise?: Promise<void>;
+  } | null>(null);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const refresh = useCallback(async (page = 1, limit = 50) => {
+    // Prevent duplicate calls with same parameters - return existing promise if already fetching
+    if (currentFetchRef.current?.page === page && currentFetchRef.current?.limit === limit) {
+      if (currentFetchRef.current.promise) {
+        return currentFetchRef.current.promise; // Return existing promise to deduplicate
+      }
+    }
+
+    // Create new fetch promise
+    const fetchPromise = (async () => {
+      try {
+        setIsLoading(true);
+        const result = await fetchVehicles(page, limit);
+        setVehicles(result.vehicles);
+        setPagination(result.pagination);
+      } catch (error) {
+        console.error('Error loading vehicles', error);
+        setVehicles([]);
+      } finally {
+        setIsLoading(false);
+        // Clear the promise reference after fetch completes
+        if (currentFetchRef.current?.page === page && currentFetchRef.current?.limit === limit) {
+          currentFetchRef.current.promise = undefined;
+        }
+      }
+    })();
+
+    currentFetchRef.current = { page, limit, promise: fetchPromise };
+    return fetchPromise;
+  }, []);
 
   const addVehicle = useCallback(async (vehicle: VehicleInput): Promise<Vehicle | null> => {
     const response = await fetch('/api/vehicles', {
@@ -181,16 +206,18 @@ export function VehiclesProvider({ children }: { children: ReactNode }) {
       setVehicles((prev) => prev.filter((vehicle) => vehicle.id !== id));
 
       // Update pagination if it exists
-      if (pagination) {
-        setPagination((prev) =>
-          prev
-            ? {
-                ...prev,
-                total: Math.max(0, prev.total - 1),
-              }
-            : prev,
-        );
-      }
+      // Note: With hasMore approach, we don't update pagination on delete
+      // If using count query, uncomment below:
+      // if (pagination) {
+      //   setPagination((prev) =>
+      //     prev
+      //       ? {
+      //           ...prev,
+      //           total: Math.max(0, prev.total - 1),
+      //         }
+      //       : prev,
+      //   );
+      // }
 
       try {
         const response = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
@@ -213,16 +240,18 @@ export function VehiclesProvider({ children }: { children: ReactNode }) {
           });
 
           // Rollback pagination
-          if (pagination) {
-            setPagination((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    total: prev.total + 1,
-                  }
-                : prev,
-            );
-          }
+          // Note: With hasMore approach, we don't update pagination on delete
+          // If using count query, uncomment below:
+          // if (pagination) {
+          //   setPagination((prev) =>
+          //     prev
+          //       ? {
+          //           ...prev,
+          //           total: prev.total + 1,
+          //         }
+          //       : prev,
+          //   );
+          // }
 
           throw new Error(payload.error || 'Failed to delete vehicle.');
         }
@@ -245,16 +274,18 @@ export function VehiclesProvider({ children }: { children: ReactNode }) {
         });
 
         // Rollback pagination (if not already rolled back)
-        if (pagination) {
-          setPagination((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  total: prev.total + 1,
-                }
-              : prev,
-          );
-        }
+        // Note: With hasMore approach, we don't update pagination on delete
+        // If using count query, uncomment below:
+        // if (pagination) {
+        //   setPagination((prev) =>
+        //     prev
+        //       ? {
+        //           ...prev,
+        //           total: prev.total + 1,
+        //         }
+        //       : prev,
+        //   );
+        // }
 
         throw error;
       }

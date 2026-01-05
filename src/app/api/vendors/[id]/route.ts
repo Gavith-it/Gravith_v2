@@ -6,7 +6,6 @@ import type { VendorRow } from '../_utils';
 import { createClient } from '@/lib/supabase/server';
 import type { Vendor } from '@/types';
 
-
 const VENDOR_SELECT = `
   id,
   name,
@@ -86,7 +85,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return accessError;
     }
 
-    const body = (await request.json()) as Partial<Vendor>;
+    const body = (await request.json()) as Partial<Vendor> & {
+      bankAccountNumber?: string;
+    };
 
     const updates: Record<string, unknown> = { updated_by: ctx.userId };
 
@@ -98,7 +99,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (body.address !== undefined) updates['address'] = body.address;
     if (body.gstNumber !== undefined) updates['gst_number'] = body.gstNumber ?? null;
     if (body.panNumber !== undefined) updates['pan_number'] = body.panNumber ?? null;
-    if (body.bankAccount !== undefined) updates['bank_account'] = body.bankAccount ?? null;
+    if (body.bankAccount !== undefined || body.bankAccountNumber !== undefined) {
+      updates['bank_account'] = body.bankAccount ?? body.bankAccountNumber ?? null;
+    }
     if (body.ifscCode !== undefined) updates['ifsc_code'] = body.ifscCode ?? null;
     if (body.paymentTerms !== undefined) updates['payment_terms'] = body.paymentTerms ?? null;
     if (body.notes !== undefined) updates['notes'] = body.notes ?? null;

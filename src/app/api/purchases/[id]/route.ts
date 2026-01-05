@@ -255,6 +255,31 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Purchase not found.' }, { status: 404 });
     }
 
+    // Check if this purchase is linked to any material receipts
+    const { count: receiptCount, error: receiptCheckError } = await supabase
+      .from('material_receipts')
+      .select('id', { count: 'exact', head: true })
+      .eq('linked_purchase_id', id)
+      .eq('organization_id', ctx.organizationId);
+
+    if (receiptCheckError) {
+      console.error('Error checking receipt dependencies before delete', receiptCheckError);
+      return NextResponse.json(
+        { error: 'Unable to verify purchase dependencies.' },
+        { status: 500 },
+      );
+    }
+
+    if ((receiptCount ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error:
+            'This purchase is linked to one or more material receipts. Please unlink the receipts before deleting this purchase.',
+        },
+        { status: 400 },
+      );
+    }
+
     const { error: deleteError } = await supabase.from('material_purchases').delete().eq('id', id);
 
     if (deleteError) {

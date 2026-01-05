@@ -124,7 +124,11 @@ interface WorkProgressProps {
 
 export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
   const searchParams = useSearchParams();
-  const { materials: purchaseMaterials, updateMaterial, refresh: refreshMaterials } = useMaterials();
+  const {
+    materials: purchaseMaterials,
+    updateMaterial,
+    refresh: refreshMaterials,
+  } = useMaterials();
   const {
     entries: workProgressEntriesRaw,
     isLoading: isWorkProgressLoading,
@@ -147,8 +151,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       siteAllocations?: Array<{
         siteId: string;
         siteName: string;
-        openingBalance?: number;
         quantity?: number;
+        openingBalance?: number;
         inwardQty: number;
         utilizationQty: number;
         availableQty: number;
@@ -185,7 +189,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
           const inwardQty = allocation.inwardQty ?? 0;
           const utilizationQty = allocation.utilizationQty ?? 0;
           const availableQty = Math.max(0, openingBalance + inwardQty - utilizationQty);
-          
+
           if (availableQty > 0) {
             masterMaterials.push({
               id: `${master.id}-${allocation.siteId}`, // Unique ID per site
@@ -575,8 +579,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
         const actualMaterialId = material.materialId || purchase?.materialId || null;
         // If we have a materialId (material master), set purchaseId to null
         // Otherwise, use the purchaseId (for purchases)
-        const actualPurchaseId = actualMaterialId ? null : (material.purchaseId || null);
-        
+        const actualPurchaseId = actualMaterialId ? null : material.purchaseId || null;
+
         return {
           materialId: actualMaterialId,
           purchaseId: actualPurchaseId,
@@ -754,7 +758,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
             // It's a material master - update site allocation instead
             try {
               // Extract siteId from composite ID or use the material's siteId
-              const siteId = ('siteId' in purchase ? purchase.siteId : undefined) || workProgressForm.siteId;
+              const siteId =
+                ('siteId' in purchase ? purchase.siteId : undefined) || workProgressForm.siteId;
               if (!siteId) {
                 console.error('Site ID not found for material master');
                 continue;
@@ -861,7 +866,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
             // It's a material master - update site allocation instead
             try {
               // Extract siteId from composite ID or use the material's siteId
-              const siteId = ('siteId' in existingMaterial ? existingMaterial.siteId : undefined) || workProgressForm.siteId;
+              const siteId =
+                ('siteId' in existingMaterial ? existingMaterial.siteId : undefined) ||
+                workProgressForm.siteId;
               if (!siteId) {
                 console.error('Site ID not found for material master');
                 continue;
@@ -952,7 +959,11 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                 consumedQuantity: newConsumedQuantity,
                 remainingQuantity: newRemainingQuantity,
               });
-              accumulateMasterAdjustment(existingMaterial.materialId, consumedDelta, remainingDelta);
+              accumulateMasterAdjustment(
+                existingMaterial.materialId,
+                consumedDelta,
+                remainingDelta,
+              );
             } catch (error) {
               console.error('Failed to update material consumption', error);
               toast.error('Failed to update material consumption.');
@@ -1118,7 +1129,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       const hasStock = (m.remainingQuantity || 0) > 0;
       return matchesSite && hasStock;
     });
-    
+
     // Deduplicate by material name - keep only the first occurrence of each material name
     const seen = new Set<string>();
     return filtered.filter((m) => {

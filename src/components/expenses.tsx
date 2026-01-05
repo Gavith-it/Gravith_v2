@@ -16,16 +16,18 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { getExpenseColumns } from './expenses-columns';
 
 import { DataTable } from '@/components/common/DataTable';
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import type { ExpenseFormData } from '@/components/forms/ExpenseForm';
 import { ExpenseForm } from '@/components/forms/ExpenseForm';
-import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -34,8 +36,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -43,15 +45,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useExpenses } from '@/lib/contexts';
 import { useDialogState } from '@/lib/hooks/useDialogState';
 import { useTableState } from '@/lib/hooks/useTableState';
 import { formatDate } from '@/lib/utils';
 import { formatDateOnly } from '@/lib/utils/date';
 import type { Expense } from '@/types';
-import { toast } from 'sonner';
-import { useExpenses } from '@/lib/contexts';
 
 // Utility functions
 
@@ -139,10 +139,12 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     hasReceipt: 'all',
   });
 
-  const [appliedAdvancedFilters, setAppliedAdvancedFilters] =
-    useState<ExpenseAdvancedFilterState>(createDefaultExpenseAdvancedFilters());
-  const [draftAdvancedFilters, setDraftAdvancedFilters] =
-    useState<ExpenseAdvancedFilterState>(createDefaultExpenseAdvancedFilters());
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<ExpenseAdvancedFilterState>(
+    createDefaultExpenseAdvancedFilters(),
+  );
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<ExpenseAdvancedFilterState>(
+    createDefaultExpenseAdvancedFilters(),
+  );
 
   const cloneExpenseAdvancedFilters = (
     filters: ExpenseAdvancedFilterState,
@@ -192,10 +194,16 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Fetch expenses with pagination
+  // Fetch expenses with pagination - only when page changes
   useEffect(() => {
-    void refresh(page, limit);
-  }, [refresh, page, limit]);
+    // Only refresh if pagination state doesn't match current page/limit
+    // This prevents duplicate calls when context already has the correct data
+    const needsRefresh = !pagination || pagination.page !== page || pagination.limit !== limit;
+    if (needsRefresh) {
+      void refresh(page, limit);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit]); // Only depend on page/limit, refresh is stable from context
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -287,7 +295,10 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     return base;
   }, [expenses, filterBySite]);
 
-  const { total, paid, pending, overdue } = useMemo(() => calculateTotals(expensesForCalc), [expensesForCalc]);
+  const { total, paid, pending, overdue } = useMemo(
+    () => calculateTotals(expensesForCalc),
+    [expensesForCalc],
+  );
 
   const categoryFilter = tableState.filter['category'];
   const statusFilter = tableState.filter['status'];
@@ -323,12 +334,7 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
   }, [expenses]);
 
   const filteredExpenses = useMemo(() => {
-    let data = filterExpenses(
-      expenses,
-      categoryFilter,
-      statusFilter,
-      searchTerm,
-    );
+    let data = filterExpenses(expenses, categoryFilter, statusFilter, searchTerm);
 
     if (filterBySite) {
       data = data.filter((expense) => expense.siteName === filterBySite);
@@ -516,7 +522,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
                           onClick={() => {
-                            setDraftAdvancedFilters(cloneExpenseAdvancedFilters(appliedAdvancedFilters));
+                            setDraftAdvancedFilters(
+                              cloneExpenseAdvancedFilters(appliedAdvancedFilters),
+                            );
                             setIsFilterSheetOpen(true);
                           }}
                         >
@@ -586,7 +594,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                     }
                     if (appliedAdvancedFilters.hasReceipt !== 'all') {
                       chips.push(
-                        appliedAdvancedFilters.hasReceipt === 'with' ? 'With receipt' : 'Without receipt',
+                        appliedAdvancedFilters.hasReceipt === 'with'
+                          ? 'With receipt'
+                          : 'Without receipt',
                       );
                     }
                     return chips;
@@ -648,10 +658,13 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                   sortDirection={tableState.sortDirection}
                 />
                 {/* Pagination Controls */}
-                {pagination && pagination.totalPages > 1 && (
+                {pagination && (pagination.hasMore || pagination.page > 1) && (
                   <div className="flex items-center justify-between border-t px-4 py-3">
                     <div className="text-sm text-muted-foreground">
-                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} expenses
+                      Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                      {pagination.page * pagination.limit} expenses
+                      {/* If using count query, uncomment below: */}
+                      {/* of {pagination.total} expenses */}
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -663,7 +676,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                         <ChevronLeft className="h-4 w-4" />
                         Previous
                       </Button>
-                      <div className="flex items-center gap-1">
+                      {/* Page number buttons - commented out with hasMore approach */}
+                      {/* If using count query with totalPages, uncomment below: */}
+                      {/* <div className="flex items-center gap-1">
                         {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                           let pageNum: number;
                           if (pagination.totalPages <= 5) {
@@ -688,12 +703,12 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                             </Button>
                           );
                         })}
-                      </div>
+                      </div> */}
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-                        disabled={pagination.page >= pagination.totalPages || isExpensesLoading}
+                        onClick={() => setPage((p) => p + 1)}
+                        disabled={!pagination.hasMore || isExpensesLoading}
                       >
                         Next
                         <ChevronRight className="h-4 w-4" />
@@ -860,39 +875,38 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
               description: filterBySite
                 ? `Expenses already scoped to ${filterBySite}.`
                 : 'Filter expenses by project site.',
-              content:
-                filterBySite ? (
-                  <p className="text-sm text-muted-foreground">
-                    The list is already filtered to {filterBySite}.
-                  </p>
-                ) : siteOptions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No sites recorded yet.</p>
-                ) : (
-                  <div className="grid gap-2">
-                    {siteOptions.map((site) => {
-                      const checked = draftAdvancedFilters.sites.includes(site);
-                      return (
-                        <Label key={site} className="flex items-center gap-3 text-sm font-normal">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
-                              setDraftAdvancedFilters((prev) => {
-                                const isChecked = checkedValue === true;
-                                return {
-                                  ...prev,
-                                  sites: isChecked
-                                    ? [...prev.sites, site]
-                                    : prev.sites.filter((item) => item !== site),
-                                };
-                              })
-                            }
-                          />
-                          <span>{site}</span>
-                        </Label>
-                      );
-                    })}
-                  </div>
-                ),
+              content: filterBySite ? (
+                <p className="text-sm text-muted-foreground">
+                  The list is already filtered to {filterBySite}.
+                </p>
+              ) : siteOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No sites recorded yet.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {siteOptions.map((site) => {
+                    const checked = draftAdvancedFilters.sites.includes(site);
+                    return (
+                      <Label key={site} className="flex items-center gap-3 text-sm font-normal">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
+                            setDraftAdvancedFilters((prev) => {
+                              const isChecked = checkedValue === true;
+                              return {
+                                ...prev,
+                                sites: isChecked
+                                  ? [...prev.sites, site]
+                                  : prev.sites.filter((item) => item !== site),
+                              };
+                            })
+                          }
+                        />
+                        <span>{site}</span>
+                      </Label>
+                    );
+                  })}
+                </div>
+              ),
             },
             {
               id: 'approvers',
@@ -906,7 +920,10 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
                     {approverOptions.map((approver) => {
                       const checked = draftAdvancedFilters.approvers.includes(approver);
                       return (
-                        <Label key={approver} className="flex items-center gap-3 text-sm font-normal">
+                        <Label
+                          key={approver}
+                          className="flex items-center gap-3 text-sm font-normal"
+                        >
                           <Checkbox
                             checked={checked}
                             onCheckedChange={(checkedValue: boolean | 'indeterminate') =>
@@ -1037,17 +1054,17 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
               ),
             },
           ]}
-        onApply={() => {
-          setAppliedAdvancedFilters(cloneExpenseAdvancedFilters(draftAdvancedFilters));
-          setIsFilterSheetOpen(false);
-        }}
-        onReset={() => {
-          const resetFilters = createDefaultExpenseAdvancedFilters();
-          setDraftAdvancedFilters(resetFilters);
-          setAppliedAdvancedFilters(resetFilters);
-        }}
-        isDirty={countExpenseAdvancedFilters(draftAdvancedFilters) > 0}
-      />
+          onApply={() => {
+            setAppliedAdvancedFilters(cloneExpenseAdvancedFilters(draftAdvancedFilters));
+            setIsFilterSheetOpen(false);
+          }}
+          onReset={() => {
+            const resetFilters = createDefaultExpenseAdvancedFilters();
+            setDraftAdvancedFilters(resetFilters);
+            setAppliedAdvancedFilters(resetFilters);
+          }}
+          isDirty={countExpenseAdvancedFilters(draftAdvancedFilters) > 0}
+        />
       </div>
     </div>
   );

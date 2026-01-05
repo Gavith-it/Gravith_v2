@@ -85,6 +85,9 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
   const [materials, setMaterials] = useState<SharedMaterial[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Use ref to prevent duplicate calls in React Strict Mode
+  const hasInitialized = React.useRef(false);
+
   const refresh = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -104,8 +107,9 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Wait for auth to finish loading before fetching
-    if (!isAuthLoading) {
+    // Wait for auth to finish loading before fetching, and only initialize once
+    if (!isAuthLoading && !hasInitialized.current) {
+      hasInitialized.current = true;
       void refresh();
     }
   }, [refresh, isAuthLoading]);

@@ -67,9 +67,6 @@ export function ExpenseForm({
   submitLabel = 'Add Expense',
   loadingLabel,
 }: ExpenseFormProps) {
-  // Track which fields are being actively cleared to prevent value restoration
-  const clearingFieldsRef = React.useRef<Set<string>>(new Set());
-  
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
@@ -284,58 +281,27 @@ export function ExpenseForm({
                   control={form.control}
                   name="amount"
                   render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Amount (₹) <span className="text-destructive">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="50000"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(event) => {
-                              const rawValue = event.target.value;
-                              const fieldKey = 'amount';
-                              // Allow empty string - this clears the input visually
-                              if (rawValue === '' || rawValue === null || rawValue === undefined) {
-                                clearingFieldsRef.current.add(fieldKey);
-                                field.onChange(null);
-                                // Don't call form.setValue or form.resetField here - let onBlur handle restoration if needed
-                                // Remove from clearing set after a short delay
-                                setTimeout(() => {
-                                  clearingFieldsRef.current.delete(fieldKey);
-                                }, 100);
-                                return;
-                              }
-                              // Remove from clearing set when user starts typing
-                              clearingFieldsRef.current.delete(fieldKey);
-                              const numValue = parseFloat(rawValue);
-                              if (!isNaN(numValue)) {
-                                field.onChange(numValue);
-                              }
-                            }}
-                            onBlur={(e) => {
-                              // On blur, only validate - don't restore values if field was intentionally cleared
-                              const value = e.target.value;
-                              const fieldKey = 'amount';
-                              const isClearing = clearingFieldsRef.current.has(fieldKey);
-                              const fieldValue = field.value;
-                              // Only set to 0 if field is empty AND was never intentionally cleared (not null)
-                              // If fieldValue is null, it means user intentionally cleared it - don't restore
-                              if ((value === '' || value === null || value === undefined) && fieldValue !== null && !isClearing) {
-                                field.onChange(0);
-                                form.setValue('amount', 0, { shouldValidate: true });
-                              }
-                              field.onBlur();
-                            }}
-                            style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    <FormItem>
+                      <FormLabel>
+                        Amount (₹) <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="50000"
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            field.onChange(nextValue === '' ? undefined : Number(nextValue));
+                          }}
+                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
                 <FormField
                   control={form.control}

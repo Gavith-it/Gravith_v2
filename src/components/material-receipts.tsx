@@ -17,6 +17,7 @@ import {
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
@@ -61,7 +62,9 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
+import { fetcher } from '@/lib/swr';
 import type { MaterialReceipt } from '@/types';
+import type { MaterialMaster } from '@/types/entities';
 
 interface MaterialReceiptsPageProps {
   filterBySite?: string;
@@ -82,6 +85,43 @@ export function MaterialReceiptsPage({
     unlinkReceipt,
   } = useMaterialReceipts();
   const { materials, isLoading: isMaterialsLoading, refresh: refreshMaterials } = useMaterials();
+
+  // Fetch material masters to get current material names
+  // Revalidate on focus and reconnect to ensure we have latest material names
+  const { data: materialsData, mutate: mutateMaterials } = useSWR<{
+    materials: MaterialMaster[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>('/api/materials?page=1&limit=1000', fetcher, {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+  });
+
+  // Create a map of materialId -> current material name
+  const materialNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (materialsData?.materials) {
+      materialsData.materials.forEach((material) => {
+        if (material.id) {
+          map.set(material.id, material.name);
+        }
+      });
+    }
+    return map;
+  }, [materialsData]);
+
+  // Helper function to get current material name
+  const getCurrentMaterialName = (receipt: MaterialReceipt): string => {
+    if (receipt.materialId && materialNameMap.has(receipt.materialId)) {
+      return materialNameMap.get(receipt.materialId)!;
+    }
+    // Fallback to stored name if material master not found
+    return receipt.materialName;
+  };
 
   const scopedReceipts = useMemo(() => {
     if (!filterBySite) {
@@ -241,7 +281,9 @@ export function MaterialReceiptsPage({
     .filter((receipt) => {
       const matchesSearch =
         receipt.vehicleNumber.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
-        receipt.materialName.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
+        getCurrentMaterialName(receipt)
+          .toLowerCase()
+          .includes(tableState.searchTerm.toLowerCase()) ||
         receipt.vendorName?.toLowerCase().includes(tableState.searchTerm.toLowerCase()) ||
         false;
       const matchesStatus =
@@ -390,7 +432,7 @@ export function MaterialReceiptsPage({
   const handleRefresh = async () => {
     try {
       setIsRefreshing(true);
-      await Promise.all([refreshReceipts(), refreshMaterials()]);
+      await Promise.all([refreshReceipts(), refreshMaterials(), mutateMaterials()]);
       toast.success('Receipts refreshed');
     } catch (error) {
       console.error('Failed to refresh receipts', error);
@@ -406,14 +448,14 @@ export function MaterialReceiptsPage({
     let filtered = materials.filter(
       (material) => !scopedReceipts.some((receipt) => receipt.linkedPurchaseId === material.id),
     );
-    
+
     // If a receipt is selected for linking, filter purchases by materialId
     if (selectedReceiptForLink?.materialId) {
       filtered = filtered.filter(
         (material) => material.materialId === selectedReceiptForLink.materialId,
       );
     }
-    
+
     return filtered;
   }, [materials, scopedReceipts, selectedReceiptForLink]);
 
@@ -741,7 +783,9 @@ export function MaterialReceiptsPage({
                         </div>
                       </div>
                     ),
-                    material: <div className="font-medium text-sm">{receipt.materialName}</div>,
+                    material: (
+                      <div className="font-medium text-sm">{getCurrentMaterialName(receipt)}</div>
+                    ),
                     vendor: (
                       <div className="text-sm">
                         {receipt.vendorName ? (
@@ -1165,7 +1209,7 @@ export function MaterialReceiptsPage({
                   <br />
                   Vehicle: {receiptToDelete.vehicleNumber}
                   <br />
-                  Material: {receiptToDelete.materialName}
+                  Material: {receiptToDelete ? getCurrentMaterialName(receiptToDelete) : 'Unknown'}
                   <br />
                   Date: {receiptToDelete.date}
                   <br />

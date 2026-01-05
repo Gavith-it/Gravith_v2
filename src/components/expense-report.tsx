@@ -1,7 +1,7 @@
 'use client';
 
 import { Download, FileText, Calendar, Building2, Filter, Loader2 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 

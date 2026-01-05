@@ -59,41 +59,57 @@ export async function GET(request: Request) {
       );
     }
 
+    // ============================================================================
+    // COUNT QUERY - COMMENTED OUT FOR PERFORMANCE (7.27s -> ~0.5s improvement)
+    // If you need exact count in the future, uncomment this section
+    // ============================================================================
     // Get total count for pagination
-    const { count, error: countError } = await supabase
-      .from('expenses')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', ctx.organizationId);
+    // const { count, error: countError } = await supabase
+    //   .from('expenses')
+    //   .select('*', { count: 'exact', head: true })
+    //   .eq('organization_id', ctx.organizationId);
+    //
+    // if (countError) {
+    //   console.error('Error counting expenses', countError);
+    //   return NextResponse.json({ error: 'Failed to load expenses.' }, { status: 500 });
+    // }
+    // ============================================================================
 
-    if (countError) {
-      console.error('Error counting expenses', countError);
-      return NextResponse.json({ error: 'Failed to load expenses.' }, { status: 500 });
-    }
-
-    // Fetch paginated data
+    // Fetch paginated data - fetch limit+1 to check if there's more data (faster than count)
     const { data, error } = await supabase
       .from('expenses')
       .select(EXPENSE_SELECT)
       .eq('organization_id', ctx.organizationId)
       .order('date', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + limit); // Fetch limit+1 to check for more data
 
     if (error) {
       console.error('Error fetching expenses:', error);
       return NextResponse.json({ error: 'Failed to load expenses.' }, { status: 500 });
     }
 
-    const expenses = (data ?? []).map((row) => mapRowToExpense(row as ExpenseRow));
-    const total = count ?? 0;
-    const totalPages = Math.ceil(total / limit);
+    // Check if there's more data by checking if we got more than limit
+    const hasMore = (data ?? []).length > limit;
+    // Return only the requested limit (slice off the extra one)
+    const expensesData = (data ?? []).slice(0, limit);
+    const expenses = expensesData.map((row) => mapRowToExpense(row as ExpenseRow));
+
+    // ============================================================================
+    // OLD PAGINATION WITH COUNT - COMMENTED OUT
+    // If you need exact count in the future, uncomment and use this
+    // ============================================================================
+    // const total = count ?? 0;
+    // const totalPages = Math.ceil(total / limit);
+    // ============================================================================
 
     const response = NextResponse.json({
       expenses,
       pagination: {
         page,
         limit,
-        total,
-        totalPages,
+        hasMore, // Use hasMore instead of total/totalPages for faster performance
+        // total,      // Uncomment if using count query above
+        // totalPages, // Uncomment if using count query above
       },
     });
 

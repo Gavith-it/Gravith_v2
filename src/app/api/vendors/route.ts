@@ -4,9 +4,8 @@ import { ensureMutationAccess, mapRowToVendor, resolveContext } from './_utils';
 import type { VendorRow } from './_utils';
 
 import { createClient } from '@/lib/supabase/server';
-import type { Vendor } from '@/types';
 import { formatDateOnly } from '@/lib/utils/date';
-
+import type { Vendor } from '@/types';
 
 const VENDOR_SELECT = `
   id,
@@ -53,15 +52,18 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
 
-    // Get total count for pagination
+    // Get total count for pagination (optimized: use 'id' instead of '*' for faster counting)
     const { count, error: countError } = await supabase
       .from('vendors')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', ctx.organizationId);
 
     if (countError) {
@@ -85,7 +87,7 @@ export async function GET(request: Request) {
     const vendors = (data ?? []).map((row) => mapRowToVendor(row as VendorRow));
     const total = count ?? 0;
     const totalPages = Math.ceil(total / limit);
-    
+
     const response = NextResponse.json({
       vendors,
       pagination: {
@@ -95,13 +97,10 @@ export async function GET(request: Request) {
         totalPages,
       },
     });
-    
+
     // Add cache headers: cache for 60 seconds, revalidate in background
-    response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
-    );
-    
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+
     return response;
   } catch (error) {
     console.error('Unexpected error fetching vendors:', error);
@@ -123,7 +122,12 @@ export async function POST(request: Request) {
       return accessError;
     }
 
-    const body = (await request.json()) as Partial<Vendor>;
+    const body = (await request.json()) as Partial<Vendor> & {
+      bankAccountNumber?: string;
+      accountName?: string;
+      bankName?: string;
+      bankBranch?: string;
+    };
     const {
       name,
       category,
@@ -134,6 +138,7 @@ export async function POST(request: Request) {
       gstNumber,
       panNumber,
       bankAccount,
+      bankAccountNumber,
       ifscCode,
       paymentTerms,
       notes,
@@ -152,7 +157,7 @@ export async function POST(request: Request) {
       address,
       gst_number: gstNumber ?? null,
       pan_number: panNumber ?? null,
-      bank_account: bankAccount ?? null,
+      bank_account: bankAccount ?? bankAccountNumber ?? null,
       ifsc_code: ifscCode ?? null,
       payment_terms: paymentTerms ?? null,
       notes: notes ?? null,
@@ -171,7 +176,11 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error('Error creating vendor:', error);
-      return NextResponse.json({ error: 'Failed to create vendor.' }, { status: 500 });
+      const errorMessage = error?.message || 'Unknown database error';
+      return NextResponse.json(
+        { error: `Failed to create vendor: ${errorMessage}` },
+        { status: 500 },
+      );
     }
 
     const vendor = mapRowToVendor(data as VendorRow);

@@ -216,10 +216,16 @@ export function VehiclesPage({
     return normalized;
   }, [sitesData]);
 
-  // Fetch vehicles with pagination
+  // Fetch vehicles with pagination - only when page changes
   useEffect(() => {
-    void refresh(page, limit);
-  }, [refresh, page, limit]);
+    // Only refresh if pagination state doesn't match current page/limit
+    // This prevents duplicate calls when context already has the correct data
+    const needsRefresh = !pagination || pagination.page !== page || pagination.limit !== limit;
+    if (needsRefresh) {
+      void refresh(page, limit);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit]); // Only depend on page/limit, refresh is stable from context
 
   const vendorOptions = useMemo(() => {
     return vendors
@@ -1308,12 +1314,13 @@ export function VehiclesPage({
                 ))}
               </div>
               {/* Pagination Controls */}
-              {pagination && pagination.totalPages > 1 && (
+              {pagination && (pagination.hasMore || pagination.page > 1) && (
                 <div className="flex items-center justify-between border-t px-4 py-3 mt-4">
                   <div className="text-sm text-muted-foreground">
                     Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                    {pagination.total} vehicles
+                    {pagination.page * pagination.limit} vehicles
+                    {/* If using count query, uncomment below: */}
+                    {/* of {pagination.total} vehicles */}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1325,7 +1332,9 @@ export function VehiclesPage({
                       <ChevronLeft className="h-4 w-4" />
                       Previous
                     </Button>
-                    <div className="flex items-center gap-1">
+                    {/* Page number buttons - commented out with hasMore approach */}
+                    {/* If using count query with totalPages, uncomment below: */}
+                    {/* <div className="flex items-center gap-1">
                       {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                         let pageNum: number;
                         if (pagination.totalPages <= 5) {
@@ -1350,12 +1359,12 @@ export function VehiclesPage({
                           </Button>
                         );
                       })}
-                    </div>
+                    </div> */}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-                      disabled={pagination.page >= pagination.totalPages || isVehiclesLoading}
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={!pagination.hasMore || isVehiclesLoading}
                     >
                       Next
                       <ChevronRight className="h-4 w-4" />

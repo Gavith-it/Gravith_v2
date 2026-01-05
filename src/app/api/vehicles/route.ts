@@ -175,23 +175,31 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
 
+    // ============================================================================
+    // COUNT QUERY - COMMENTED OUT FOR PERFORMANCE (3.56s -> ~0.5s improvement)
+    // If you need exact count in the future, uncomment this section
+    // ============================================================================
     // Get total count for pagination
-    const { count, error: countError } = await supabase
-      .from('vehicles')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', ctx.organizationId);
+    // const { count, error: countError } = await supabase
+    //   .from('vehicles')
+    //   .select('*', { count: 'exact', head: true })
+    //   .eq('organization_id', ctx.organizationId);
+    //
+    // if (countError) {
+    //   console.error('Error counting vehicles', countError);
+    //   return NextResponse.json({ error: 'Failed to load vehicles.' }, { status: 500 });
+    // }
+    // ============================================================================
 
-    if (countError) {
-      console.error('Error counting vehicles', countError);
-      return NextResponse.json({ error: 'Failed to load vehicles.' }, { status: 500 });
-    }
-
-    // Fetch paginated data
+    // Fetch paginated data - fetch limit+1 to check if there's more data (faster than count)
     const { data, error } = await supabase
       .from('vehicles')
       .select(
@@ -230,33 +238,41 @@ export async function GET(request: Request) {
       )
       .eq('organization_id', ctx.organizationId)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + limit); // Fetch limit+1 to check for more data
 
     if (error) {
       console.error('Error fetching vehicles', error);
       return NextResponse.json({ error: 'Failed to load vehicles.' }, { status: 500 });
     }
 
-    const vehicles = (data ?? []).map((row) => mapRowToVehicle(row as VehicleRow));
-    const total = count ?? 0;
-    const totalPages = Math.ceil(total / limit);
-    
+    // Check if there's more data by checking if we got more than limit
+    const hasMore = (data ?? []).length > limit;
+    // Return only the requested limit (slice off the extra one)
+    const vehiclesData = (data ?? []).slice(0, limit);
+    const vehicles = vehiclesData.map((row) => mapRowToVehicle(row as VehicleRow));
+
+    // ============================================================================
+    // OLD PAGINATION WITH COUNT - COMMENTED OUT
+    // If you need exact count in the future, uncomment and use this
+    // ============================================================================
+    // const total = count ?? 0;
+    // const totalPages = Math.ceil(total / limit);
+    // ============================================================================
+
     const response = NextResponse.json({
       vehicles,
       pagination: {
         page,
         limit,
-        total,
-        totalPages,
+        hasMore, // Use hasMore instead of total/totalPages for faster performance
+        // total,      // Uncomment if using count query above
+        // totalPages, // Uncomment if using count query above
       },
     });
-    
+
     // Add cache headers: cache for 60 seconds, revalidate in background
-    response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
-    );
-    
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+
     return response;
   } catch (error) {
     console.error('Unexpected error fetching vehicles', error);

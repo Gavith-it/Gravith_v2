@@ -24,17 +24,75 @@ import {
   ChevronRight,
   Trash2,
 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense } from 'react';
 import { toast } from 'sonner';
 import useSWR, { mutate } from 'swr';
 
 import { fetcher, swrConfig } from '../lib/swr';
 
-import { ExpensesPage } from './expenses';
-import { MaterialsPage } from './materials';
-import { PurchasePage } from './purchase';
-import { SchedulingPage } from './scheduling';
-import { WorkProgressPage } from './work-progress';
+// Lazy-load page components for better code splitting
+const ExpensesPage = dynamic(
+  () => import('./expenses').then((mod) => ({ default: mod.ExpensesPage })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    ),
+  },
+);
+
+const MaterialsPage = dynamic(
+  () => import('./materials').then((mod) => ({ default: mod.MaterialsPage })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    ),
+  },
+);
+
+const PurchasePage = dynamic(
+  () => import('./purchase').then((mod) => ({ default: mod.PurchasePage })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    ),
+  },
+);
+
+const SchedulingPage = dynamic(
+  () => import('./scheduling').then((mod) => ({ default: mod.SchedulingPage })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    ),
+  },
+);
+
+const WorkProgressPage = dynamic(
+  () => import('./work-progress').then((mod) => ({ default: mod.WorkProgressPage })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    ),
+  },
+);
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import SiteForm from '@/components/forms/SiteForm';

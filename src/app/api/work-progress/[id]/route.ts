@@ -433,8 +433,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       .eq('work_progress_id', id)
       .eq('organization_id', ctx.organizationId);
 
-    const oldSiteId: string | null = oldEntryData ? (oldEntryData as { site_id: string | null }).site_id : null;
-    const newSiteId: string | null = body.siteId !== undefined ? (body.siteId ?? null) : ((refreshedEntry as { site_id: string | null }).site_id ?? null);
+    const oldSiteId = oldEntryData ? (oldEntryData as { site_id: string | null }).site_id : null;
+    const newSiteId = body.siteId !== undefined ? body.siteId : refreshedEntry.site_id;
     const materialsToRecalculate = new Set<string>();
 
     // Get materials from old entry
@@ -454,8 +454,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Recalculate for old site if it changed
     if (oldSiteId && oldSiteId !== newSiteId) {
       try {
-        const materialIds: string[] = Array.from(materialsToRecalculate).filter((id): id is string => typeof id === 'string');
-        for (const materialId of materialIds) {
+        for (const materialId of materialsToRecalculate) {
           await recalculateUtilizationQty(supabase, ctx, materialId, oldSiteId);
         }
       } catch (error) {
@@ -464,10 +463,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     // Recalculate for new site
-    if (materialsToRecalculate.size > 0 && newSiteId) {
+    if (materialsToRecalculate.size > 0 && newSiteId && typeof newSiteId === 'string') {
       try {
-        const materialIds: string[] = Array.from(materialsToRecalculate).filter((id): id is string => typeof id === 'string');
-        for (const materialId of materialIds) {
+        for (const materialId of materialsToRecalculate) {
           await recalculateUtilizationQty(supabase, ctx, materialId, newSiteId);
         }
       } catch (error) {
@@ -518,7 +516,10 @@ async function recalculateUtilizationQty(
       .eq('organization_id', ctx.organizationId);
 
     if (entriesError) {
-      console.error('Error fetching work progress entries for utilization_qty calculation', entriesError);
+      console.error(
+        'Error fetching work progress entries for utilization_qty calculation',
+        entriesError,
+      );
       return;
     }
 
@@ -535,12 +536,16 @@ async function recalculateUtilizationQty(
         .in('work_progress_id', entryIds);
 
       if (materialsError) {
-        console.error('Error fetching work progress materials for utilization_qty calculation', materialsError);
+        console.error(
+          'Error fetching work progress materials for utilization_qty calculation',
+          materialsError,
+        );
         return;
       }
 
       totalUtilizationQty = (materialsData ?? []).reduce(
-        (sum, material) => sum + Number((material as { quantity: number | string | null }).quantity ?? 0),
+        (sum, material) =>
+          sum + Number((material as { quantity: number | string | null }).quantity ?? 0),
         0,
       );
     }
@@ -608,15 +613,18 @@ export async function DELETE(_: NextRequest, { params }: RouteContext) {
     }
 
     // Recalculate utilization_qty for affected materials
-    if (entryData && !('error' in entryData)) {
-      const entryDataTyped = entryData as unknown as { site_id: string | null; materials?: Array<{ material_id: string | null }> };
-      const siteId = entryDataTyped.site_id;
-      const materials = Array.isArray(entryDataTyped.materials) ? entryDataTyped.materials : [];
-      
-      if (siteId) {
+    if (entryData) {
+      const entry = entryData as unknown as {
+        site_id: string | null;
+        materials?: Array<{ material_id: string | null }>;
+      };
+      const siteId = entry.site_id;
+      const materials = entry.materials ?? [];
+
+      if (siteId && typeof siteId === 'string') {
         try {
           for (const material of materials) {
-            if (material.material_id) {
+            if (material?.material_id && typeof material.material_id === 'string') {
               await recalculateUtilizationQty(supabase, ctx, material.material_id, siteId);
             }
           }

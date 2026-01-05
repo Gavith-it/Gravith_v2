@@ -185,10 +185,10 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get total count for pagination
+    // Get total count for pagination (optimized: use 'id' instead of '*' for faster counting)
     const { count, error: countError } = await supabase
       .from('work_progress_entries')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', ctx.organizationId);
 
     if (countError) {
@@ -302,7 +302,10 @@ async function recalculateUtilizationQty(
       .eq('organization_id', ctx.organizationId);
 
     if (entriesError) {
-      console.error('Error fetching work progress entries for utilization_qty calculation', entriesError);
+      console.error(
+        'Error fetching work progress entries for utilization_qty calculation',
+        entriesError,
+      );
       return;
     }
 
@@ -321,13 +324,17 @@ async function recalculateUtilizationQty(
         .in('work_progress_id', entryIds);
 
       if (materialsError) {
-        console.error('Error fetching work progress materials for utilization_qty calculation', materialsError);
+        console.error(
+          'Error fetching work progress materials for utilization_qty calculation',
+          materialsError,
+        );
         return;
       }
 
       // Calculate total utilization from materials data
       totalUtilizationQty = (materialsData ?? []).reduce(
-        (sum, material) => sum + Number((material as { quantity: number | string | null }).quantity ?? 0),
+        (sum, material) =>
+          sum + Number((material as { quantity: number | string | null }).quantity ?? 0),
         0,
       );
     }
@@ -361,19 +368,17 @@ async function recalculateUtilizationQty(
     } else if (totalUtilizationQty > 0) {
       // Create new allocation if we have utilization but no allocation
       // This shouldn't normally happen, but handle it gracefully
-      const { error: insertError } = await supabase
-        .from('material_site_allocations')
-        .insert({
-          material_id: materialId,
-          site_id: siteId,
-          opening_balance: 0,
-          inward_qty: 0,
-          utilization_qty: totalUtilizationQty,
-          available_qty: 0, // Will be recalculated by trigger (0 - totalUtilizationQty = 0)
-          organization_id: ctx.organizationId,
-          created_by: ctx.userId,
-          updated_by: ctx.userId,
-        });
+      const { error: insertError } = await supabase.from('material_site_allocations').insert({
+        material_id: materialId,
+        site_id: siteId,
+        opening_balance: 0,
+        inward_qty: 0,
+        utilization_qty: totalUtilizationQty,
+        available_qty: 0, // Will be recalculated by trigger (0 - totalUtilizationQty = 0)
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+        updated_by: ctx.userId,
+      });
 
       if (insertError) {
         console.error('Error creating site allocation for utilization', insertError);

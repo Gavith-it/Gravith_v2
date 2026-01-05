@@ -233,7 +233,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         // Validate utilization doesn't exceed available (Opening Balance + Inward)
         if (utilizationQty > openingBalance + inwardQty) {
           return NextResponse.json(
-            { error: 'Utilization quantity cannot exceed available quantity (Opening Balance + Inward).' },
+            {
+              error:
+                'Utilization quantity cannot exceed available quantity (Opening Balance + Inward).',
+            },
             { status: 400 },
           );
         }
@@ -364,62 +367,45 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
         if (deleteError) {
           console.error('Error deleting site allocations', deleteError);
-          return NextResponse.json({ error: 'Failed to delete site allocations.' }, { status: 500 });
+          return NextResponse.json(
+            { error: 'Failed to delete site allocations.' },
+            { status: 500 },
+          );
         }
       } else {
         // Fetch existing allocations to preserve values that aren't being updated
         const { data: existingAllocations } = await supabase
           .from('material_site_allocations')
-          .select('site_id, opening_balance, inward_qty, utilization_qty, available_qty')
+          .select('*')
           .eq('material_id', id)
           .eq('organization_id', ctx.organizationId);
 
-        const existingAllocationsMap = new Map<string, {
-          site_id: string;
-          opening_balance: number | string | null;
-          inward_qty: number | string | null;
-          utilization_qty: number | string | null;
-          available_qty: number | string | null;
-        }>();
-        (existingAllocations || []).forEach((alloc) => {
-          const typedAlloc = alloc as {
-            site_id: unknown;
-            opening_balance: unknown;
-            inward_qty: unknown;
-            utilization_qty: unknown;
-            available_qty: unknown;
-          };
-          existingAllocationsMap.set(String(typedAlloc.site_id), {
-            site_id: String(typedAlloc.site_id),
-            opening_balance: typedAlloc.opening_balance as number | string | null,
-            inward_qty: typedAlloc.inward_qty as number | string | null,
-            utilization_qty: typedAlloc.utilization_qty as number | string | null,
-            available_qty: typedAlloc.available_qty as number | string | null,
-          });
+        const existingAllocationsMap = new Map<string, SiteAllocationRow>();
+        ((existingAllocations as SiteAllocationRow[]) || []).forEach((alloc) => {
+          existingAllocationsMap.set(alloc.site_id, alloc);
         });
 
         // Use upsert to update existing or insert new allocations
         const allocationPayloads = body.siteAllocations.map((allocation) => {
           // Get existing allocation for this site to preserve values
-          const existing = existingAllocationsMap.get(allocation.siteId) as {
-            site_id: string;
-            opening_balance: number | string | null;
-            inward_qty: number | string | null;
-            utilization_qty: number | string | null;
-            available_qty: number | string | null;
-          } | undefined;
-          
+          const existing = existingAllocationsMap.get(allocation.siteId);
+
           // Use openingBalance from form, fallback to existing, then quantity for backward compatibility
-          const openingBalance = Number(allocation.openingBalance ?? existing?.opening_balance ?? allocation.quantity ?? 0);
+          const openingBalance = Number(
+            allocation.openingBalance ?? existing?.opening_balance ?? allocation.quantity ?? 0,
+          );
           // ALWAYS preserve existing inwardQty (it's read-only and managed by receipts)
           // Only use provided inwardQty if there's no existing allocation (new allocation)
-          const inwardQty = existing 
+          const inwardQty = existing
             ? Number(existing.inward_qty ?? 0)
             : (allocation.inwardQty ?? 0);
           // Use utilizationQty from request (it's being updated), fallback to existing
-          const utilizationQty = allocation.utilizationQty !== undefined && allocation.utilizationQty !== null
-            ? allocation.utilizationQty
-            : (existing?.utilization_qty ? Number(existing.utilization_qty) : 0);
+          const utilizationQty =
+            allocation.utilizationQty !== undefined && allocation.utilizationQty !== null
+              ? allocation.utilizationQty
+              : existing?.utilization_qty
+                ? Number(existing.utilization_qty)
+                : 0;
           // Available qty = Opening Balance + Inward - Utilization (calculated by trigger)
           const availableQty = Math.max(0, openingBalance + inwardQty - utilizationQty);
 
@@ -458,7 +444,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
                 available_qty: payload.available_qty,
                 updated_by: payload.updated_by,
               })
-              .eq('id', String(existing.id));
+              .eq('id', existing.id as string);
 
             if (updateError) {
               console.error('Error updating site allocation', updateError);
@@ -518,7 +504,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         const openingBalance = Number(allocation.opening_balance ?? 0);
         const inwardQty = Number(allocation.inward_qty ?? 0);
         const utilizationQty = Number(allocation.utilization_qty ?? 0);
-        const availableQty = Number(allocation.available_qty ?? Math.max(0, openingBalance + inwardQty - utilizationQty));
+        const availableQty = Number(
+          allocation.available_qty ?? Math.max(0, openingBalance + inwardQty - utilizationQty),
+        );
 
         return {
           siteId: allocation.site_id,

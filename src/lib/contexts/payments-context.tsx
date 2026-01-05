@@ -92,6 +92,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     | undefined
   >(undefined);
 
+  // Use ref to prevent duplicate calls in React Strict Mode
+  const hasInitialized = React.useRef(false);
+
   const refresh = useCallback(async (page = 1, limit = 50) => {
     try {
       setIsLoading(true);
@@ -108,7 +111,11 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // Only initialize once, even in React Strict Mode
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      void refresh();
+    }
   }, [refresh]);
 
   const addPayment = useCallback(async (payment: PaymentPayload): Promise<Payment | null> => {

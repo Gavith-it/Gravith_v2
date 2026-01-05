@@ -26,15 +26,18 @@ export async function GET(request: Request) {
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.' },
+        {
+          error:
+            'Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 100.',
+        },
         { status: 400 },
       );
     }
 
-    // Get total count for pagination
+    // Get total count for pagination (optimized: use 'id' instead of '*' for faster counting)
     const { count, error: countError } = await supabase
       .from('material_receipts')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', organizationId);
 
     if (countError) {
@@ -91,10 +94,7 @@ export async function GET(request: Request) {
     });
 
     // Add cache headers: cache for 60 seconds, revalidate in background
-    response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=60, stale-while-revalidate=120',
-    );
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
 
     return response;
   } catch (error) {
@@ -164,19 +164,17 @@ async function recalculateInwardQty(
     } else if (totalInwardQty > 0) {
       // Create new allocation if we have receipts but no allocation
       // Use opening_balance = 0, inward_qty = total from receipts
-      const { error: insertError } = await supabase
-        .from('material_site_allocations')
-        .insert({
-          material_id: materialId,
-          site_id: siteId,
-          opening_balance: 0, // No OB, only receipts
-          inward_qty: totalInwardQty,
-          utilization_qty: 0,
-          available_qty: totalInwardQty, // Will be recalculated by trigger
-          organization_id: ctx.organizationId,
-          created_by: ctx.userId,
-          updated_by: ctx.userId,
-        });
+      const { error: insertError } = await supabase.from('material_site_allocations').insert({
+        material_id: materialId,
+        site_id: siteId,
+        opening_balance: 0, // No OB, only receipts
+        inward_qty: totalInwardQty,
+        utilization_qty: 0,
+        available_qty: totalInwardQty, // Will be recalculated by trigger
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+        updated_by: ctx.userId,
+      });
 
       if (insertError) {
         console.error('Error creating site allocation', insertError);
@@ -203,13 +201,22 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as
       | Partial<MaterialReceipt>
-      | { receipts: Array<Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>> };
+      | {
+          receipts: Array<
+            Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>
+          >;
+        };
 
     // Check if it's bulk creation (has receipts array) or single creation
     const isBulk = 'receipts' in body && Array.isArray(body.receipts);
     const receiptsData = isBulk
-      ? (body as { receipts: Array<Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>> })
-          .receipts
+      ? (
+          body as {
+            receipts: Array<
+              Omit<MaterialReceipt, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>
+            >;
+          }
+        ).receipts
       : [body as Partial<MaterialReceipt>];
 
     // Validate all receipts
@@ -261,8 +268,8 @@ export async function POST(request: Request) {
         vendor_id: vendorId ?? null,
         vendor_name: vendorName ?? null,
         linked_purchase_id: linkedPurchaseId ?? null,
-        site_id: siteId === 'unallocated' ? null : siteId ?? null,
-        site_name: siteName === 'Unallocated' ? null : siteName ?? null,
+        site_id: siteId === 'unallocated' ? null : (siteId ?? null),
+        site_name: siteName === 'Unallocated' ? null : (siteName ?? null),
         organization_id: ctx.organizationId,
         created_by: ctx.userId,
         updated_by: ctx.userId,
@@ -315,7 +322,7 @@ export async function POST(request: Request) {
     }
 
     const receipts = data.map((row) => mapRowToReceipt(row as ReceiptRow));
-    
+
     // Return single receipt for backward compatibility, or array for bulk
     if (isBulk) {
       return NextResponse.json({ receipts });
@@ -326,8 +333,7 @@ export async function POST(request: Request) {
     console.error('Unexpected error creating receipt', error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : 'Unexpected error creating receipt.',
+        error: error instanceof Error ? error.message : 'Unexpected error creating receipt.',
       },
       { status: 500 },
     );

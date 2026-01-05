@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import type { ProjectActivity, ProjectMilestone } from '@/types';
 import { fetchJson } from '../utils/fetch';
+
+import type { ProjectActivity, ProjectMilestone } from '@/types';
 
 interface SchedulingContextType {
   activities: ProjectActivity[];
@@ -16,7 +17,10 @@ interface SchedulingContextType {
   updateActivity: (id: string, activity: ActivityUpdatePayload) => Promise<ProjectActivity | null>;
   deleteActivity: (id: string) => Promise<boolean>;
   addMilestone: (milestone: MilestonePayload) => Promise<ProjectMilestone | null>;
-  updateMilestone: (id: string, milestone: MilestoneUpdatePayload) => Promise<ProjectMilestone | null>;
+  updateMilestone: (
+    id: string,
+    milestone: MilestoneUpdatePayload,
+  ) => Promise<ProjectMilestone | null>;
   deleteMilestone: (id: string) => Promise<boolean>;
 }
 
@@ -90,6 +94,9 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
   const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Use ref to prevent duplicate calls in React Strict Mode
+  const hasInitialized = React.useRef(false);
+
   const refreshActivities = useCallback(async () => {
     const data = await fetchActivities();
     setActivities(data);
@@ -115,28 +122,35 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
   }, [refreshActivities, refreshMilestones]);
 
   useEffect(() => {
-    void refresh();
+    // Only initialize once, even in React Strict Mode
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      void refresh();
+    }
   }, [refresh]);
 
-  const addActivity = useCallback(async (activity: ActivityPayload): Promise<ProjectActivity | null> => {
-    const response = await fetch('/api/scheduling/activities', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(activity),
-    });
+  const addActivity = useCallback(
+    async (activity: ActivityPayload): Promise<ProjectActivity | null> => {
+      const response = await fetch('/api/scheduling/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(activity),
+      });
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      activity?: ProjectActivity;
-      error?: string;
-    };
+      const payload = (await response.json().catch(() => ({}))) as {
+        activity?: ProjectActivity;
+        error?: string;
+      };
 
-    if (!response.ok || !payload.activity) {
-      throw new Error(payload.error || 'Failed to create activity.');
-    }
+      if (!response.ok || !payload.activity) {
+        throw new Error(payload.error || 'Failed to create activity.');
+      }
 
-    setActivities((prev) => [payload.activity!, ...prev]);
-    return payload.activity ?? null;
-  }, []);
+      setActivities((prev) => [payload.activity!, ...prev]);
+      return payload.activity ?? null;
+    },
+    [],
+  );
 
   const updateActivity = useCallback(
     async (id: string, activity: ActivityUpdatePayload): Promise<ProjectActivity | null> => {
@@ -176,25 +190,28 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  const addMilestone = useCallback(async (milestone: MilestonePayload): Promise<ProjectMilestone | null> => {
-    const response = await fetch('/api/scheduling/milestones', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(milestone),
-    });
+  const addMilestone = useCallback(
+    async (milestone: MilestonePayload): Promise<ProjectMilestone | null> => {
+      const response = await fetch('/api/scheduling/milestones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(milestone),
+      });
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      milestone?: ProjectMilestone;
-      error?: string;
-    };
+      const payload = (await response.json().catch(() => ({}))) as {
+        milestone?: ProjectMilestone;
+        error?: string;
+      };
 
-    if (!response.ok || !payload.milestone) {
-      throw new Error(payload.error || 'Failed to create milestone.');
-    }
+      if (!response.ok || !payload.milestone) {
+        throw new Error(payload.error || 'Failed to create milestone.');
+      }
 
-    setMilestones((prev) => [payload.milestone!, ...prev]);
-    return payload.milestone ?? null;
-  }, []);
+      setMilestones((prev) => [payload.milestone!, ...prev]);
+      return payload.milestone ?? null;
+    },
+    [],
+  );
 
   const updateMilestone = useCallback(
     async (id: string, milestone: MilestoneUpdatePayload): Promise<ProjectMilestone | null> => {
@@ -271,4 +288,3 @@ export function useScheduling() {
   }
   return context;
 }
-

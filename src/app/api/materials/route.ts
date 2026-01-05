@@ -284,73 +284,6 @@ export async function GET(request: Request) {
         .in('material_id', materialIds)
         .eq('organization_id', organizationId);
 
-      // Calculate inward_qty dynamically from receipts for each material+site combination
-      const { data: receiptsData, error: receiptsError } = await supabase
-        .from('material_receipts')
-        .select('material_id, site_id, quantity')
-        .in('material_id', materialIds)
-        .eq('organization_id', organizationId)
-        .not('site_id', 'is', null); // Only allocated receipts
-
-      // Calculate utilization_qty dynamically from work progress for each material+site combination
-      const { data: workProgressMaterialsData, error: workProgressError } = await supabase
-        .from('work_progress_materials')
-        .select('material_id, quantity, work_progress_id')
-        .eq('organization_id', organizationId);
-
-      // Get work progress entries to get site_id for each material consumption
-      const workProgressSiteMap = new Map<string, string>();
-      if (workProgressMaterialsData && workProgressMaterialsData.length > 0) {
-        const workProgressIds = [
-          ...new Set(
-            (workProgressMaterialsData as Array<{ work_progress_id: string | null }>)
-              .map((wpm) => wpm.work_progress_id)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        ];
-        if (workProgressIds.length > 0) {
-          const { data: workProgressData } = await supabase
-            .from('work_progress')
-            .select('id, site_id')
-            .in('id', workProgressIds)
-            .eq('organization_id', organizationId);
-          ((workProgressData || []) as Array<{ id: string; site_id: string | null }>).forEach((wp) => {
-            if (wp.site_id) {
-              workProgressSiteMap.set(wp.id, wp.site_id);
-            }
-          });
-        }
-      }
-
-      // Build inward_qty map from receipts: material_id:site_id -> total quantity
-      const inwardQtyMap = new Map<string, number>();
-      if (!receiptsError && receiptsData) {
-        (receiptsData as Array<{ material_id: string | null; site_id: string | null; quantity: number | string | null }>).forEach((receipt) => {
-          if (receipt.material_id && receipt.site_id) {
-            const key = `${receipt.material_id}:${receipt.site_id}`;
-            const current = inwardQtyMap.get(key) || 0;
-            const receiptQty = Number(receipt.quantity ?? 0);
-            inwardQtyMap.set(key, current + receiptQty);
-          }
-        });
-      }
-
-      // Build utilization_qty map from work progress: material_id:site_id -> total quantity
-      const utilizationQtyMap = new Map<string, number>();
-      if (!workProgressError && workProgressMaterialsData) {
-        (workProgressMaterialsData as Array<{ material_id: string | null; quantity: number | string | null; work_progress_id: string | null }>).forEach((wpm) => {
-          if (wpm.material_id && wpm.work_progress_id) {
-            const siteId = workProgressSiteMap.get(wpm.work_progress_id);
-            if (siteId) {
-              const key = `${wpm.material_id}:${siteId}`;
-              const current = utilizationQtyMap.get(key) || 0;
-              const wpmQty = Number(wpm.quantity ?? 0);
-              utilizationQtyMap.set(key, current + wpmQty);
-            }
-          }
-        });
-      }
-
       if (!allocationsError && allocationsData) {
         // Fetch site names for allocations
         const siteIds = [
@@ -367,25 +300,17 @@ export async function GET(request: Request) {
           siteNameMap.set(site.id, site.name);
         });
 
-        // Build allocations map with dynamically calculated values
+        // Build allocations map
         (allocationsData as SiteAllocationRow[]).forEach((allocation) => {
           const materialId = allocation.material_id;
           const siteId = allocation.site_id;
           const openingBalance = Number(allocation.opening_balance ?? 0);
-          
-          // Calculate inwardQty from receipts (use calculated value if exists, fallback to stored)
-          const inwardQtyKey = `${materialId}:${siteId}`;
-          const calculatedInwardQty = inwardQtyMap.get(inwardQtyKey);
-          // If calculated value exists (even if 0), use it; otherwise use stored value
-          const inwardQty = calculatedInwardQty !== undefined ? calculatedInwardQty : Number(allocation.inward_qty ?? 0);
-          
-          // Calculate utilizationQty from work progress (use calculated value if exists, fallback to stored)
-          const calculatedUtilizationQty = utilizationQtyMap.get(inwardQtyKey);
-          // If calculated value exists (even if 0), use it; otherwise use stored value
-          const utilizationQty = calculatedUtilizationQty !== undefined ? calculatedUtilizationQty : Number(allocation.utilization_qty ?? 0);
-          
+          const inwardQty = Number(allocation.inward_qty ?? 0);
+          const utilizationQty = Number(allocation.utilization_qty ?? 0);
           // Calculate available quantity: Opening Balance + Inward - Utilization
-          const availableQty = Math.max(0, openingBalance + inwardQty - utilizationQty);
+          const availableQty = Number(
+            allocation.available_qty ?? Math.max(0, openingBalance + inwardQty - utilizationQty),
+          );
           const siteName = siteNameMap.get(siteId) || '';
 
           if (!siteAllocationsMap.has(materialId)) {
@@ -404,72 +329,33 @@ export async function GET(request: Request) {
       }
     }
 
-    // Calculate aggregate inward and utilization quantities from receipts and work progress for materials without allocations
-    const materialInwardQtyMap = new Map<string, number>();
-    const materialUtilizationQtyMap = new Map<string, number>();
-    
-    // Sum all receipts for each material (across all sites)
-    if (materialIds.length > 0) {
-      const { data: allReceiptsData } = await supabase
-        .from('material_receipts')
-        .select('material_id, quantity')
-        .in('material_id', materialIds)
-        .eq('organization_id', organizationId);
-      
-      if (allReceiptsData) {
-        (allReceiptsData as Array<{ material_id: string | null; quantity: number | string | null }>).forEach((receipt) => {
-          if (receipt.material_id) {
-            const current = materialInwardQtyMap.get(receipt.material_id) || 0;
-            materialInwardQtyMap.set(receipt.material_id, current + Number(receipt.quantity ?? 0));
-          }
-        });
-      }
-      
-      // Sum all work progress consumption for each material (across all sites)
-      const { data: allWorkProgressMaterialsData } = await supabase
-        .from('work_progress_materials')
-        .select('material_id, quantity')
-        .in('material_id', materialIds)
-        .eq('organization_id', organizationId);
-      
-      if (allWorkProgressMaterialsData) {
-        (allWorkProgressMaterialsData as Array<{ material_id: string | null; quantity: number | string | null }>).forEach((wpm) => {
-          if (wpm.material_id) {
-            const current = materialUtilizationQtyMap.get(wpm.material_id) || 0;
-            materialUtilizationQtyMap.set(wpm.material_id, current + Number(wpm.quantity ?? 0));
-          }
-        });
-      }
-    }
-
     const materials = (data ?? []).map((row) => {
       const material = mapRowToMaterial(row as MaterialRow, materialAggregates);
       const allocations = siteAllocationsMap.get((row as MaterialRow).id) || [];
-      
+
       // Calculate aggregate quantities across all sites
-      const totalOpeningBalance = allocations.reduce((sum, alloc) => sum + (alloc.openingBalance ?? 0), 0);
+      const totalOpeningBalance = allocations.reduce(
+        (sum, alloc) => sum + (alloc.openingBalance ?? 0),
+        0,
+      );
       const totalInwardQty = allocations.reduce((sum, alloc) => sum + (alloc.inwardQty ?? 0), 0);
-      const totalUtilizedQty = allocations.reduce((sum, alloc) => sum + (alloc.utilizationQty ?? 0), 0);
-      const totalAvailableQty = allocations.reduce((sum, alloc) => sum + (alloc.availableQty ?? 0), 0);
-      
-      // If no allocations, use aggregate values from receipts/work progress
-      const finalInwardQty = allocations.length > 0 
-        ? totalInwardQty 
-        : (materialInwardQtyMap.get((row as MaterialRow).id) ?? 0);
-      const finalUtilizedQty = allocations.length > 0 
-        ? totalUtilizedQty 
-        : (materialUtilizationQtyMap.get((row as MaterialRow).id) ?? 0);
-      const finalOpeningBalance = row.opening_balance ? Number(row.opening_balance) : (totalOpeningBalance || null);
-      const finalAvailableQty = allocations.length > 0 
-        ? totalAvailableQty 
-        : Math.max(0, (finalOpeningBalance ?? 0) + finalInwardQty - finalUtilizedQty);
-      
+      const totalUtilizedQty = allocations.reduce(
+        (sum, alloc) => sum + (alloc.utilizationQty ?? 0),
+        0,
+      );
+      const totalAvailableQty = allocations.reduce(
+        (sum, alloc) => sum + (alloc.availableQty ?? 0),
+        0,
+      );
+
       return {
         ...material,
-        openingBalance: finalOpeningBalance,
-        inwardQty: finalInwardQty,
-        utilizedQty: finalUtilizedQty,
-        availableQty: finalAvailableQty,
+        openingBalance: row.opening_balance
+          ? Number(row.opening_balance)
+          : totalOpeningBalance || null,
+        inwardQty: totalInwardQty || undefined,
+        utilizedQty: totalUtilizedQty || undefined,
+        availableQty: totalAvailableQty || undefined,
         siteAllocations: allocations.length > 0 ? allocations : undefined,
       };
     });
@@ -591,7 +477,10 @@ export async function POST(request: Request) {
         // Validate utilization doesn't exceed available (Opening Balance + Inward)
         if (utilizationQty > openingBalance + inwardQty) {
           return NextResponse.json(
-            { error: 'Utilization quantity cannot exceed available quantity (Opening Balance + Inward).' },
+            {
+              error:
+                'Utilization quantity cannot exceed available quantity (Opening Balance + Inward).',
+            },
             { status: 400 },
           );
         }
@@ -688,7 +577,8 @@ export async function POST(request: Request) {
         const inwardQty = allocation.inwardQty ?? 0; // Read-only, from receipts
         const utilizationQty = allocation.utilizationQty ?? 0; // Read-only, from work progress
         // Available qty = Opening Balance + Inward - Utilization
-        const availableQty = allocation.availableQty ?? Math.max(0, openingBalance + inwardQty - utilizationQty);
+        const availableQty =
+          allocation.availableQty ?? Math.max(0, openingBalance + inwardQty - utilizationQty);
 
         return {
           material_id: materialId,

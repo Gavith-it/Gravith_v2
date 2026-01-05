@@ -133,6 +133,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isMounted, setIsMounted] = useState(false);
   const supabase = createClient();
 
+  // Use ref to prevent duplicate profile fetches in React Strict Mode
+  const hasInitialized = React.useRef(false);
+
   // Session expiration: 24 hours (1 day) in milliseconds
   const SESSION_EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours
   // Check session validity every 5 minutes
@@ -196,6 +199,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsMounted(true);
+
+    // Only initialize once, even in React Strict Mode
+    if (hasInitialized.current) {
+      return;
+    }
+    hasInitialized.current = true;
 
     const initialize = async () => {
       try {

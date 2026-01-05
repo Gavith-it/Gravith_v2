@@ -27,11 +27,11 @@ import { useTableState } from '../lib/hooks/useTableState';
 import { fetcher, swrConfig } from '../lib/swr';
 import { formatDate } from '../lib/utils';
 
+import { MaterialReceiptsDialog } from './dialogs/MaterialReceiptsDialog';
+import { MaterialUtilizationDialog } from './dialogs/MaterialUtilizationDialog';
 import MaterialMasterForm from './forms/MaterialMasterForm';
 import { getActiveTaxRates } from './shared/masterData';
 import type { MaterialMasterItem } from './shared/materialMasterData';
-import { MaterialReceiptsDialog } from './dialogs/MaterialReceiptsDialog';
-import { MaterialUtilizationDialog } from './dialogs/MaterialUtilizationDialog';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -66,6 +66,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMaterialReceipts, useMaterials } from '@/lib/contexts';
 import type { MaterialMasterInput } from '@/types/materials';
 
 type MaterialAdvancedFilterState = {
@@ -132,6 +133,10 @@ interface MaterialsPageProps {
 }
 
 export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
+  // Get contexts for checking linked records
+  const { receipts } = useMaterialReceipts();
+  const { materials: purchases } = useMaterials();
+
   // Pagination state
   const [page, setPage] = useState<number>(1);
   const [limit] = useState<number>(50);
@@ -527,6 +532,29 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         return;
       }
 
+      // Check if material is linked to purchases or receipts BEFORE showing confirmation
+      const linkedReceipts = receipts.filter((receipt) => receipt.materialId === materialId);
+      const linkedPurchases = purchases.filter((purchase) => purchase.materialId === materialId);
+
+      if (linkedReceipts.length > 0 || linkedPurchases.length > 0) {
+        let errorMessage = '';
+        if (linkedPurchases.length > 0 && linkedReceipts.length > 0) {
+          errorMessage = `This material has ${linkedPurchases.length} purchase record(s) and ${linkedReceipts.length} receipt record(s) linked to it.`;
+        } else if (linkedPurchases.length > 0) {
+          errorMessage = `This material has ${linkedPurchases.length} purchase record(s) linked to it.`;
+        } else {
+          errorMessage = `This material has ${linkedReceipts.length} receipt record(s) linked to it.`;
+        }
+
+        alert(
+          `Cannot delete material: "${target.name}"\n\n` +
+            `${errorMessage}\n\n` +
+            `Please remove or relink the associated records before deleting this material.`,
+        );
+        return;
+      }
+
+      // If not linked, show confirmation dialog
       const confirmed = window.confirm(
         `Delete "${target.name}" from material master? This action cannot be undone.`,
       );
@@ -534,129 +562,64 @@ export function MaterialsPage({ filterBySite }: MaterialsPageProps = {}) {
         return;
       }
 
-      // Optimistically update the cache IMMEDIATELY - remove the deleted material from UI right away
-      // This provides instant UI feedback before the API call completes
-      const updateCache = (
-        currentData:
-          | {
-              materials: MaterialMasterItem[];
-              pagination: {
-                page: number;
-                limit: number;
-                total: number;
-                totalPages: number;
-              };
-            }
-          | undefined,
-      ) => {
-        if (!currentData) return undefined;
-        // Remove ALL instances of the material with this ID (in case of duplicates)
-        const filtered = currentData.materials.filter((m) => m.id !== materialId);
-        const removedCount = currentData.materials.length - filtered.length;
-        return {
-          materials: filtered,
-          pagination: {
-            ...currentData.pagination,
-            total: Math.max(0, currentData.pagination.total - removedCount),
-          },
-        };
-      };
-
-      // Rollback function in case deletion fails
-      const rollbackCache = (
-        currentData:
-          | {
-              materials: MaterialMasterItem[];
-              pagination: {
-                page: number;
-                limit: number;
-                total: number;
-                totalPages: number;
-              };
-            }
-          | undefined,
-      ) => {
-        if (!currentData) return undefined;
-        // Restore material to its original position (sorted by created_at)
-        const restoredMaterials = [...currentData.materials, target].sort((a, b) => {
-          if (a.createdDate && b.createdDate) {
-            return new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime();
-          }
-          return 0;
-        });
-        return {
-          materials: restoredMaterials,
-          pagination: {
-            ...currentData.pagination,
-            total: currentData.pagination.total + 1,
-          },
-        };
-      };
-
-      // Update cache optimistically for INSTANT UI update
-      mutateMaterials(updateCache, { revalidate: false });
-      mutate((key) => typeof key === 'string' && key.startsWith('/api/materials'), updateCache, {
-        revalidate: false,
-      });
-
-      // Show success toast IMMEDIATELY (before API call completes)
-      toast.success('Material deleted successfully.');
-
-      // Perform the actual deletion in the background
+      // After confirmation, proceed with deletion
       try {
         const response = await fetch(`/api/materials/${materialId}`, {
           method: 'DELETE',
         });
 
-        let payload: { success?: boolean; error?: string } = {};
-        try {
-          payload = (await response.json()) as {
-            success?: boolean;
-            error?: string;
-          };
-        } catch (jsonError) {
-          // If JSON parsing fails, try to get text
-          const text = await response.text().catch(() => 'Unknown error');
-          payload = { error: text || 'Failed to delete material' };
-        }
+        const payload = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
 
-        if (!response.ok || !payload.success) {
-          // Rollback optimistic update on error
-          mutateMaterials(rollbackCache, { revalidate: false });
-          mutate(
-            (key) => typeof key === 'string' && key.startsWith('/api/materials'),
-            rollbackCache,
-            { revalidate: false },
-          );
-
-          const errorMessage =
-            payload.error || `Failed to delete material (${response.status}). Please try again.`;
-          toast.error(errorMessage, {
-            duration: response.status === 400 ? 8000 : 5000, // Show dependency errors longer
-          });
+        // If deletion failed, show error
+        if (!response.ok && payload.error) {
+          const errorMessage = payload.error;
+          if (
+            errorMessage.includes('purchase records linked') ||
+            errorMessage.includes('receipt records linked') ||
+            errorMessage.includes('linked to')
+          ) {
+            alert(
+              `Cannot delete material: "${target.name}"\n\n` +
+                `${errorMessage}\n\n` +
+                `Please remove or relink the associated records before deleting this material.`,
+            );
+            return;
+          }
+          // Other errors
+          toast.error(errorMessage);
           return;
         }
 
-        // Don't revalidate immediately - keep the optimistic update
-        // The deletion was successful, so the optimistic update is correct
-        // SWR will naturally revalidate on the next interval or when the page is refocused
-        // This prevents the material from reappearing due to race conditions or stale cache
+        // If deletion succeeded, update cache and show success
+        if (response.ok && payload.success) {
+          await mutateMaterials();
+          toast.success('Material deleted successfully.');
+          return;
+        }
       } catch (error) {
-        // Rollback optimistic update on error
-        mutateMaterials(rollbackCache, { revalidate: false });
-        mutate(
-          (key) => typeof key === 'string' && key.startsWith('/api/materials'),
-          rollbackCache,
-          { revalidate: false },
-        );
-
         console.error('Failed to delete material', error);
-        toast.error(
-          error instanceof Error ? error.message : 'Unable to delete material. Please try again.',
-        );
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unable to delete material. Please try again.';
+        if (
+          errorMessage.includes('purchase records linked') ||
+          errorMessage.includes('receipt records linked') ||
+          errorMessage.includes('linked to')
+        ) {
+          alert(
+            `Cannot delete material: "${target.name}"\n\n` +
+              `${errorMessage}\n\n` +
+              `Please remove or relink the associated records before deleting this material.`,
+          );
+        } else {
+          toast.error(errorMessage);
+        }
+        return;
       }
     },
-    [materialMasterData, mutateMaterials],
+    [materialMasterData, mutateMaterials, receipts, purchases],
   );
 
   const toggleMasterMaterialStatus = useCallback(

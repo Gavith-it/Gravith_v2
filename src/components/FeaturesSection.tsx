@@ -16,8 +16,6 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 
-
-import AnimatedShaderBackground from './AnimatedShaderBackground';
 import DominoesListScroll from './dominoes-scroll';
 
 import { useIsMobile } from '@/lib/hooks/use-mobile';
@@ -207,7 +205,18 @@ export function FeaturesSection() {
         background: 'radial-gradient(circle at center, #071F3F 0%, #02142A 60%, #010D1D 100%)',
       }}
     >
-      <AnimatedShaderBackground />
+      {/* Animated gradient background using CSS */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent animate-pulse"></div>
+        <div
+          className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-400/5 rounded-full blur-3xl animate-pulse"
+          style={{ animationDelay: '1s', animationDuration: '4s' }}
+        ></div>
+        <div
+          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-400/5 rounded-full blur-3xl animate-pulse"
+          style={{ animationDelay: '2s', animationDuration: '5s' }}
+        ></div>
+      </div>
       <section className="text-white h-auto py-12 sm:py-16 md:py-20 w-full grid place-content-center relative top-0 z-10 px-4 sm:px-6 md:px-8">
         <div className="absolute bottom-0 left-0 right-0 top-0 bg-gradient-to-b from-transparent via-cyan-900/10 to-transparent z-0"></div>
 

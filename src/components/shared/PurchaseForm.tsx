@@ -42,8 +42,6 @@ import type { SharedMaterial } from '@/lib/contexts';
 import { useMaterialReceipts, useMaterials, useVendors } from '@/lib/contexts';
 import { formatDateOnly, parseDateOnly } from '@/lib/utils/date';
 import type { MaterialMaster } from '@/types/entities';
-import useSWR from 'swr';
-import { fetcher, swrConfig } from '@/lib/swr';
 
 interface PurchaseFormProps {
   selectedSite?: string;
@@ -113,23 +111,6 @@ export function PurchaseForm({
   const isEditMode = !!editingMaterial;
   const formId = isEditMode ? 'purchase-edit-form' : 'purchase-new-form';
   const [isClient, setIsClient] = React.useState(false);
-  
-  // Fetch materials master data to look up material names
-  const { data: materialsData } = useSWR<{
-    materials: MaterialMaster[];
-    pagination?: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-    };
-  }>('/api/materials?page=1&limit=100', fetcher, {
-    ...swrConfig,
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-  });
-  
-  const materialMasterOptions = materialsData?.materials ?? [];
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
@@ -322,9 +303,30 @@ export function PurchaseForm({
         return;
       }
 
-      // Look up current material name from material master (in case material was renamed)
-      const materialFromMaster = materialMasterOptions.find((m) => m.id === firstReceipt.materialId);
-      const currentMaterialName = materialFromMaster?.name ?? firstReceipt.materialName;
+      // Fetch material master to get the current material name (not the old name from receipt)
+      let materialMasterName = firstReceipt.materialName; // Fallback to receipt name
+      let materialMasterCategory = 'Other'; // Default category
+      let materialMasterUnit = 'kg'; // Default unit
+
+      if (firstReceipt.materialId) {
+        try {
+          const materialResponse = await fetch(`/api/materials/${firstReceipt.materialId}`);
+          if (materialResponse.ok) {
+            const materialPayload = (await materialResponse.json().catch(() => ({}))) as {
+              material?: MaterialMaster;
+              error?: string;
+            };
+            if (materialPayload.material) {
+              materialMasterName = materialPayload.material.name;
+              materialMasterCategory = materialPayload.material.category;
+              materialMasterUnit = materialPayload.material.unit;
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching material master:', error);
+          // Continue with receipt's material name as fallback
+        }
+      }
 
       // Determine site name: use selectedSite prop if available, otherwise use receipt's site name
       // If neither is available, show an error
@@ -348,10 +350,10 @@ export function PurchaseForm({
 
       const materialData: Omit<SharedMaterial, 'id'> = {
         materialId: firstReceipt.materialId,
-        materialName: currentMaterialName, // Use current name from material master, not stale receipt name
+        materialName: materialMasterName, // Use material master name instead of receipt name
         site: siteName.trim(),
         quantity: totalQuantity,
-        unit: 'kg', // Default unit from receipts
+        unit: materialMasterUnit, // Use material master unit instead of default
         unitRate: averageUnitRate,
         costPerUnit: averageUnitRate,
         totalAmount,
@@ -363,7 +365,7 @@ export function PurchaseForm({
         consumedQuantity: previousConsumed,
         remainingQuantity: editingMaterial?.remainingQuantity ?? quantityValue - previousConsumed,
         linkedReceiptId: selectedReceiptIds[0],
-        category: 'Other', // Default category
+        category: materialMasterCategory, // Use material master category instead of default
         filledWeight: data.filledWeight ? Number(data.filledWeight) : undefined,
         emptyWeight: data.emptyWeight ? Number(data.emptyWeight) : undefined,
         netWeight: data.netWeight ? Number(data.netWeight) : undefined,
@@ -384,8 +386,12 @@ export function PurchaseForm({
           const created = await addMaterial(materialData);
           purchaseId = created?.id ?? '';
           latestPurchase = created ?? null;
+          // Check if called from dashboard (onSubmit prop indicates dashboard usage)
+          const isFromDashboard = !!onSubmit;
           toast.success('Purchase recorded successfully!', {
-            description: `${materialData.materialName} has been added to inventory.`,
+            description: isFromDashboard
+              ? `${materialData.materialName} has been added via Quick Action.`
+              : `${materialData.materialName} has been added to inventory.`,
           });
         }
 
@@ -400,7 +406,6 @@ export function PurchaseForm({
         if (data.linkedReceiptIds && data.linkedReceiptIds.length > 0 && purchaseId) {
           let linkedCount = 0;
           for (const receiptId of data.linkedReceiptIds) {
-             
             const success = await linkReceiptToPurchase(receiptId, purchaseId);
             if (success) {
               linkedCount++;
@@ -846,7 +851,7 @@ export function PurchaseForm({
         </form>
       </CardContent>
       <CardFooter className="border-t">
-        <Field orientation="horizontal" className="justify-end">
+        <div className="flex justify-end gap-2 w-full">
           <Button
             type="button"
             variant="outline"
@@ -859,7 +864,7 @@ export function PurchaseForm({
             <ShoppingCart className="h-4 w-4 mr-2" />
             {getSubmitButtonText()}
           </Button>
-        </Field>
+        </div>
       </CardFooter>
     </Card>
   );

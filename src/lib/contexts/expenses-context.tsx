@@ -18,8 +18,9 @@ interface ExpensesContextType {
   pagination?: {
     page: number;
     limit: number;
-    total: number;
-    totalPages: number;
+    hasMore: boolean;
+    // total?: number;      // Uncomment if using count query in API
+    // totalPages?: number; // Uncomment if using count query in API
   };
 }
 
@@ -51,8 +52,9 @@ async function fetchExpenses(
   pagination?: {
     page: number;
     limit: number;
-    total: number;
-    totalPages: number;
+    hasMore: boolean;
+    // total?: number;      // Uncomment if using count query in API
+    // totalPages?: number; // Uncomment if using count query in API
   };
 }> {
   const payload = (await fetchJson<{
@@ -60,8 +62,9 @@ async function fetchExpenses(
     pagination?: {
       page: number;
       limit: number;
-      total: number;
-      totalPages: number;
+      hasMore: boolean;
+      // total?: number;      // Uncomment if using count query in API
+      // totalPages?: number; // Uncomment if using count query in API
     };
     error?: string;
   }>(`/api/expenses?page=${page}&limit=${limit}`).catch(() => ({}))) as {
@@ -69,8 +72,9 @@ async function fetchExpenses(
     pagination?: {
       page: number;
       limit: number;
-      total: number;
-      totalPages: number;
+      hasMore: boolean;
+      // total?: number;      // Uncomment if using count query in API
+      // totalPages?: number; // Uncomment if using count query in API
     };
     error?: string;
   };
@@ -92,30 +96,51 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
     | {
         page: number;
         limit: number;
-        total: number;
-        totalPages: number;
+        hasMore: boolean;
+        // total?: number;      // Uncomment if using count query in API
+        // totalPages?: number; // Uncomment if using count query in API
       }
     | undefined
   >(undefined);
 
-  const refresh = useCallback(async (page = 1, limit = 50) => {
-    try {
-      setIsLoading(true);
-      const result = await fetchExpenses(page, limit);
-      setExpenses(result.expenses);
-      setPagination(result.pagination);
-    } catch (error) {
-      console.error('Error loading expenses', error);
-      setExpenses([]);
-      toast.error('Failed to load expenses.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // Use ref to track current fetch to prevent duplicate calls
+  const currentFetchRef = React.useRef<{
+    page: number;
+    limit: number;
+    promise?: Promise<void>;
+  } | null>(null);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const refresh = useCallback(async (page = 1, limit = 50) => {
+    // Prevent duplicate calls with same parameters - return existing promise if already fetching
+    if (currentFetchRef.current?.page === page && currentFetchRef.current?.limit === limit) {
+      if (currentFetchRef.current.promise) {
+        return currentFetchRef.current.promise; // Return existing promise to deduplicate
+      }
+    }
+
+    // Create new fetch promise
+    const fetchPromise = (async () => {
+      try {
+        setIsLoading(true);
+        const result = await fetchExpenses(page, limit);
+        setExpenses(result.expenses);
+        setPagination(result.pagination);
+      } catch (error) {
+        console.error('Error loading expenses', error);
+        setExpenses([]);
+        toast.error('Failed to load expenses.');
+      } finally {
+        setIsLoading(false);
+        // Clear the promise reference after fetch completes
+        if (currentFetchRef.current?.page === page && currentFetchRef.current?.limit === limit) {
+          currentFetchRef.current.promise = undefined;
+        }
+      }
+    })();
+
+    currentFetchRef.current = { page, limit, promise: fetchPromise };
+    return fetchPromise;
+  }, []);
 
   const addExpense = useCallback(async (expense: ExpensePayload): Promise<Expense | null> => {
     const response = await fetch('/api/expenses', {

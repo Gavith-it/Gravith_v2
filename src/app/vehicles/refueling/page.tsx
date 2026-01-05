@@ -36,12 +36,16 @@ type Vehicle = {
 export default function VehicleRefuelingPage() {
   const router = useRouter();
 
-  // Fetch vehicles using SWR
+  // Fetch vehicles using SWR with pagination to match main vehicles page and enable caching
+  // Using high limit to get all vehicles for dropdown selection
   const {
     data: vehiclesData,
     isLoading,
     error: vehiclesError,
-  } = useSWR<{ vehicles: VehicleEntity[] }>('/api/vehicles', fetcher, swrConfig);
+  } = useSWR<{
+    vehicles: VehicleEntity[];
+    pagination?: { page: number; limit: number; total: number; totalPages: number };
+  }>('/api/vehicles?page=1&limit=1000', fetcher, swrConfig);
 
   // Map VehicleEntity to Vehicle format expected by form
   const vehicles = useMemo(() => {
