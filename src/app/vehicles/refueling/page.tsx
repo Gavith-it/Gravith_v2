@@ -45,7 +45,7 @@ export default function VehicleRefuelingPage() {
   } = useSWR<{
     vehicles: VehicleEntity[];
     pagination?: { page: number; limit: number; total: number; totalPages: number };
-  }>('/api/vehicles?page=1&limit=1000', fetcher, swrConfig);
+  }>('/api/vehicles?page=1&limit=100', fetcher, swrConfig);
 
   // Map VehicleEntity to Vehicle format expected by form
   const vehicles = useMemo(() => {

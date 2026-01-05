@@ -41,7 +41,7 @@ export default function VehicleUsagePage() {
   const { data: vehiclesData, isLoading: isVehiclesLoading } = useSWR<{
     vehicles: VehicleEntity[];
     pagination?: { page: number; limit: number; total: number; totalPages: number };
-  }>('/api/vehicles?page=1&limit=1000', fetcher, swrConfig);
+  }>('/api/vehicles?page=1&limit=100', fetcher, swrConfig);
   const { data: sitesData, isLoading: isSitesLoading } = useSWR<{ sites: Site[] }>(
     '/api/sites',
     fetcher,

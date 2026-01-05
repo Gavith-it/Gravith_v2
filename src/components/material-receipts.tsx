@@ -96,7 +96,7 @@ export function MaterialReceiptsPage({
       total: number;
       totalPages: number;
     };
-  }>('/api/materials?page=1&limit=1000', fetcher, {
+  }>('/api/materials?page=1&limit=100', fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
   });
