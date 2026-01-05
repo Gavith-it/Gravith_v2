@@ -1,12 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { mutate } from 'swr';
 
 import VendorNewForm, { type VendorFormData } from '@/components/forms/VendorForm';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { toast } from 'sonner';
-import type { Vendor } from '@/types';
 import { formatDateOnly } from '@/lib/utils/date';
+import type { Vendor } from '@/types';
 
 export default function VendorNewPage() {
   const router = useRouter();
@@ -48,6 +49,11 @@ export default function VendorNewPage() {
       if (!response.ok || !payload.vendor) {
         throw new Error(payload.error || 'Failed to create vendor');
       }
+
+      // Invalidate vendors cache to refresh the list
+      await mutate((key) => typeof key === 'string' && key.startsWith('/api/vendors'), undefined, {
+        revalidate: true,
+      });
 
       toast.success('Vendor created successfully');
       router.push('/vendors');

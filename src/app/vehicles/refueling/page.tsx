@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import VehicleRefuelingForm from '@/components/forms/VehicleRefuelingForm';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -132,6 +132,13 @@ export default function VehicleRefuelingPage() {
       if (!response.ok || !payload.refueling) {
         throw new Error(payload.error || 'Failed to create refueling record');
       }
+
+      // Invalidate vehicle refueling cache to refresh the list
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/vehicles/refueling'),
+        undefined,
+        { revalidate: true },
+      );
 
       toast.success('Refueling record created successfully');
       router.push('/vehicles');

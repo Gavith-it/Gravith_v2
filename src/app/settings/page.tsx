@@ -1,10 +1,13 @@
 'use client';
 
-import { useAuth } from '@/lib/auth-context';
-import { SettingsPage } from '@/components/settings';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
+import { SettingsPage } from '@/components/settings';
+import { useAuth } from '@/lib/auth-context';
+
 export default function SettingsPageRoute() {
+  const router = useRouter();
   const { user, isLoading } = useAuth();
 
   const handleUpdateUser = async (
@@ -23,15 +26,15 @@ export default function SettingsPageRoute() {
       });
 
       if (!response.ok) {
-        const { error } = await response.json().catch(() => ({ error: 'Failed to update profile' }));
+        const { error } = await response
+          .json()
+          .catch(() => ({ error: 'Failed to update profile' }));
         throw new Error(error || 'Failed to update profile');
       }
 
       toast.success('Profile updated successfully');
-      // Reload the page to get updated user data
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      // Refresh the page to get updated user data (better than full reload)
+      router.refresh();
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to update profile');

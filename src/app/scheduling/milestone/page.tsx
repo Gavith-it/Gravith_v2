@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import MilestoneForm from '@/components/forms/MilestoneForm';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -58,6 +58,13 @@ export default function MilestonePage() {
       if (!response.ok || !payload.milestone) {
         throw new Error(payload.error || 'Failed to create milestone');
       }
+
+      // Invalidate milestones cache to refresh the list
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/scheduling/milestones'),
+        undefined,
+        { revalidate: true },
+      );
 
       toast.success('Milestone created successfully');
       router.push('/scheduling');

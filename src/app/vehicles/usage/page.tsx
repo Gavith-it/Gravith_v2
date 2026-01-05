@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import VehicleUsageForm from '@/components/forms/VehicleUsageForm';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -166,6 +166,13 @@ export default function VehicleUsagePage() {
       if (!response.ok || !payload.record) {
         throw new Error(payload.error || 'Failed to create vehicle usage record');
       }
+
+      // Invalidate vehicle usage cache to refresh the list
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/vehicles/usage'),
+        undefined,
+        { revalidate: true },
+      );
 
       toast.success('Vehicle usage recorded successfully');
       router.push('/vehicles');
