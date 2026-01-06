@@ -9,6 +9,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useVendors } from '@/lib/contexts';
 import { formatDateOnly } from '@/lib/utils/date';
 
+// Force dynamic rendering since this page uses context providers
+export const dynamic = 'force-dynamic';
+
 export default function VendorNewPage() {
   const router = useRouter();
   const { addVendor, refresh } = useVendors();
