@@ -105,6 +105,7 @@ export async function GET() {
       { data: activityRows },
       { data: materialMastersRows },
       { data: vehicleRows },
+      { data: workProgressRows },
     ] = await Promise.all([
       supabase
         .from('sites')
@@ -165,6 +166,10 @@ export async function GET() {
         .select('id, vehicle_number, last_maintenance_date, next_maintenance_date, status')
         .eq('organization_id', organizationId)
         .not('status', 'eq', 'returned'),
+      supabase
+        .from('work_progress')
+        .select('site_id, site_name, status, progress_percentage')
+        .eq('organization_id', organizationId),
     ]);
 
     const materialValue = (materialPurchaseTotals ?? []).reduce<number>(
@@ -217,6 +222,37 @@ export async function GET() {
       }
     });
 
+    // Calculate progress from work progress entries (same logic as sites page)
+    const siteProgressMap = new Map<string, number[]>();
+    (workProgressRows ?? []).forEach((entry) => {
+      const record = entry as Record<string, unknown>;
+      const entrySiteId = record.site_id;
+      const entrySiteName = String(record.site_name || '')
+        .trim()
+        .toLowerCase();
+      const entryStatus = String(record.status || '');
+      const entryProgress = Number(record.progress_percentage || 0);
+      const progressValue = entryStatus === 'completed' ? 100 : entryProgress;
+
+      // Match work progress entries to sites by site_id or site_name
+      (siteRows ?? []).forEach((site) => {
+        const siteRecord = site as Record<string, unknown>;
+        const siteId = String(siteRecord.id || '');
+        const siteName = String(siteRecord.name || '')
+          .trim()
+          .toLowerCase();
+        const matchesSiteId = typeof entrySiteId === 'string' && entrySiteId === siteId;
+        const matchesSiteName = entrySiteName && siteName === entrySiteName;
+
+        if (matchesSiteId || matchesSiteName) {
+          if (!siteProgressMap.has(siteId)) {
+            siteProgressMap.set(siteId, []);
+          }
+          siteProgressMap.get(siteId)!.push(progressValue);
+        }
+      });
+    });
+
     const activeSites = (siteRows ?? []).map<ActiveSite>((site) => {
       const record = site as Record<string, unknown>;
       const idValue = record.id;
@@ -232,16 +268,29 @@ export async function GET() {
       const calculatedSpent = siteSpentMap.get(siteId) ?? 0;
       const spentValue = calculatedSpent > 0 ? calculatedSpent : record.spent;
 
-      return {
-        id: siteId,
-        name: typeof nameValue === 'string' ? nameValue : 'Unnamed site',
-        location: typeof locationValue === 'string' ? locationValue : '',
-        progress:
+      // Calculate progress from work progress entries (average of all entries for this site)
+      const progressEntries = siteProgressMap.get(siteId) || [];
+      let calculatedProgress = 0;
+      if (progressEntries.length > 0) {
+        // Calculate average progress from work progress entries
+        calculatedProgress = Math.round(
+          progressEntries.reduce((sum, val) => sum + val, 0) / progressEntries.length,
+        );
+      } else {
+        // Fallback to site's own progress field if no work progress entries
+        calculatedProgress =
           typeof progressValue === 'number'
             ? progressValue
             : progressValue !== null && progressValue !== undefined
               ? Number(progressValue)
-              : 0,
+              : 0;
+      }
+
+      return {
+        id: siteId,
+        name: typeof nameValue === 'string' ? nameValue : 'Unnamed site',
+        location: typeof locationValue === 'string' ? locationValue : '',
+        progress: calculatedProgress,
         status: typeof statusValue === 'string' ? statusValue : 'Unknown',
         nextMilestone: null,
         dueDate: typeof dueDateValue === 'string' ? dueDateValue : null,

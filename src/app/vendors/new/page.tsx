@@ -6,54 +6,44 @@ import { mutate } from 'swr';
 
 import VendorNewForm, { type VendorFormData } from '@/components/forms/VendorForm';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { useVendors } from '@/lib/contexts';
 import { formatDateOnly } from '@/lib/utils/date';
-import type { Vendor } from '@/types';
 
 export default function VendorNewPage() {
   const router = useRouter();
+  const { addVendor, refresh } = useVendors();
 
   const handleSubmit = async (data: VendorFormData) => {
     try {
-      const response = await fetch('/api/vendors', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          category: data.category,
-          contactPerson: data.contactPerson,
-          phone: data.phone,
-          email: data.email || '',
-          address: data.address,
-          gstNumber: data.gstNumber || '',
-          panNumber: data.panNumber || '',
-          bankAccount: data.bankAccountNumber || '',
-          ifscCode: data.ifscCode || '',
-          paymentTerms: data.paymentTerms || '',
-          notes: data.notes || '',
-          status: 'active',
-          totalPaid: 0,
-          pendingAmount: 0,
-          rating: 0,
-          lastPayment: '',
-          registrationDate: formatDateOnly(new Date()),
-        }),
+      // Use context's addVendor which automatically updates the context state
+      await addVendor({
+        name: data.name,
+        category: data.category,
+        contactPerson: data.contactPerson,
+        phone: data.phone,
+        email: data.email || '',
+        address: data.address,
+        gstNumber: data.gstNumber || '',
+        panNumber: data.panNumber || '',
+        bankAccount: data.bankAccountNumber || '',
+        ifscCode: data.ifscCode || '',
+        paymentTerms: data.paymentTerms || '',
+        notes: data.notes || '',
+        status: 'active',
+        totalPaid: 0,
+        pendingAmount: 0,
+        rating: 0,
+        lastPayment: '',
+        registrationDate: formatDateOnly(new Date()),
       });
 
-      const payload = (await response.json().catch(() => ({}))) as {
-        vendor?: Vendor;
-        error?: string;
-      };
-
-      if (!response.ok || !payload.vendor) {
-        throw new Error(payload.error || 'Failed to create vendor');
-      }
-
-      // Invalidate vendors cache to refresh the list
+      // Also invalidate SWR cache for any components using SWR directly
       await mutate((key) => typeof key === 'string' && key.startsWith('/api/vendors'), undefined, {
         revalidate: true,
       });
+
+      // Refresh context to ensure all pages see the new vendor immediately
+      await refresh();
 
       toast.success('Vendor created successfully');
       router.push('/vendors');
