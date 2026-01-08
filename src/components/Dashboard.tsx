@@ -2,7 +2,7 @@ import {
   Building2,
   Truck,
   Package,
-  DollarSign,
+  Receipt,
   Users,
   TrendingUp,
   AlertTriangle,
@@ -28,7 +28,6 @@ import {
   formatPercentage,
 } from '../lib/utils';
 import { formatDateOnly } from '../lib/utils/date';
-
 
 import { FormDialog, InfoTooltip, StatCard, StatusBadge } from './common';
 import ActivityForm from './forms/ActivityForm';
@@ -83,7 +82,7 @@ const quickActions = [
     id: '1',
     title: 'Record Expense',
     description: 'Add new expense entry',
-    icon: DollarSign,
+    icon: Receipt,
     color: 'bg-green-500',
     action: 'expenses',
   },
@@ -129,7 +128,7 @@ type PresentedActivity = DashboardRecentActivity & {
 function mapActivitiesWithPresentation(activities: DashboardRecentActivity[]): PresentedActivity[] {
   const iconMap: Record<DashboardRecentActivity['type'], { icon: LucideIcon; color: string }> = {
     purchase: { icon: ShoppingCart, color: 'text-blue-600' },
-    expense: { icon: DollarSign, color: 'text-green-600' },
+    expense: { icon: Receipt, color: 'text-green-600' },
     vehicle: { icon: Truck, color: 'text-orange-600' },
     site: { icon: Building2, color: 'text-purple-600' },
   };
@@ -577,7 +576,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         />
 
         <StatCard
-          icon={DollarSign}
+          icon={Receipt}
           iconBgColor="bg-red-50"
           iconColor="text-red-600"
           title="Monthly Expenses"

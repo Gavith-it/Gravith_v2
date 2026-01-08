@@ -47,7 +47,7 @@ export function OrganizationSetup({ onComplete, onBack }: OrganizationSetupProps
     {
       id: 'free',
       name: 'Free',
-      price: '$0',
+      price: '₹0',
       description: 'Perfect for getting started',
       icon: Users,
       features: ['Up to 3 projects', 'Basic reporting', 'Email support'],
@@ -56,7 +56,7 @@ export function OrganizationSetup({ onComplete, onBack }: OrganizationSetupProps
     {
       id: 'basic',
       name: 'Basic',
-      price: '$29',
+      price: '₹29',
       description: 'Great for small teams',
       icon: Shield,
       features: [
@@ -70,7 +70,7 @@ export function OrganizationSetup({ onComplete, onBack }: OrganizationSetupProps
     {
       id: 'premium',
       name: 'Premium',
-      price: '$99',
+      price: '₹99',
       description: 'Best for growing businesses',
       icon: Crown,
       features: [

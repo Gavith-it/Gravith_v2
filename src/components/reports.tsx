@@ -2,7 +2,7 @@
 
 import {
   TrendingUp,
-  DollarSign,
+  Receipt,
   Building2,
   Package,
   AlertTriangle,
@@ -133,7 +133,7 @@ const AREA_COLORS: Record<(typeof AREA_CATEGORY_KEYS)[number], string> = {
 
 const RECENT_ACTIVITY_ICONS = {
   purchase: Package,
-  expense: DollarSign,
+  expense: Receipt,
   work: Activity,
 };
 
@@ -288,7 +288,7 @@ export function ReportsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-green-600" />
+              <span className="text-xl font-semibold text-green-600">₹</span>
               <div className="flex-1">
                 <div className="flex items-center gap-1">
                   <p className="text-sm text-muted-foreground">Total Budget</p>
@@ -808,7 +808,7 @@ export function ReportsPage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <TabsList className="grid w-auto grid-cols-4">
                 <TabsTrigger value="financial" className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
+                  <span className="text-base font-semibold">₹</span>
                   Financial
                 </TabsTrigger>
                 <TabsTrigger value="progress" className="flex items-center gap-2">

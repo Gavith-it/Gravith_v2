@@ -3,7 +3,6 @@
 import {
   Plus,
   Package,
-  DollarSign,
   TrendingUp,
   Edit,
   Trash2,
@@ -23,7 +22,6 @@ import { DataTable } from './common/DataTable';
 import { PurchaseTabs } from './layout/PurchaseTabs';
 import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseForm } from './shared/PurchaseForm';
-
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -401,7 +399,7 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-6 w-6 text-green-600" />
+                      <span className="text-2xl font-semibold text-green-600">₹</span>
                     </div>
                   </div>
                 </CardContent>

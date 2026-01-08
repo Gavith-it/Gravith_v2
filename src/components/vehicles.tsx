@@ -4,7 +4,6 @@ import {
   Plus,
   Fuel,
   Activity,
-  DollarSign,
   Calendar,
   BarChart as BarChartIcon,
   Truck,
@@ -1502,7 +1501,7 @@ export function VehiclesPage({
                               </p>
                             </div>
                             <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
-                              <DollarSign className="h-6 w-6 text-primary" />
+                              <span className="text-2xl font-semibold text-primary">₹</span>
                             </div>
                           </div>
                         </CardContent>
@@ -1863,7 +1862,7 @@ export function VehiclesPage({
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
-                            <DollarSign className="h-6 w-6 text-primary" />
+                            <span className="text-2xl font-semibold text-primary">₹</span>
                           </div>
                         </div>
                       </CardContent>

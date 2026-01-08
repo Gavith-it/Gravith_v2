@@ -5,7 +5,6 @@ import {
   Building2,
   MapPin,
   Calendar,
-  DollarSign,
   Package,
   FileText,
   Edit,
@@ -1264,7 +1263,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                           <div className="grid grid-cols-2 gap-3 mb-4">
                             <div className="rounded-lg bg-primary/5 p-3 border border-primary/10">
                               <div className="flex items-center gap-2 mb-1">
-                                <DollarSign className="h-3.5 w-3.5 text-primary" />
+                                <span className="text-sm font-semibold text-primary">₹</span>
                                 <p className="text-xs font-medium text-muted-foreground">Budget</p>
                               </div>
                               <p className="font-bold text-base text-primary">
@@ -1445,7 +1444,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                             </p>
                           </div>
                           <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
-                            <DollarSign className="h-6 w-6 text-primary" />
+                            <span className="text-2xl font-semibold text-primary">₹</span>
                           </div>
                         </div>
                       </CardContent>
@@ -1547,7 +1546,7 @@ export function SitesPage({ selectedSite: propSelectedSite, onSiteSelect }: Site
                             value="expenses"
                             className="flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all truncate min-w-0"
                           >
-                            <DollarSign className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-base font-semibold flex-shrink-0">₹</span>
                             <span className="hidden sm:inline truncate">Expenses</span>
                           </TabsTrigger>
                           <TabsTrigger

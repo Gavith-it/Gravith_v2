@@ -4,7 +4,6 @@ import {
   Building2,
   MapPin,
   Calendar,
-  DollarSign,
   TrendingUp,
   Clock,
   ShoppingCart,
@@ -30,7 +29,6 @@ import { toast } from 'sonner';
 import useSWR from 'swr';
 
 import { fetcher, swrConfig } from '../../lib/swr';
-
 
 import { DataTable } from '@/components/common/DataTable';
 import { FormDialog } from '@/components/common/FormDialog';
@@ -786,7 +784,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                 </p>
               </div>
               <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
-                <DollarSign className="h-6 w-6 text-primary" />
+                <span className="text-2xl font-semibold text-primary">₹</span>
               </div>
             </div>
           </CardContent>
@@ -879,7 +877,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
             <span className="hidden sm:inline">Materials</span>
           </TabsTrigger>
           <TabsTrigger value="expenses" className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
+            <span className="text-base font-semibold">₹</span>
             <span className="hidden sm:inline">Expenses</span>
           </TabsTrigger>
           <TabsTrigger value="vehicles" className="flex items-center gap-2">
@@ -1002,7 +1000,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-                  <DollarSign className="h-8 w-8 text-green-600" />
+                  <span className="text-3xl font-semibold text-green-600">₹</span>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Value</p>
                     <p className="text-xl font-bold text-green-600">
@@ -1118,7 +1116,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
             <CardContent className="p-6">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-                  <DollarSign className="h-8 w-8 text-primary" />
+                  <span className="text-3xl font-semibold text-primary">₹</span>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Expenses</p>
                     <p className="text-xl font-bold">₹{totalExpenses.toLocaleString()}</p>
@@ -1201,7 +1199,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-                  <DollarSign className="h-8 w-8 text-blue-600" />
+                  <span className="text-3xl font-semibold text-blue-600">₹</span>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Cost</p>
                     <p className="text-xl font-bold text-blue-600">
@@ -1260,7 +1258,7 @@ export function SiteDetailPage({ siteId }: SiteDetailPageProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-                  <DollarSign className="h-8 w-8 text-blue-600" />
+                  <span className="text-3xl font-semibold text-blue-600">₹</span>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Cost</p>
                     <p className="text-xl font-bold text-blue-600">

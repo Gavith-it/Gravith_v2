@@ -3,7 +3,6 @@
 import {
   Plus,
   Building,
-  DollarSign,
   TrendingUp,
   Clock,
   Users,
@@ -23,6 +22,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { useTableState } from '../lib/hooks/useTableState';
 import { formatDate } from '../lib/utils';
@@ -30,14 +30,13 @@ import { formatDate } from '../lib/utils';
 import VendorNewForm, { type VendorFormData } from './forms/VendorForm';
 import type { Vendor } from './vendors-columns';
 import { createVendorTableData } from './vendors-columns';
-import { toast } from 'sonner';
-import { useVendors } from '@/lib/contexts';
-import { formatDateOnly } from '@/lib/utils/date';
 
+import { FilterSheet } from '@/components/filters/FilterSheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -53,8 +52,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { FilterSheet } from '@/components/filters/FilterSheet';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -72,6 +69,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useVendors } from '@/lib/contexts';
+import { formatDateOnly } from '@/lib/utils/date';
 
 type VendorAdvancedFilterState = {
   paymentTerms: string[];
@@ -154,8 +153,8 @@ export function VendorsPage() {
   // Pagination state
   const [page, setPage] = useState<number>(1);
   const [limit] = useState<number>(50);
-  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<VendorAdvancedFilterState>(() =>
-    createDefaultVendorAdvancedFilters(),
+  const [appliedAdvancedFilters, setAppliedAdvancedFilters] = useState<VendorAdvancedFilterState>(
+    () => createDefaultVendorAdvancedFilters(),
   );
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<VendorAdvancedFilterState>(() =>
     createDefaultVendorAdvancedFilters(),
@@ -248,9 +247,13 @@ export function VendorsPage() {
         const vendorTotalPaid = Number(vendor.totalPaid ?? 0);
         const vendorPending = Number(vendor.pendingAmount ?? 0);
         const matchesTotalPaidMin =
-          totalPaidMin === undefined || Number.isNaN(totalPaidMin) || vendorTotalPaid >= totalPaidMin;
+          totalPaidMin === undefined ||
+          Number.isNaN(totalPaidMin) ||
+          vendorTotalPaid >= totalPaidMin;
         const matchesTotalPaidMax =
-          totalPaidMax === undefined || Number.isNaN(totalPaidMax) || vendorTotalPaid <= totalPaidMax;
+          totalPaidMax === undefined ||
+          Number.isNaN(totalPaidMax) ||
+          vendorTotalPaid <= totalPaidMax;
         const matchesPendingMin =
           pendingMin === undefined || Number.isNaN(pendingMin) || vendorPending >= pendingMin;
         const matchesPendingMax =
@@ -428,7 +431,9 @@ export function VendorsPage() {
       try {
         await toggleVendorStatus(vendor.id, nextStatus);
         toast.success(
-          nextStatus === 'active' ? 'Vendor activated successfully' : 'Vendor deactivated successfully',
+          nextStatus === 'active'
+            ? 'Vendor activated successfully'
+            : 'Vendor deactivated successfully',
         );
       } catch (error) {
         console.error('Error updating vendor status', error);
@@ -483,7 +488,7 @@ export function VendorsPage() {
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-6 w-6 text-green-600" />
+                      <span className="text-2xl font-semibold text-green-600">₹</span>
                     </div>
                   </div>
                 </CardContent>
@@ -572,7 +577,9 @@ export function VendorsPage() {
                           size="sm"
                           className="gap-2 transition-all hover:shadow-md"
                           onClick={() => {
-                            setDraftAdvancedFilters(cloneVendorAdvancedFilters(appliedAdvancedFilters));
+                            setDraftAdvancedFilters(
+                              cloneVendorAdvancedFilters(appliedAdvancedFilters),
+                            );
                             setIsFilterSheetOpen(true);
                           }}
                         >
@@ -675,16 +682,17 @@ export function VendorsPage() {
                   {(() => {
                     const chips: string[] = [];
                     if (appliedAdvancedFilters.paymentTerms.length > 0) {
-                      chips.push(
-                        `Terms: ${appliedAdvancedFilters.paymentTerms.join(', ')}`,
-                      );
+                      chips.push(`Terms: ${appliedAdvancedFilters.paymentTerms.join(', ')}`);
                     }
                     if (appliedAdvancedFilters.ratingMin || appliedAdvancedFilters.ratingMax) {
                       chips.push(
                         `Rating: ${appliedAdvancedFilters.ratingMin || 'Any'} - ${appliedAdvancedFilters.ratingMax || 'Any'}`,
                       );
                     }
-                    if (appliedAdvancedFilters.totalPaidMin || appliedAdvancedFilters.totalPaidMax) {
+                    if (
+                      appliedAdvancedFilters.totalPaidMin ||
+                      appliedAdvancedFilters.totalPaidMax
+                    ) {
                       chips.push(
                         `Paid: ₹${appliedAdvancedFilters.totalPaidMin || 'Any'} - ₹${appliedAdvancedFilters.totalPaidMax || 'Any'}`,
                       );
@@ -694,7 +702,10 @@ export function VendorsPage() {
                         `Pending: ₹${appliedAdvancedFilters.pendingMin || 'Any'} - ₹${appliedAdvancedFilters.pendingMax || 'Any'}`,
                       );
                     }
-                    if (appliedAdvancedFilters.lastPaymentFrom || appliedAdvancedFilters.lastPaymentTo) {
+                    if (
+                      appliedAdvancedFilters.lastPaymentFrom ||
+                      appliedAdvancedFilters.lastPaymentTo
+                    ) {
                       chips.push(
                         `Last paid: ${appliedAdvancedFilters.lastPaymentFrom ?? 'Any'} → ${appliedAdvancedFilters.lastPaymentTo ?? 'Any'}`,
                       );
@@ -911,7 +922,9 @@ export function VendorsPage() {
                 {pagination && pagination.totalPages > 1 && (
                   <div className="flex items-center justify-between border-t px-4 py-3">
                     <div className="text-sm text-muted-foreground">
-                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} vendors
+                      Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                      {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                      {pagination.total} vendors
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
