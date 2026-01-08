@@ -1412,7 +1412,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
                                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
-                                      <Label>Work Type</Label>
+                                      <Label>
+                                        Work Type <span className="text-destructive">*</span>
+                                      </Label>
                                       <Select
                                         value={workProgressForm.workType}
                                         onValueChange={(value) =>
@@ -1438,7 +1440,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                       </Select>
                                     </div>
                                     <div className="space-y-2">
-                                      <Label>Date</Label>
+                                      <Label>
+                                        Date <span className="text-destructive">*</span>
+                                      </Label>
                                       <DatePicker
                                         date={
                                           workProgressForm.date
@@ -1457,7 +1461,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                   </div>
 
                                   <div className="space-y-2">
-                                    <Label>Site</Label>
+                                    <Label>
+                                      Site <span className="text-destructive">*</span>
+                                    </Label>
                                     <Select
                                       value={workProgressForm.siteId}
                                       disabled={
@@ -1513,7 +1519,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                   </div>
 
                                   <div className="space-y-2">
-                                    <Label>Description</Label>
+                                    <Label>
+                                      Description <span className="text-destructive">*</span>
+                                    </Label>
                                     <Textarea
                                       placeholder="Describe the work performed"
                                       value={workProgressForm.description}
@@ -1539,7 +1547,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
                                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
-                                      <Label>Unit</Label>
+                                      <Label>
+                                        Unit <span className="text-destructive">*</span>
+                                      </Label>
                                       <Select
                                         value={workProgressForm.unit}
                                         onValueChange={(value) =>
@@ -1560,7 +1570,9 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                       </Select>
                                     </div>
                                     <div className="space-y-2">
-                                      <Label>Total Quantity</Label>
+                                      <Label>
+                                        Total Quantity <span className="text-destructive">*</span>
+                                      </Label>
                                       <Input
                                         type="number"
                                         step="0.01"

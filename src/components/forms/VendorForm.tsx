@@ -17,7 +17,6 @@ import {
   FieldLegend,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -25,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 const categoryOptions = [
   'Materials',
@@ -48,9 +48,10 @@ const vendorFormSchema = z.object({
     .max(100, 'Contact person name must be at most 100 characters.'),
   phone: z
     .string()
-    .min(10, 'Phone number must be at least 10 digits.')
-    .regex(/^[\d\s\+\-\(\)]+$/, 'Enter a valid phone number.'),
-  email: z.string().email('Enter a valid email address.').optional().or(z.literal('')),
+    .regex(/^\d+$/, 'Phone number must contain only numbers.')
+    .min(10, 'Phone number must be exactly 10 digits.')
+    .max(10, 'Phone number must be exactly 10 digits.'),
+  email: z.string().email('Enter a valid email address.'),
   address: z
     .string()
     .min(10, 'Address must be at least 10 characters.')
@@ -163,213 +164,126 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
   return (
     <Card className="w-full border-0 shadow-none">
       <CardContent className="pt-6">
-        <form
-          id="vendor-form"
-          onSubmit={form.handleSubmit(handleFormSubmit)}
-          className="space-y-4"
-        >
+        <form id="vendor-form" onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
           <div className="space-y-4">
             <FieldGroup className="space-y-6">
-            {/* Basic Information */}
-            <FieldSet>
-              <FieldLegend>Basic Information</FieldLegend>
-              <FieldGroup className="space-y-4">
-                <Controller
-                  name="category"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-category">
-                        Category <span className="text-destructive">*</span>
-                      </FieldLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger id="vendor-category" aria-invalid={fieldState.invalid}>
-                          <SelectValue placeholder="Select Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categoryOptions.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
-
-                <Controller
-                  name="name"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-name">
-                        Vendor Name <span className="text-destructive">*</span>
-                      </FieldLabel>
-                      <Input
-                        {...field}
-                        id="vendor-name"
-                        aria-invalid={fieldState.invalid}
-                        placeholder="ABC Construction Materials"
-                        autoComplete="organization"
-                      />
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {/* Basic Information */}
+              <FieldSet>
+                <FieldLegend>Basic Information</FieldLegend>
+                <FieldGroup className="space-y-4">
                   <Controller
-                    name="contactPerson"
+                    name="category"
                     control={form.control}
                     render={({ field, fieldState }) => (
                       <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-contact-person">
-                          Contact Person <span className="text-destructive">*</span>
+                        <FieldLabel htmlFor="vendor-category">
+                          Category <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger id="vendor-category" aria-invalid={fieldState.invalid}>
+                            <SelectValue placeholder="Select Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categoryOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                      </Field>
+                    )}
+                  />
+
+                  <Controller
+                    name="name"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <FieldLabel htmlFor="vendor-name">
+                          Vendor Name <span className="text-destructive">*</span>
                         </FieldLabel>
                         <Input
                           {...field}
-                          id="vendor-contact-person"
+                          id="vendor-name"
                           aria-invalid={fieldState.invalid}
-                          placeholder="John Doe"
-                          autoComplete="name"
+                          placeholder="ABC Construction Materials"
+                          autoComplete="organization"
                         />
                         {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                       </Field>
                     )}
                   />
 
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Controller
+                      name="contactPerson"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-contact-person">
+                            Contact Person <span className="text-destructive">*</span>
+                          </FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-contact-person"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="John Doe"
+                            autoComplete="name"
+                          />
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+
+                    <Controller
+                      name="phone"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-phone">
+                            Phone <span className="text-destructive">*</span>
+                          </FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-phone"
+                            type="tel"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={10}
+                            aria-invalid={fieldState.invalid}
+                            placeholder="9876543210"
+                            autoComplete="tel"
+                            onChange={(e) => {
+                              // Only allow numbers
+                              const value = e.target.value.replace(/\D/g, '');
+                              if (value.length <= 10) {
+                                field.onChange(value);
+                              }
+                            }}
+                          />
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+                  </div>
+
                   <Controller
-                    name="phone"
+                    name="email"
                     control={form.control}
                     render={({ field, fieldState }) => (
                       <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-phone">
-                          Phone <span className="text-destructive">*</span>
+                        <FieldLabel htmlFor="vendor-email">
+                          Email <span className="text-destructive">*</span>
                         </FieldLabel>
                         <Input
                           {...field}
-                          id="vendor-phone"
-                          type="tel"
+                          id="vendor-email"
+                          type="email"
                           aria-invalid={fieldState.invalid}
-                          placeholder="+91 98765 43210"
-                          autoComplete="tel"
-                        />
-                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                      </Field>
-                    )}
-                  />
-                </div>
-
-                <Controller
-                  name="email"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-email">Email</FieldLabel>
-                      <Input
-                        {...field}
-                        id="vendor-email"
-                        type="email"
-                        aria-invalid={fieldState.invalid}
-                        placeholder="contact@abcconstruction.com"
-                        autoComplete="email"
-                      />
-                      <FieldDescription>
-                        Optional: Vendor&apos;s primary email address.
-                      </FieldDescription>
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
-
-                <Controller
-                  name="address"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-address">
-                        Address <span className="text-destructive">*</span>
-                      </FieldLabel>
-                      <Textarea
-                        {...field}
-                        id="vendor-address"
-                        aria-invalid={fieldState.invalid}
-                        placeholder="123 Industrial Area, Mumbai, Maharashtra 400001"
-                        rows={3}
-                        className="resize-none"
-                        autoComplete="street-address"
-                      />
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
-              </FieldGroup>
-            </FieldSet>
-
-            {/* Tax Information */}
-            <FieldSet>
-              <FieldLegend>Tax Information</FieldLegend>
-              <FieldGroup className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <Controller
-                    name="gstNumber"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-gst">GST Number</FieldLabel>
-                        <Input
-                          {...field}
-                          id="vendor-gst"
-                          aria-invalid={fieldState.invalid}
-                          placeholder="27ABCDE1234F1Z5"
-                          className="uppercase"
-                        />
-                        <FieldDescription>15-character GST identification number.</FieldDescription>
-                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                      </Field>
-                    )}
-                  />
-
-                  <Controller
-                    name="panNumber"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-pan">PAN Number</FieldLabel>
-                        <Input
-                          {...field}
-                          id="vendor-pan"
-                          aria-invalid={fieldState.invalid}
-                          placeholder="ABCDE1234F"
-                          className="uppercase"
-                        />
-                        <FieldDescription>10-character PAN number.</FieldDescription>
-                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                      </Field>
-                    )}
-                  />
-                </div>
-              </FieldGroup>
-            </FieldSet>
-
-            {/* Bank Details */}
-            <FieldSet>
-              <FieldLegend>Bank Details</FieldLegend>
-              <FieldGroup className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <Controller
-                    name="bankName"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-bank-name">Bank Name</FieldLabel>
-                        <Input
-                          {...field}
-                          id="vendor-bank-name"
-                          aria-invalid={fieldState.invalid}
-                          placeholder="State Bank of India"
+                          placeholder="contact@abcconstruction.com"
+                          autoComplete="email"
                         />
                         {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                       </Field>
@@ -377,128 +291,224 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
                   />
 
                   <Controller
-                    name="bankBranch"
+                    name="address"
                     control={form.control}
                     render={({ field, fieldState }) => (
                       <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-bank-branch">Bank Branch</FieldLabel>
-                        <Input
+                        <FieldLabel htmlFor="vendor-address">
+                          Address <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Textarea
                           {...field}
-                          id="vendor-bank-branch"
+                          id="vendor-address"
                           aria-invalid={fieldState.invalid}
-                          placeholder="Mumbai Main Branch"
+                          placeholder="123 Industrial Area, Mumbai, Maharashtra 400001"
+                          rows={3}
+                          className="resize-none"
+                          autoComplete="street-address"
                         />
                         {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                       </Field>
                     )}
                   />
-                </div>
+                </FieldGroup>
+              </FieldSet>
 
-                <Controller
-                  name="accountName"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-account-name">Account Name</FieldLabel>
-                      <Input
-                        {...field}
-                        id="vendor-account-name"
-                        aria-invalid={fieldState.invalid}
-                        placeholder="ABC Construction Materials Pvt Ltd"
-                      />
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
+              {/* Tax Information */}
+              <FieldSet>
+                <FieldLegend>Tax Information</FieldLegend>
+                <FieldGroup className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Controller
+                      name="gstNumber"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-gst">GST Number</FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-gst"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="27ABCDE1234F1Z5"
+                            className="uppercase"
+                          />
+                          <FieldDescription>
+                            15-character GST identification number.
+                          </FieldDescription>
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Controller
+                      name="panNumber"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-pan">PAN Number</FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-pan"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="ABCDE1234F"
+                            className="uppercase"
+                          />
+                          <FieldDescription>10-character PAN number.</FieldDescription>
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+                  </div>
+                </FieldGroup>
+              </FieldSet>
+
+              {/* Bank Details */}
+              <FieldSet>
+                <FieldLegend>Bank Details</FieldLegend>
+                <FieldGroup className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Controller
+                      name="bankName"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-bank-name">Bank Name</FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-bank-name"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="State Bank of India"
+                          />
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+
+                    <Controller
+                      name="bankBranch"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-bank-branch">Bank Branch</FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-bank-branch"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="Mumbai Main Branch"
+                          />
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+                  </div>
+
                   <Controller
-                    name="bankAccountNumber"
+                    name="accountName"
                     control={form.control}
                     render={({ field, fieldState }) => (
                       <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-account-number">Bank Account Number</FieldLabel>
+                        <FieldLabel htmlFor="vendor-account-name">Account Name</FieldLabel>
                         <Input
                           {...field}
-                          id="vendor-account-number"
-                          type="text"
-                          inputMode="numeric"
+                          id="vendor-account-name"
                           aria-invalid={fieldState.invalid}
-                          placeholder="1234567890123456"
+                          placeholder="ABC Construction Materials Pvt Ltd"
                         />
-                        <FieldDescription>9-18 digit account number.</FieldDescription>
+                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                      </Field>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Controller
+                      name="bankAccountNumber"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-account-number">
+                            Bank Account Number
+                          </FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-account-number"
+                            type="text"
+                            inputMode="numeric"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="1234567890123456"
+                          />
+                          <FieldDescription>9-18 digit account number.</FieldDescription>
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+
+                    <Controller
+                      name="ifscCode"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="vendor-ifsc">IFSC Code</FieldLabel>
+                          <Input
+                            {...field}
+                            id="vendor-ifsc"
+                            aria-invalid={fieldState.invalid}
+                            placeholder="SBIN0001234"
+                            className="uppercase"
+                          />
+                          <FieldDescription>11-character IFSC code.</FieldDescription>
+                          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                      )}
+                    />
+                  </div>
+                </FieldGroup>
+              </FieldSet>
+
+              {/* Additional Information */}
+              <FieldSet>
+                <FieldLegend>Additional Information</FieldLegend>
+                <FieldGroup className="space-y-4">
+                  <Controller
+                    name="paymentTerms"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <FieldLabel htmlFor="vendor-payment-terms">Payment Terms</FieldLabel>
+                        <Input
+                          {...field}
+                          id="vendor-payment-terms"
+                          aria-invalid={fieldState.invalid}
+                          placeholder="Net 30 days"
+                        />
+                        <FieldDescription>e.g., Net 30 days, Due on receipt, etc.</FieldDescription>
                         {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                       </Field>
                     )}
                   />
 
                   <Controller
-                    name="ifscCode"
+                    name="notes"
                     control={form.control}
                     render={({ field, fieldState }) => (
                       <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="vendor-ifsc">IFSC Code</FieldLabel>
-                        <Input
+                        <FieldLabel htmlFor="vendor-notes">Notes</FieldLabel>
+                        <Textarea
                           {...field}
-                          id="vendor-ifsc"
+                          id="vendor-notes"
                           aria-invalid={fieldState.invalid}
-                          placeholder="SBIN0001234"
-                          className="uppercase"
+                          placeholder="Additional notes about the vendor..."
+                          rows={4}
+                          className="resize-none"
                         />
-                        <FieldDescription>11-character IFSC code.</FieldDescription>
+                        <FieldDescription>
+                          Any additional information or special instructions.
+                        </FieldDescription>
                         {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                       </Field>
                     )}
                   />
-                </div>
-              </FieldGroup>
-            </FieldSet>
-
-            {/* Additional Information */}
-            <FieldSet>
-              <FieldLegend>Additional Information</FieldLegend>
-              <FieldGroup className="space-y-4">
-                <Controller
-                  name="paymentTerms"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-payment-terms">Payment Terms</FieldLabel>
-                      <Input
-                        {...field}
-                        id="vendor-payment-terms"
-                        aria-invalid={fieldState.invalid}
-                        placeholder="Net 30 days"
-                      />
-                      <FieldDescription>e.g., Net 30 days, Due on receipt, etc.</FieldDescription>
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
-
-                <Controller
-                  name="notes"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="vendor-notes">Notes</FieldLabel>
-                      <Textarea
-                        {...field}
-                        id="vendor-notes"
-                        aria-invalid={fieldState.invalid}
-                        placeholder="Additional notes about the vendor..."
-                        rows={4}
-                        className="resize-none"
-                      />
-                      <FieldDescription>
-                        Any additional information or special instructions.
-                      </FieldDescription>
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  )}
-                />
-              </FieldGroup>
-            </FieldSet>
+                </FieldGroup>
+              </FieldSet>
             </FieldGroup>
           </div>
         </form>
@@ -514,7 +524,11 @@ export default function VendorNewForm({ onSubmit, onCancel, initialData }: Vendo
             Cancel
           </Button>
           <Button type="submit" form="vendor-form" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Saving...' : initialData ? 'Update Vendor' : 'Add Vendor'}
+            {form.formState.isSubmitting
+              ? 'Saving...'
+              : initialData
+                ? 'Update Vendor'
+                : 'Add Vendor'}
           </Button>
         </div>
       </CardFooter>

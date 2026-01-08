@@ -55,6 +55,147 @@ interface ExpenseColumnHandlers {
   onDelete: (expense: Expense) => void;
 }
 
+// Function to generate and download expense receipt PDF
+const downloadExpenseReceipt = async (expense: Expense) => {
+  try {
+    // Dynamic import for jsPDF to avoid SSR issues
+    const jsPDF = (await import('jspdf')).default;
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    let yPos = margin;
+
+    // Helper function to format date
+    const formatDate = (dateString: string) => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    };
+
+    // Title
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Expense Receipt', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 12;
+
+    // Receipt Number
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Receipt ID: ${expense.id}`, margin, yPos);
+    yPos += 8;
+
+    // Separator line
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 10;
+
+    // Expense Details Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Expense Details', margin, yPos);
+    yPos += 10;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+
+    // Category
+    doc.setFont('helvetica', 'bold');
+    doc.text('Category:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      expense.category + (expense.subcategory ? ` - ${expense.subcategory}` : ''),
+      margin + 40,
+      yPos,
+    );
+    yPos += 7;
+
+    // Description
+    doc.setFont('helvetica', 'bold');
+    doc.text('Description:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    const descriptionLines = doc.splitTextToSize(
+      expense.description || 'N/A',
+      pageWidth - margin * 2 - 50,
+    );
+    doc.text(descriptionLines, margin + 40, yPos);
+    yPos += descriptionLines.length * 5 + 3;
+
+    // Amount
+    doc.setFont('helvetica', 'bold');
+    doc.text('Amount:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`₹${expense.amount.toLocaleString('en-IN')}`, margin + 40, yPos);
+    yPos += 7;
+
+    // Date
+    doc.setFont('helvetica', 'bold');
+    doc.text('Date:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatDate(expense.date), margin + 40, yPos);
+    yPos += 7;
+
+    // Vendor
+    if (expense.vendor) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Vendor:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(expense.vendor, margin + 40, yPos);
+      yPos += 7;
+    }
+
+    // Site
+    if (expense.siteName) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Site:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(expense.siteName, margin + 40, yPos);
+      yPos += 7;
+    }
+
+    // Status
+    doc.setFont('helvetica', 'bold');
+    doc.text('Status:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(expense.status.charAt(0).toUpperCase() + expense.status.slice(1), margin + 40, yPos);
+    yPos += 7;
+
+    // Approved By
+    if (expense.approvedBy || expense.approvedByName) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Approved By:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(expense.approvedByName || expense.approvedBy || 'N/A', margin + 40, yPos);
+      yPos += 7;
+    }
+
+    yPos += 5;
+
+    // Separator line
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 10;
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'italic');
+    doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, pageWidth / 2, yPos, {
+      align: 'center',
+    });
+
+    // Generate filename
+    const filename = `Expense_Receipt_${expense.id.substring(0, 8)}_${formatDate(expense.date).replace(/\//g, '-')}.pdf`;
+
+    // Save the PDF
+    doc.save(filename);
+  } catch (error) {
+    console.error('Error generating receipt:', error);
+    throw new Error('Failed to generate receipt. Please try again.');
+  }
+};
+
 export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHandlers) => [
   {
     key: 'category',
@@ -221,7 +362,19 @@ export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHan
             >
               Copy ID
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-sm">Download receipt</DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-sm"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await downloadExpenseReceipt(expense);
+                } catch (error) {
+                  console.error('Failed to download receipt:', error);
+                }
+              }}
+            >
+              Download receipt
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-sm text-destructive focus:text-destructive"
