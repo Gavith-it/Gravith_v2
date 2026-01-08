@@ -726,6 +726,12 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
         await updateWorkProgressEntry(dialog.editingItem.id, payload);
         toast.success('Work progress updated successfully!');
 
+        // Close dialog immediately for better UX
+        dialog.closeDialog();
+        setWorkProgressForm(createEmptyWorkForm(resolvedSite));
+        setSelectedMaterial('');
+        setMaterialQuantity(0);
+
         const previousMap = new Map<string, number>();
         (dialog.editingItem.materialsUsed ?? []).forEach((material) => {
           if (material.purchaseId) {
@@ -857,6 +863,12 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
         await addWorkProgressEntry(payload);
         toast.success('Work progress recorded successfully!');
 
+        // Close dialog immediately for better UX
+        dialog.closeDialog();
+        setWorkProgressForm(createEmptyWorkForm(resolvedSite));
+        setSelectedMaterial('');
+        setMaterialQuantity(0);
+
         for (const material of workProgressForm.materialsUsed) {
           const existingMaterial = materials.find((m) => m.id === material.purchaseId);
           if (!existingMaterial) continue;
@@ -974,11 +986,6 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
       await applyMasterAdjustments(masterAdjustments, masterBaseTotals);
       await refreshMaterials();
-
-      dialog.closeDialog();
-      setWorkProgressForm(createEmptyWorkForm(resolvedSite));
-      setSelectedMaterial('');
-      setMaterialQuantity(0);
     } catch (error) {
       console.error('Failed to save work progress entry', error);
       toast.error(

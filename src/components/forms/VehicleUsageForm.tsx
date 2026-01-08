@@ -125,7 +125,7 @@ export default function VehicleUsageForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="vehicle">Vehicle *</Label>
           <Select
@@ -158,7 +158,7 @@ export default function VehicleUsageForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="startTime">Start Time *</Label>
           <Input
@@ -178,7 +178,7 @@ export default function VehicleUsageForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="startOdometer">Start Odometer *</Label>
           <Input
@@ -200,7 +200,7 @@ export default function VehicleUsageForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="workCategory">Work Category *</Label>
           <Select

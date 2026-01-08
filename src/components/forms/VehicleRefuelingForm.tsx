@@ -109,7 +109,7 @@ export default function VehicleRefuelingForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="vehicle">Vehicle *</Label>
           <Select
@@ -142,7 +142,7 @@ export default function VehicleRefuelingForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="fuelType">Fuel Type *</Label>
           <Select
@@ -183,7 +183,7 @@ export default function VehicleRefuelingForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="odometer">Odometer Reading *</Label>
           <Input
@@ -204,7 +204,7 @@ export default function VehicleRefuelingForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="vendor">Vendor *</Label>
           <Input

@@ -128,8 +128,8 @@ export function AppShell({ children }: AppShellProps) {
               onLogout={handleLogout}
             />
 
-            <main className="flex-1 overflow-auto w-full">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between h-auto sm:h-16 px-3 sm:px-4 md:px-6 py-2 sm:py-0 border-b border-gray-200/60 dark:border-gray-700/60 dark:bg-gradient-to-r dark:from-gray-900 dark:to-gray-800/80 gap-2 sm:gap-0">
+            <main className="flex-1 overflow-auto w-full overflow-x-hidden">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between h-auto sm:h-16 px-2 sm:px-4 md:px-6 py-2 sm:py-0 border-b border-gray-200/60 dark:border-gray-700/60 dark:bg-gradient-to-r dark:from-gray-900 dark:to-gray-800/80 gap-2 sm:gap-0">
                 <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
                   <SidebarTrigger className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border border-gray-200/60 dark:border-gray-700/60 bg-white/80 dark:bg-gray-800/80 hover:bg-gray-50/80 dark:hover:bg-gray-700/80 shadow-sm hover:shadow-md transition-all duration-200 flex-shrink-0" />
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
@@ -170,7 +170,7 @@ export function AppShell({ children }: AppShellProps) {
                   <ThemeToggle />
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
+                    className="flex items-center gap-1 sm:gap-2 px-3 sm:px-3 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200 min-h-[44px] sm:min-h-0"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -184,7 +184,7 @@ export function AppShell({ children }: AppShellProps) {
                   </button>
                 </div>
               </div>
-              <div className="min-h-full w-full max-w-none bg-background px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+              <div className="min-h-full w-full max-w-none bg-background px-2 sm:px-4 md:px-6 py-3 sm:py-6 overflow-x-hidden">
                 {children}
               </div>
             </main>

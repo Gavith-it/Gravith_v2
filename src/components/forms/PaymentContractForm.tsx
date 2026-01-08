@@ -58,7 +58,7 @@ export default function PaymentContractForm({ onSubmit, onCancel }: PaymentContr
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="clientName">Client Name *</Label>
           <Input
@@ -81,7 +81,7 @@ export default function PaymentContractForm({ onSubmit, onCancel }: PaymentContr
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="contractValue">Contract Value (₹) *</Label>
           <Input
@@ -103,7 +103,7 @@ export default function PaymentContractForm({ onSubmit, onCancel }: PaymentContr
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="paymentTerms">Payment Terms *</Label>
           <Select

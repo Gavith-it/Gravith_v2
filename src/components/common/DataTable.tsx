@@ -100,7 +100,7 @@ export function DataTable<TData extends Record<string, unknown> = Record<string,
 
   return (
     <div className="space-y-4 w-full min-w-0">
-      <div className="overflow-x-auto w-full min-w-0 max-w-full">
+      <div className="overflow-x-auto w-full min-w-0 max-w-full -mx-2 sm:mx-0 px-2 sm:px-0">
         <Table className="w-full table-auto">
           <TableHeader>
             <TableRow>
@@ -151,7 +151,7 @@ export function DataTable<TData extends Record<string, unknown> = Record<string,
                   {columns.map((column) => (
                     <TableCell
                       key={column.key}
-                      className={`${column.minWidth || ''} ${getAlignmentClass(column.align)}`}
+                      className={`${column.minWidth || ''} ${getAlignmentClass(column.align)} break-words sm:break-normal`}
                     >
                       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {column.render ? column.render(row) : (row as any)[column.key]}
