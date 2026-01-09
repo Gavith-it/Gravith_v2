@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { fetcher, swrConfig } from '../../lib/swr';
 
+import { getActiveExpenseCategories } from '@/components/shared/masterData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -32,9 +33,9 @@ import { useVendors } from '@/lib/contexts';
 
 // Zod schema for expense validation
 const expenseSchema = z.object({
-  category: z.enum(['Labour', 'Materials', 'Equipment', 'Transport', 'Utilities', 'Other']),
+  category: z.string().min(1, 'Category is required'),
   subcategory: z.string().min(1, 'Subcategory is required'),
-  description: z.string().min(1, 'Description is required'),
+  description: z.string().optional(),
   amount: z.number().min(0.01, 'Amount must be greater than 0'),
   date: z.date(),
   vendor: z.string().min(1, 'Vendor is required'),
@@ -68,10 +69,14 @@ export function ExpenseForm({
   submitLabel = 'Add Expense',
   loadingLabel,
 }: ExpenseFormProps) {
+  const expenseCategoryOptions = useMemo(() => {
+    return getActiveExpenseCategories();
+  }, []);
+
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
-      category: 'Materials' as const,
+      category: expenseCategoryOptions.length > 0 ? expenseCategoryOptions[0].name : '',
       subcategory: '',
       description: '',
       amount: defaultValues?.amount ?? undefined,
@@ -229,12 +234,11 @@ export function ExpenseForm({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="Materials">Materials</SelectItem>
-                          <SelectItem value="Labour">Labour</SelectItem>
-                          <SelectItem value="Equipment">Equipment</SelectItem>
-                          <SelectItem value="Transport">Transport</SelectItem>
-                          <SelectItem value="Utilities">Utilities</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
+                          {expenseCategoryOptions.map((category) => (
+                            <SelectItem key={category.id} value={category.name}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -263,9 +267,7 @@ export function ExpenseForm({
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      Description <span className="text-destructive">*</span>
-                    </FormLabel>
+                    <FormLabel>Description</FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Purchase of cement for foundation work"

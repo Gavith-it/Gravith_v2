@@ -4,6 +4,7 @@ import {
   Ruler,
   FolderTree,
   Percent,
+  Receipt,
   Plus,
   Edit,
   Search,
@@ -11,17 +12,25 @@ import {
   CheckCircle2,
   Pause,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import useSWR, { mutate } from 'swr';
 
 import { useTableState } from '../lib/hooks/useTableState';
+import { fetcher, swrConfig } from '../lib/swr';
 import { formatDate } from '../lib/utils';
 
 import MaterialCategoryForm from './forms/MaterialCategoryForm';
 import TaxRateForm from './forms/TaxRateForm';
 import UOMForm from './forms/UOMForm';
 import { TabNavigation, type TabItem } from './layout/TabNavigation';
-import type { UOMItem, MaterialCategoryItem, TaxRateItem } from './shared/masterData';
-import { mockUOMs, mockCategories, mockTaxRates } from './shared/masterData';
+import type {
+  UOMItem,
+  MaterialCategoryItem,
+  TaxRateItem,
+  ExpenseCategoryItem,
+} from './shared/masterData';
+import { mockUOMs, mockCategories, mockTaxRates, mockExpenseCategories } from './shared/masterData';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -52,26 +61,105 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export function MastersPage() {
-  // UOM State
-  const [uomData, setUomData] = useState<UOMItem[]>(mockUOMs);
+  // UOM State - Fetch from API
+  const {
+    data: uomsData,
+    error: uomsError,
+    isLoading: isUomsLoading,
+  } = useSWR<{ uoms: UOMItem[] }>('/api/uoms', fetcher, swrConfig);
+  const uomData = uomsData?.uoms ?? [];
+
+  // Debug: Log API data
+  useEffect(() => {
+    console.log('UOMs API - isLoading:', isUomsLoading, 'error:', uomsError, 'data:', uomsData);
+    if (uomsError) {
+      console.error('UOMs API Error:', uomsError);
+    }
+    if (uomsData) {
+      console.log('UOMs Data:', uomsData);
+    }
+  }, [uomsData, uomsError, isUomsLoading]);
+
   const [uomSearchQuery, setUomSearchQuery] = useState<string>('');
   const [uomStatusFilter, setUomStatusFilter] = useState<string>('all');
   const [isUomDialogOpen, setIsUomDialogOpen] = useState(false);
   const [editingUom, setEditingUom] = useState<UOMItem | null>(null);
 
-  // Category State
-  const [categoryData, setCategoryData] = useState<MaterialCategoryItem[]>(mockCategories);
+  // Category State - Fetch from API
+  const {
+    data: categoriesData,
+    error: categoriesError,
+    isLoading: isCategoriesLoading,
+  } = useSWR<{ categories: MaterialCategoryItem[] }>(
+    '/api/material-categories',
+    fetcher,
+    swrConfig,
+  );
+  const categoryData = categoriesData?.categories ?? [];
+
+  // Debug: Log API data
+  useEffect(() => {
+    if (categoriesError) {
+      console.error('Material Categories API Error:', categoriesError);
+    }
+    if (categoriesData) {
+      console.log('Material Categories Data:', categoriesData);
+    }
+  }, [categoriesData, categoriesError]);
   const [categorySearchQuery, setCategorySearchQuery] = useState<string>('');
   const [categoryStatusFilter, setCategoryStatusFilter] = useState<string>('all');
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MaterialCategoryItem | null>(null);
 
-  // Tax Rate State
-  const [taxRateData, setTaxRateData] = useState<TaxRateItem[]>(mockTaxRates);
+  // Tax Rate State - Fetch from API
+  const {
+    data: taxRatesData,
+    error: taxRatesError,
+    isLoading: isTaxRatesLoading,
+  } = useSWR<{ taxRates: TaxRateItem[] }>('/api/tax-rates', fetcher, swrConfig);
+  const taxRateData = taxRatesData?.taxRates ?? [];
+
+  // Debug: Log API data
+  useEffect(() => {
+    if (taxRatesError) {
+      console.error('Tax Rates API Error:', taxRatesError);
+    }
+    if (taxRatesData) {
+      console.log('Tax Rates Data:', taxRatesData);
+    }
+  }, [taxRatesData, taxRatesError]);
   const [taxRateSearchQuery, setTaxRateSearchQuery] = useState<string>('');
   const [taxRateStatusFilter, setTaxRateStatusFilter] = useState<string>('all');
   const [isTaxRateDialogOpen, setIsTaxRateDialogOpen] = useState(false);
   const [editingTaxRate, setEditingTaxRate] = useState<TaxRateItem | null>(null);
+
+  // Expense Category State - Fetch from API
+  const {
+    data: expenseCategoriesData,
+    error: expenseCategoriesError,
+    isLoading: isExpenseCategoriesLoading,
+  } = useSWR<{ expenseCategories: ExpenseCategoryItem[] }>(
+    '/api/expense-categories',
+    fetcher,
+    swrConfig,
+  );
+  const expenseCategoryData = expenseCategoriesData?.expenseCategories ?? [];
+
+  // Debug: Log API data
+  useEffect(() => {
+    if (expenseCategoriesError) {
+      console.error('Expense Categories API Error:', expenseCategoriesError);
+    }
+    if (expenseCategoriesData) {
+      console.log('Expense Categories Data:', expenseCategoriesData);
+    }
+  }, [expenseCategoriesData, expenseCategoriesError]);
+  const [expenseCategorySearchQuery, setExpenseCategorySearchQuery] = useState<string>('');
+  const [expenseCategoryStatusFilter, setExpenseCategoryStatusFilter] = useState<string>('all');
+  const [isExpenseCategoryDialogOpen, setIsExpenseCategoryDialogOpen] = useState(false);
+  const [editingExpenseCategory, setEditingExpenseCategory] = useState<ExpenseCategoryItem | null>(
+    null,
+  );
 
   // Table states
   const uomTableState = useTableState({
@@ -92,26 +180,53 @@ export function MastersPage() {
     initialItemsPerPage: 10,
   });
 
+  const expenseCategoryTableState = useTableState({
+    initialSortField: 'code',
+    initialSortDirection: 'asc',
+    initialItemsPerPage: 10,
+  });
+
   // UOM Functions
-  const handleUomSubmit = (formData: Omit<UOMItem, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (editingUom) {
-      const updatedUom: UOMItem = {
-        ...editingUom,
-        ...formData,
-        updatedAt: new Date().toISOString(),
-      };
-      setUomData((prev) => prev.map((uom) => (uom.id === editingUom.id ? updatedUom : uom)));
-    } else {
-      const newUom: UOMItem = {
-        ...formData,
-        id: (uomData.length + 1).toString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setUomData((prev) => [...prev, newUom]);
+  const handleUomSubmit = async (formData: Omit<UOMItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      if (editingUom) {
+        // Update existing UOM
+        const response = await fetch(`/api/uoms/${editingUom.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Failed to update UOM' }));
+          throw new Error(error.error || 'Failed to update UOM');
+        }
+
+        toast.success('UOM updated successfully!');
+      } else {
+        // Create new UOM
+        const response = await fetch('/api/uoms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Failed to create UOM' }));
+          throw new Error(error.error || 'Failed to create UOM');
+        }
+
+        toast.success('UOM created successfully!');
+      }
+
+      // Refresh data
+      await mutate('/api/uoms');
+      setEditingUom(null);
+      setIsUomDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving UOM:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save UOM');
     }
-    setEditingUom(null);
-    setIsUomDialogOpen(false);
   };
 
   const handleEditUom = (uom: UOMItem) => {
@@ -119,40 +234,74 @@ export function MastersPage() {
     setIsUomDialogOpen(true);
   };
 
-  const toggleUomStatus = (uomId: string) => {
-    setUomData((prev) =>
-      prev.map((uom) =>
-        uom.id === uomId
-          ? { ...uom, isActive: !uom.isActive, updatedAt: new Date().toISOString() }
-          : uom,
-      ),
-    );
+  const toggleUomStatus = async (uomId: string) => {
+    try {
+      const uom = uomData.find((u) => u.id === uomId);
+      if (!uom) return;
+
+      const response = await fetch(`/api/uoms/${uomId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !uom.isActive }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to update UOM' }));
+        throw new Error(error.error || 'Failed to update UOM');
+      }
+
+      toast.success(`UOM ${!uom.isActive ? 'activated' : 'deactivated'} successfully!`);
+      // Refresh data
+      await mutate('/api/uoms');
+    } catch (error) {
+      console.error('Error toggling UOM status:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update UOM status');
+    }
   };
 
   // Category Functions
-  const handleCategorySubmit = (
+  const handleCategorySubmit = async (
     formData: Omit<MaterialCategoryItem, 'id' | 'createdAt' | 'updatedAt'>,
   ) => {
-    if (editingCategory) {
-      const updatedCategory: MaterialCategoryItem = {
-        ...editingCategory,
-        ...formData,
-        updatedAt: new Date().toISOString(),
-      };
-      setCategoryData((prev) =>
-        prev.map((cat) => (cat.id === editingCategory.id ? updatedCategory : cat)),
-      );
-    } else {
-      const newCategory: MaterialCategoryItem = {
-        ...formData,
-        id: (categoryData.length + 1).toString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setCategoryData((prev) => [...prev, newCategory]);
+    try {
+      if (editingCategory) {
+        // Update existing category
+        const response = await fetch(`/api/material-categories/${editingCategory.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Failed to update category' }));
+          throw new Error(error.error || 'Failed to update category');
+        }
+
+        toast.success('Category updated successfully!');
+      } else {
+        // Create new category
+        const response = await fetch('/api/material-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Failed to create category' }));
+          throw new Error(error.error || 'Failed to create category');
+        }
+
+        toast.success('Category created successfully!');
+      }
+
+      // Refresh data
+      await mutate('/api/material-categories');
+      setEditingCategory(null);
+      setIsCategoryDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving category:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save category');
     }
-    setEditingCategory(null);
-    setIsCategoryDialogOpen(false);
   };
 
   const handleEditCategory = (category: MaterialCategoryItem) => {
@@ -160,38 +309,159 @@ export function MastersPage() {
     setIsCategoryDialogOpen(true);
   };
 
-  const toggleCategoryStatus = (categoryId: string) => {
-    setCategoryData((prev) =>
-      prev.map((cat) =>
-        cat.id === categoryId
-          ? { ...cat, isActive: !cat.isActive, updatedAt: new Date().toISOString() }
-          : cat,
-      ),
-    );
+  const toggleCategoryStatus = async (categoryId: string) => {
+    try {
+      const category = categoryData.find((cat) => cat.id === categoryId);
+      if (!category) return;
+
+      const response = await fetch(`/api/material-categories/${categoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !category.isActive }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to update category' }));
+        throw new Error(error.error || 'Failed to update category');
+      }
+
+      toast.success(`Category ${!category.isActive ? 'activated' : 'deactivated'} successfully!`);
+      // Refresh data
+      await mutate('/api/material-categories');
+    } catch (error) {
+      console.error('Error toggling category status:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update category status');
+    }
+  };
+
+  // Expense Category Functions
+  const handleExpenseCategorySubmit = async (
+    formData: Omit<ExpenseCategoryItem, 'id' | 'createdAt' | 'updatedAt'>,
+  ) => {
+    try {
+      if (editingExpenseCategory) {
+        // Update existing expense category
+        const response = await fetch(`/api/expense-categories/${editingExpenseCategory.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response
+            .json()
+            .catch(() => ({ error: 'Failed to update expense category' }));
+          throw new Error(error.error || 'Failed to update expense category');
+        }
+
+        toast.success('Expense category updated successfully!');
+      } else {
+        // Create new expense category
+        const response = await fetch('/api/expense-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response
+            .json()
+            .catch(() => ({ error: 'Failed to create expense category' }));
+          throw new Error(error.error || 'Failed to create expense category');
+        }
+
+        toast.success('Expense category created successfully!');
+      }
+
+      // Refresh data
+      await mutate('/api/expense-categories');
+      setEditingExpenseCategory(null);
+      setIsExpenseCategoryDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving expense category:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save expense category');
+    }
+  };
+
+  const handleEditExpenseCategory = (category: ExpenseCategoryItem) => {
+    setEditingExpenseCategory(category);
+    setIsExpenseCategoryDialogOpen(true);
+  };
+
+  const toggleExpenseCategoryStatus = async (categoryId: string) => {
+    try {
+      const category = expenseCategoryData.find((cat) => cat.id === categoryId);
+      if (!category) return;
+
+      const response = await fetch(`/api/expense-categories/${categoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !category.isActive }),
+      });
+
+      if (!response.ok) {
+        const error = await response
+          .json()
+          .catch(() => ({ error: 'Failed to update expense category' }));
+        throw new Error(error.error || 'Failed to update expense category');
+      }
+
+      toast.success(
+        `Expense category ${!category.isActive ? 'activated' : 'deactivated'} successfully!`,
+      );
+      // Refresh data
+      await mutate('/api/expense-categories');
+    } catch (error) {
+      console.error('Error toggling expense category status:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update expense category status',
+      );
+    }
   };
 
   // Tax Rate Functions
-  const handleTaxRateSubmit = (formData: Omit<TaxRateItem, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (editingTaxRate) {
-      const updatedTaxRate: TaxRateItem = {
-        ...editingTaxRate,
-        ...formData,
-        updatedAt: new Date().toISOString(),
-      };
-      setTaxRateData((prev) =>
-        prev.map((taxRate) => (taxRate.id === editingTaxRate.id ? updatedTaxRate : taxRate)),
-      );
-    } else {
-      const newTaxRate: TaxRateItem = {
-        ...formData,
-        id: (taxRateData.length + 1).toString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setTaxRateData((prev) => [...prev, newTaxRate]);
+  const handleTaxRateSubmit = async (
+    formData: Omit<TaxRateItem, 'id' | 'createdAt' | 'updatedAt'>,
+  ) => {
+    try {
+      if (editingTaxRate) {
+        // Update existing tax rate
+        const response = await fetch(`/api/tax-rates/${editingTaxRate.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Failed to update tax rate' }));
+          throw new Error(error.error || 'Failed to update tax rate');
+        }
+
+        toast.success('Tax rate updated successfully!');
+      } else {
+        // Create new tax rate
+        const response = await fetch('/api/tax-rates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Failed to create tax rate' }));
+          throw new Error(error.error || 'Failed to create tax rate');
+        }
+
+        toast.success('Tax rate created successfully!');
+      }
+
+      // Refresh data
+      await mutate('/api/tax-rates');
+      setEditingTaxRate(null);
+      setIsTaxRateDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving tax rate:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save tax rate');
     }
-    setEditingTaxRate(null);
-    setIsTaxRateDialogOpen(false);
   };
 
   const handleEditTaxRate = (taxRate: TaxRateItem) => {
@@ -199,14 +469,29 @@ export function MastersPage() {
     setIsTaxRateDialogOpen(true);
   };
 
-  const toggleTaxRateStatus = (taxRateId: string) => {
-    setTaxRateData((prev) =>
-      prev.map((taxRate) =>
-        taxRate.id === taxRateId
-          ? { ...taxRate, isActive: !taxRate.isActive, updatedAt: new Date().toISOString() }
-          : taxRate,
-      ),
-    );
+  const toggleTaxRateStatus = async (taxRateId: string) => {
+    try {
+      const taxRate = taxRateData.find((tr) => tr.id === taxRateId);
+      if (!taxRate) return;
+
+      const response = await fetch(`/api/tax-rates/${taxRateId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !taxRate.isActive }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to update tax rate' }));
+        throw new Error(error.error || 'Failed to update tax rate');
+      }
+
+      toast.success(`Tax rate ${!taxRate.isActive ? 'activated' : 'deactivated'} successfully!`);
+      // Refresh data
+      await mutate('/api/tax-rates');
+    } catch (error) {
+      console.error('Error toggling tax rate status:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update tax rate status');
+    }
   };
 
   // Filter and sort UOMs
@@ -298,6 +583,35 @@ export function MastersPage() {
   const paginatedTaxRates = filteredTaxRates.slice(
     (taxRateTableState.currentPage - 1) * taxRateTableState.itemsPerPage,
     taxRateTableState.currentPage * taxRateTableState.itemsPerPage,
+  );
+
+  // Filter and sort Expense Categories
+  const filteredExpenseCategories = expenseCategoryData
+    .filter((category) => {
+      const matchesSearch =
+        expenseCategorySearchQuery === '' ||
+        category.code.toLowerCase().includes(expenseCategorySearchQuery.toLowerCase()) ||
+        category.name.toLowerCase().includes(expenseCategorySearchQuery.toLowerCase());
+      const matchesStatus =
+        expenseCategoryStatusFilter === 'all' ||
+        (expenseCategoryStatusFilter === 'active' && category.isActive) ||
+        (expenseCategoryStatusFilter === 'inactive' && !category.isActive);
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      const aValue = a[expenseCategoryTableState.sortField as keyof ExpenseCategoryItem];
+      const bValue = b[expenseCategoryTableState.sortField as keyof ExpenseCategoryItem];
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return expenseCategoryTableState.sortDirection === 'asc'
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+      return 0;
+    });
+
+  const paginatedExpenseCategories = filteredExpenseCategories.slice(
+    (expenseCategoryTableState.currentPage - 1) * expenseCategoryTableState.itemsPerPage,
+    expenseCategoryTableState.currentPage * expenseCategoryTableState.itemsPerPage,
   );
 
   // UOM Tab Content
@@ -1015,6 +1329,266 @@ export function MastersPage() {
     </div>
   );
 
+  // Expense Category Tab Content
+  const expenseCategoryTabContent = (
+    <div className="space-y-6">
+      {/* Expense Category Statistics */}
+      <Card className="w-full overflow-hidden">
+        <CardContent className="p-4 md:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full">
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/10 to-primary/5 hover:shadow-md transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Total Categories</p>
+                    <p className="text-2xl font-bold text-primary">{expenseCategoryData.length}</p>
+                  </div>
+                  <div className="h-12 w-12 bg-primary/20 rounded-lg flex items-center justify-center">
+                    <Receipt className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/10 hover:shadow-md transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Active Categories</p>
+                    <p className="text-2xl font-bold text-green-600">
+                      {expenseCategoryData.filter((c) => c.isActive).length}
+                    </p>
+                  </div>
+                  <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/10 hover:shadow-md transition-shadow">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Inactive Categories</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {expenseCategoryData.filter((c) => !c.isActive).length}
+                    </p>
+                  </div>
+                  <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                    <Pause className="h-6 w-6 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Expense Category Search and Filters */}
+      <Card className="w-full overflow-hidden">
+        <CardContent className="p-4 md:p-6">
+          <div className="flex flex-col gap-4 w-full">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-4 w-full">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 w-full">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search expense categories..."
+                    value={expenseCategorySearchQuery}
+                    onChange={(e) => setExpenseCategorySearchQuery(e.target.value)}
+                    className="pl-10 w-full"
+                  />
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Select
+                    value={expenseCategoryStatusFilter}
+                    onValueChange={setExpenseCategoryStatusFilter}
+                  >
+                    <SelectTrigger className="w-full sm:w-[150px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Dialog
+                open={isExpenseCategoryDialogOpen}
+                onOpenChange={setIsExpenseCategoryDialogOpen}
+              >
+                <Button
+                  onClick={() => {
+                    setEditingExpenseCategory(null);
+                    setIsExpenseCategoryDialogOpen(true);
+                  }}
+                  className="gap-2 w-full sm:w-auto"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add New Expense Category
+                </Button>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingExpenseCategory
+                        ? 'Edit Expense Category'
+                        : 'Add New Expense Category'}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {editingExpenseCategory
+                        ? 'Update the expense category details below'
+                        : 'Create a new expense category'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <MaterialCategoryForm
+                    onSubmit={handleExpenseCategorySubmit}
+                    onCancel={() => {
+                      setEditingExpenseCategory(null);
+                      setIsExpenseCategoryDialogOpen(false);
+                    }}
+                    defaultValues={editingExpenseCategory || undefined}
+                    isEdit={!!editingExpenseCategory}
+                  />
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Expense Category Table */}
+      <Card className="w-full overflow-hidden">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto w-full min-w-0 max-w-full">
+            <Table className="w-full table-auto">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right min-w-[100px] font-semibold">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedExpenseCategories.map((category) => (
+                  <TableRow key={category.id}>
+                    <TableCell className="font-medium">{category.code}</TableCell>
+                    <TableCell>{category.name}</TableCell>
+                    <TableCell className="max-w-xs truncate">{category.description}</TableCell>
+                    <TableCell>
+                      <Badge variant={category.isActive ? 'default' : 'secondary'}>
+                        {category.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatDate(category.updatedAt)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditExpenseCategory(category)}
+                                aria-label="Edit Expense Category"
+                                className="h-8 w-8 p-0 transition-all hover:bg-primary/10"
+                              >
+                                <Edit className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Edit Expense Category</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleExpenseCategoryStatus(category.id)}
+                                aria-label={
+                                  category.isActive
+                                    ? 'Deactivate Expense Category'
+                                    : 'Activate Expense Category'
+                                }
+                                className={`h-8 w-8 p-0 transition-all ${category.isActive ? 'hover:bg-destructive/10' : 'hover:bg-primary/10'}`}
+                              >
+                                {category.isActive ? (
+                                  <Pause className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                                ) : (
+                                  <CheckCircle2 className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{category.isActive ? 'Deactivate' : 'Activate'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {/* Pagination */}
+          <div className="flex items-center justify-between p-4 border-t">
+            <p className="text-sm text-muted-foreground">
+              Showing{' '}
+              {(expenseCategoryTableState.currentPage - 1) *
+                expenseCategoryTableState.itemsPerPage +
+                1}{' '}
+              to{' '}
+              {Math.min(
+                expenseCategoryTableState.currentPage * expenseCategoryTableState.itemsPerPage,
+                filteredExpenseCategories.length,
+              )}{' '}
+              of {filteredExpenseCategories.length} expense categories
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  expenseCategoryTableState.setCurrentPage(
+                    expenseCategoryTableState.currentPage - 1,
+                  )
+                }
+                disabled={expenseCategoryTableState.currentPage === 1}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  expenseCategoryTableState.setCurrentPage(
+                    expenseCategoryTableState.currentPage + 1,
+                  )
+                }
+                disabled={
+                  expenseCategoryTableState.currentPage >=
+                  Math.ceil(
+                    filteredExpenseCategories.length / expenseCategoryTableState.itemsPerPage,
+                  )
+                }
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const tabs: TabItem[] = [
     {
       value: 'uom',
@@ -1028,7 +1602,12 @@ export function MastersPage() {
       icon: FolderTree,
       content: categoryTabContent,
     },
-
+    {
+      value: 'expense-category',
+      label: 'Expense Category',
+      icon: Receipt,
+      content: expenseCategoryTabContent,
+    },
     {
       value: 'tax-rates',
       label: 'Tax Rates',
@@ -1040,7 +1619,7 @@ export function MastersPage() {
   return (
     <div className="w-full bg-background">
       <div className="p-0 space-y-6 max-w-full">
-        <TabNavigation tabs={tabs} defaultValue="uom" tabsListClassName="grid w-full grid-cols-3" />
+        <TabNavigation tabs={tabs} defaultValue="uom" tabsListClassName="grid w-full grid-cols-4" />
         <div className="p-4 md:p-6 space-y-6 max-w-full">
           {/* Tab contents are rendered by TabNavigation below the header card */}
         </div>

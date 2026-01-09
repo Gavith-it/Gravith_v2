@@ -541,7 +541,7 @@ export function PurchaseForm({
               )}
             />
 
-            {/* Invoice and Purchase Date Row */}
+            {/* Invoice and Invoice Date Row */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="invoiceNumber"
@@ -570,16 +570,16 @@ export function PurchaseForm({
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
                     <FieldLabel htmlFor={`${formId}-purchase-date`}>
-                      Purchase Date <span className="text-destructive">*</span>
+                      Invoice Date <span className="text-destructive">*</span>
                     </FieldLabel>
                     <DatePicker
                       date={field.value}
                       onSelect={(date) => field.onChange(date)}
-                      placeholder="Select purchase date"
+                      placeholder="Select invoice date"
                       showClear={!isEditMode}
-                      ariaLabel="Purchase date"
+                      ariaLabel="Invoice date"
                     />
-                    <FieldDescription>Date of material purchase.</FieldDescription>
+                    <FieldDescription>Date of invoice.</FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}

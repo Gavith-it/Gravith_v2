@@ -96,6 +96,7 @@ interface WorkProgressFormEntry {
     quantity: number;
     unit: string;
     balanceStock: number;
+    originalStock: number;
   }[];
   laborHours: number;
   progressPercentage: number;
@@ -402,6 +403,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
             quantity: material.quantity,
             unit: material.unit,
             balanceStock: material.balanceQuantity ?? 0,
+            originalStock: (material.balanceQuantity ?? 0) + material.quantity,
           };
         }),
         laborHours: entry.laborHours,
@@ -448,6 +450,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       quantity: number;
       unit: string;
       balanceStock: number;
+      originalStock: number;
     }[],
     laborHours: 0,
     progressPercentage: 0,
@@ -475,15 +478,13 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       .reduce((sum, material) => sum + material.quantity, 0);
   }, [selectedMaterial, workProgressForm.materialsUsed]);
 
-  const projectedBalance =
-    selectedMaterialDetails?.remainingQuantity !== undefined
-      ? Math.max(
-          0,
-          (selectedMaterialDetails.remainingQuantity ?? 0) -
-            pendingQuantityForSelected -
-            materialQuantity,
-        )
-      : undefined;
+  const projectedBalance = useMemo(() => {
+    if (!selectedMaterialDetails?.remainingQuantity) return undefined;
+
+    // The current balance already accounts for materials already in the list
+    // So we only subtract the new quantity being entered
+    return Math.max(0, (selectedMaterialDetails.remainingQuantity ?? 0) - materialQuantity);
+  }, [selectedMaterialDetails?.remainingQuantity, materialQuantity]);
 
   useEffect(() => {
     if (!dialog.isDialogOpen) {
@@ -1034,14 +1035,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       return;
     }
 
-    const balanceStock = material.remainingQuantity || 0;
-
-    if (materialQuantity > balanceStock) {
-      toast.error(
-        `Insufficient stock! Available: ${balanceStock.toLocaleString()} ${material.unit}`,
-      );
-      return;
-    }
+    const originalStock = material.remainingQuantity || 0;
 
     // Check if this material is already added
     const existingIndex = workProgressForm.materialsUsed.findIndex(
@@ -1050,13 +1044,15 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
 
     let updatedMaterialsUsed;
     if (existingIndex >= 0) {
-      // Update existing material entry
+      // Update existing material entry - add to existing quantity
       const existing = workProgressForm.materialsUsed[existingIndex];
+      // Use the original stock from when material was first added, not current stock
+      const originalStockWhenAdded = existing.originalStock;
       const newTotalQuantity = existing.quantity + materialQuantity;
 
-      if (newTotalQuantity > balanceStock) {
+      if (newTotalQuantity > originalStockWhenAdded) {
         toast.error(
-          `Total quantity exceeds available stock! Available: ${balanceStock.toLocaleString()} ${material.unit}`,
+          `Total quantity exceeds available stock! Available: ${originalStockWhenAdded.toLocaleString()} ${material.unit}`,
         );
         return;
       }
@@ -1065,18 +1061,26 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
       updatedMaterialsUsed[existingIndex] = {
         ...existing,
         quantity: newTotalQuantity,
-        balanceStock: balanceStock - newTotalQuantity,
+        balanceStock: originalStockWhenAdded - newTotalQuantity,
       };
       toast.success(`Updated ${material.materialName} quantity.`);
     } else {
       // Add new material entry
+      if (materialQuantity > originalStock) {
+        toast.error(
+          `Insufficient stock! Available: ${originalStock.toLocaleString()} ${material.unit}`,
+        );
+        return;
+      }
+
       const newMaterialEntry = {
         purchaseId: material.id,
         materialId: material.materialId ?? undefined,
         materialName: material.materialName,
         quantity: materialQuantity,
         unit: material.unit,
-        balanceStock: balanceStock - materialQuantity,
+        balanceStock: originalStock - materialQuantity,
+        originalStock: originalStock,
       };
       updatedMaterialsUsed = [...workProgressForm.materialsUsed, newMaterialEntry];
       toast.success(`Added ${material.materialName} to consumption list.`);
@@ -1519,9 +1523,7 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                   </div>
 
                                   <div className="space-y-2">
-                                    <Label>
-                                      Description <span className="text-destructive">*</span>
-                                    </Label>
+                                    <Label>Description</Label>
                                     <Textarea
                                       placeholder="Describe the work performed"
                                       value={workProgressForm.description}
@@ -1531,7 +1533,6 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                           description: e.target.value,
                                         }))
                                       }
-                                      required
                                       rows={3}
                                     />
                                   </div>
@@ -1829,8 +1830,8 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                                                 const materialDetails = materials.find(
                                                   (m) => m.id === material.purchaseId,
                                                 );
-                                                const originalStock =
-                                                  materialDetails?.remainingQuantity ?? 0;
+                                                // Use the original stock stored when material was first added
+                                                const originalStock = material.originalStock;
                                                 const willBeLowStock =
                                                   materialDetails &&
                                                   isLowStock({

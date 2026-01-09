@@ -13,6 +13,7 @@ export const revalidate = 0;
 const PAYMENT_SELECT = `
   id,
   client_name,
+  vendor_id,
   amount,
   status,
   due_date,
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = (page - 1) * limit;
+    const vendorId = searchParams.get('vendorId');
 
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
@@ -54,22 +56,34 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get total count for pagination (optimized: use 'id' instead of '*' for faster counting)
-    const { count, error: countError } = await supabase
+    // Build query for count
+    let countQuery = supabase
       .from('payments')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', ctx.organizationId);
+
+    if (vendorId) {
+      countQuery = countQuery.eq('vendor_id', vendorId);
+    }
+
+    const { count, error: countError } = await countQuery;
 
     if (countError) {
       console.error('Error counting payments', countError);
       return NextResponse.json({ error: 'Failed to load payments.' }, { status: 500 });
     }
 
-    // Fetch paginated data
-    const { data, error } = await supabase
+    // Build query for data
+    let dataQuery = supabase
       .from('payments')
       .select(PAYMENT_SELECT)
-      .eq('organization_id', ctx.organizationId)
+      .eq('organization_id', ctx.organizationId);
+
+    if (vendorId) {
+      dataQuery = dataQuery.eq('vendor_id', vendorId);
+    }
+
+    const { data, error } = await dataQuery
       .order('due_date', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -122,11 +136,15 @@ export async function POST(request: Request) {
       return accessError;
     }
 
-    const body = (await request.json()) as Partial<Payment>;
-    const { clientName, amount, status, dueDate, paidDate, siteId, siteName } = body;
+    const body = (await request.json()) as Partial<Payment & { date?: string }>;
+    const { clientName, vendorId, amount, status } = body;
 
-    if (!clientName || typeof amount !== 'number' || Number.isNaN(amount)) {
-      return NextResponse.json({ error: 'Client name and amount are required.' }, { status: 400 });
+    // Validate amount
+    if (typeof amount !== 'number' || Number.isNaN(amount)) {
+      return NextResponse.json(
+        { error: 'Amount is required and must be a number.' },
+        { status: 400 },
+      );
     }
 
     if (amount < 0) {
@@ -138,18 +156,50 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid payment status.' }, { status: 400 });
     }
 
-    // Ensure empty strings are converted to null for optional fields
-    const normalizedSiteId = siteId && siteId.trim().length > 0 ? siteId.trim() : null;
-    const normalizedSiteName = siteName && siteName.trim().length > 0 ? siteName.trim() : null;
+    // If vendorId is provided, fetch vendor name; otherwise use clientName
+    let finalClientName = clientName?.trim() || '';
+    let normalizedVendorId: string | null = null;
+
+    if (vendorId && vendorId.trim().length > 0) {
+      // Validate vendor exists and belongs to organization
+      const { data: vendor, error: vendorError } = await supabase
+        .from('vendors')
+        .select('id, name')
+        .eq('id', vendorId.trim())
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle();
+
+      if (vendorError || !vendor) {
+        return NextResponse.json(
+          { error: 'Vendor not found or does not belong to your organization.' },
+          { status: 400 },
+        );
+      }
+
+      normalizedVendorId = vendor.id as string;
+      finalClientName = vendor.name as string; // Use vendor name as client name
+    } else if (!clientName || clientName.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Either vendor ID or client name is required.' },
+        { status: 400 },
+      );
+    }
+
+    // Store date in due_date field (keeping paid_date and site fields as null for future use)
+    const normalizedDate =
+      (body as { date?: string }).date && (body as { date?: string }).date!.trim().length > 0
+        ? (body as { date?: string }).date!.trim()
+        : null;
 
     const payload = {
-      client_name: clientName.trim(),
+      client_name: finalClientName,
+      vendor_id: normalizedVendorId,
       amount: Math.round(amount * 100) / 100, // Round to 2 decimal places
       status: normalizedStatus,
-      due_date: dueDate && dueDate.trim().length > 0 ? dueDate.trim() : null,
-      paid_date: paidDate && paidDate.trim().length > 0 ? paidDate.trim() : null,
-      site_id: normalizedSiteId,
-      site_name: normalizedSiteName,
+      due_date: normalizedDate,
+      paid_date: null,
+      site_id: null,
+      site_name: null,
       organization_id: ctx.organizationId,
       created_by: ctx.userId,
       updated_by: ctx.userId,

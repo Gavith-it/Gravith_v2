@@ -100,14 +100,20 @@ export default function VehicleUsagePage() {
     endOdometer: number;
     workDescription: string;
     workCategory:
+      | 'construction'
+      | 'transport'
+      | 'delivery'
+      | 'maintenance'
+      | 'inspection'
+      | 'other'
       | 'Transportation'
       | 'Material Hauling'
       | 'Equipment Transport'
       | 'Site Inspection'
       | 'Other';
     siteId: string;
-    fuelConsumed: number;
-    notes?: string;
+    fuelConsumed?: number | null;
+    notes?: string | null;
   }) => {
     try {
       const selectedVehicle = vehicles.find((v) => v.id === data.vehicleId);
@@ -149,7 +155,7 @@ export default function VehicleUsagePage() {
           siteId: data.siteId,
           siteName: selectedSite.name,
           operator: selectedVehicle.operator || '',
-          fuelConsumed: data.fuelConsumed,
+          fuelConsumed: data.fuelConsumed ?? null,
           isRental: selectedVehicle.isRental ?? false,
           rentalCost: originalVehicle?.totalRentalCost ?? null,
           vendor: originalVehicle?.vendor ?? null,

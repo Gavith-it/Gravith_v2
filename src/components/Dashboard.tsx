@@ -1023,17 +1023,17 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         <Card className="border-0 shadow-none rounded-none border-b bg-gradient-to-r from-background to-muted/20">
           <CardContent className="px-6 py-4">
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="overview" className="flex items-center gap-2">
-                <Building2 className="h-4 w-4" />
-                Overview
+              <TabsTrigger value="overview" className="flex items-center justify-center gap-2">
+                <Building2 className="h-4 w-4 shrink-0" />
+                <span>Overview</span>
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Analytics
+              <TabsTrigger value="analytics" className="flex items-center justify-center gap-2">
+                <BarChart3 className="h-4 w-4 shrink-0" />
+                <span>Analytics</span>
               </TabsTrigger>
-              <TabsTrigger value="reports" className="flex items-center gap-2">
-                <PieChart className="h-4 w-4" />
-                Reports
+              <TabsTrigger value="reports" className="flex items-center justify-center gap-2">
+                <PieChart className="h-4 w-4 shrink-0" />
+                <span>Reports</span>
               </TabsTrigger>
             </TabsList>
           </CardContent>

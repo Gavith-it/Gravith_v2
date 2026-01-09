@@ -64,7 +64,7 @@ interface VehicleUsage {
     | 'Other';
   siteId: string;
   siteName: string;
-  fuelConsumed: number;
+  fuelConsumed?: number | null;
   notes?: string;
   recordedBy: string;
 }
@@ -96,7 +96,6 @@ export default function VehicleUsageForm({
     workDescription: '',
     workCategory: 'Transportation' as VehicleUsage['workCategory'],
     siteId: '',
-    fuelConsumed: '',
     notes: '',
   });
 
@@ -116,7 +115,6 @@ export default function VehicleUsageForm({
       workDescription: formData.workDescription,
       workCategory: formData.workCategory,
       siteId: formData.siteId,
-      fuelConsumed: Number(formData.fuelConsumed) || 0,
       notes: formData.notes || '',
     };
 
@@ -247,15 +245,6 @@ export default function VehicleUsageForm({
           onChange={(e) => setFormData((prev) => ({ ...prev, workDescription: e.target.value }))}
           placeholder="Transporting materials from supplier to site"
           required
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="fuelConsumed">Fuel Consumed (Liters)</Label>
-        <Input
-          type="number"
-          value={formData.fuelConsumed}
-          onChange={(e) => setFormData((prev) => ({ ...prev, fuelConsumed: e.target.value }))}
-          placeholder="15"
         />
       </div>
       <div className="space-y-2">

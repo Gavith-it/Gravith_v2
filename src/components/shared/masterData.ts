@@ -508,3 +508,66 @@ export const mockTaxRates: TaxRateItem[] = [
 export const getActiveTaxRates = (): TaxRateItem[] => {
   return mockTaxRates.filter((taxRate) => taxRate.isActive);
 };
+
+export type ExpenseCategoryItem = MaterialCategoryItem;
+
+export const mockExpenseCategories: ExpenseCategoryItem[] = [
+  {
+    id: '1',
+    code: 'LABOUR',
+    name: 'Labour',
+    description: 'Labour and workforce expenses',
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: '2',
+    code: 'MATERIALS',
+    name: 'Materials',
+    description: 'Construction materials and supplies',
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: '3',
+    code: 'EQUIPMENT',
+    name: 'Equipment',
+    description: 'Equipment rental and maintenance',
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: '4',
+    code: 'TRANSPORT',
+    name: 'Transport',
+    description: 'Transportation and logistics expenses',
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: '5',
+    code: 'UTILITIES',
+    name: 'Utilities',
+    description: 'Utilities and service expenses',
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: '6',
+    code: 'OTHER',
+    name: 'Other',
+    description: 'Other miscellaneous expenses',
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  },
+];
+
+export const getActiveExpenseCategories = (): ExpenseCategoryItem[] => {
+  return mockExpenseCategories.filter((category) => category.isActive);
+};

@@ -266,7 +266,7 @@ export interface VehicleUsage {
   siteId: string;
   siteName: string;
   operator: string;
-  fuelConsumed: number;
+  fuelConsumed?: number | null;
   isRental: boolean;
   rentalCost?: number | null;
   vendor?: string | null;
@@ -288,7 +288,7 @@ export interface VehicleRefueling {
   unit: 'liters' | 'kWh';
   cost: number;
   odometerReading: number;
-  location: string;
+  location?: string | null;
   vendor: string;
   invoiceNumber: string;
   receiptUrl?: string | null;
@@ -356,6 +356,7 @@ export interface Expense {
 export interface Payment {
   id: string;
   clientName: string;
+  vendorId?: string;
   amount: number;
   status: 'pending' | 'completed' | 'overdue';
   dueDate?: string;

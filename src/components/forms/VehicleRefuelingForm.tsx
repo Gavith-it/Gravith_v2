@@ -55,7 +55,7 @@ interface VehicleRefueling {
   unit: 'liters' | 'kWh';
   cost: number;
   odometerReading: number;
-  location: string;
+  location?: string | null;
   vendor: string;
   invoiceNumber: string;
   receiptUrl?: string;
@@ -81,7 +81,6 @@ export default function VehicleRefuelingForm({
     quantity: '',
     cost: '',
     odometerReading: '',
-    location: '',
     vendor: '',
     invoiceNumber: '',
     notes: '',
@@ -98,7 +97,6 @@ export default function VehicleRefuelingForm({
       unit: formData.fuelType === 'Electric' ? 'kWh' : 'liters',
       cost: Number(formData.cost),
       odometerReading: Number(formData.odometerReading),
-      location: formData.location,
       vendor: formData.vendor,
       invoiceNumber: formData.invoiceNumber,
       notes: formData.notes,
@@ -191,15 +189,6 @@ export default function VehicleRefuelingForm({
             value={formData.odometerReading}
             onChange={(e) => setFormData((prev) => ({ ...prev, odometerReading: e.target.value }))}
             placeholder="2480"
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="location">Location *</Label>
-          <Input
-            value={formData.location}
-            onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
-            placeholder="Site Fuel Station"
             required
           />
         </div>

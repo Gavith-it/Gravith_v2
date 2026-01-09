@@ -289,6 +289,8 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = (page - 1) * limit;
+    const vendorName = searchParams.get('vendorName');
+    const vendorId = searchParams.get('vendorId');
 
     // Validate pagination params
     if (page < 1 || limit < 1 || limit > 100) {
@@ -301,19 +303,45 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get total count for pagination
-    const { count, error: countError } = await supabase
+    // If vendorId is provided, fetch vendor name first
+    let finalVendorName = vendorName;
+    if (vendorId && !vendorName) {
+      const { data: vendor, error: vendorError } = await supabase
+        .from('vendors')
+        .select('name')
+        .eq('id', vendorId)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (vendorError) {
+        console.error('Error fetching vendor', vendorError);
+        return NextResponse.json({ error: 'Failed to load vendor information.' }, { status: 500 });
+      }
+
+      if (vendor) {
+        finalVendorName = vendor.name as string;
+      }
+    }
+
+    // Build count query
+    let countQuery = supabase
       .from('material_purchases')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', organizationId);
+
+    if (finalVendorName) {
+      countQuery = countQuery.ilike('vendor_name', finalVendorName);
+    }
+
+    const { count, error: countError } = await countQuery;
 
     if (countError) {
       console.error('Error counting purchases', countError);
       return NextResponse.json({ error: 'Failed to load purchases.' }, { status: 500 });
     }
 
-    // Fetch paginated data
-    const { data, error } = await supabase
+    // Build data query
+    let dataQuery = supabase
       .from('material_purchases')
       .select(
         `
@@ -341,7 +369,13 @@ export async function GET(request: Request) {
         material_masters:material_masters(category)
       `,
       )
-      .eq('organization_id', organizationId)
+      .eq('organization_id', organizationId);
+
+    if (finalVendorName) {
+      dataQuery = dataQuery.ilike('vendor_name', finalVendorName);
+    }
+
+    const { data, error } = await dataQuery
       .order('purchase_date', { ascending: false })
       .range(offset, offset + limit - 1);
 

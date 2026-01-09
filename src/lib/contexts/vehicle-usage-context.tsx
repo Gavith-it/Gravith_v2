@@ -30,7 +30,7 @@ interface VehicleUsageInput {
   siteId: string;
   siteName: string;
   operator: string;
-  fuelConsumed: number;
+  fuelConsumed?: number | null;
   isRental: boolean;
   rentalCost?: number | null;
   vendor?: string | null;

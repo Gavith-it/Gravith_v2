@@ -1049,7 +1049,8 @@ export function MaterialReceiptForm({
                               </span>
                               <span className="flex items-center gap-1 text-lg font-bold text-primary">
                                 <Scale className="h-4 w-4" />
-                                {netWeight.toFixed(2)} kg
+                                {netWeight.toFixed(2)}
+                                {materialUnit ? ` ${materialUnit}` : ''}
                               </span>
                             </div>
                           </div>

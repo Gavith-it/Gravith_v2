@@ -214,9 +214,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
     try {
       if (dialogState.editingItem) {
         const updated = await updateExpense(dialogState.editingItem.id, {
-          category: formData.category,
+          category: formData.category as Expense['category'],
           subcategory: formData.subcategory,
-          description: formData.description,
+          description: formData.description || '',
           amount: formData.amount,
           date: formatDateOnly(formData.date),
           vendor: formData.vendor,
@@ -234,9 +234,9 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
         toast.success('Expense updated successfully');
       } else {
         await addExpense({
-          category: formData.category,
+          category: formData.category as Expense['category'],
           subcategory: formData.subcategory,
-          description: formData.description,
+          description: formData.description || '',
           amount: formData.amount,
           date: formatDateOnly(formData.date),
           vendor: formData.vendor,

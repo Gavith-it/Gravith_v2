@@ -102,7 +102,6 @@ type RefuelingFormState = {
   quantity: string;
   cost: string;
   odometerReading: string;
-  location: string;
   vendor: string;
   invoiceNumber: string;
   notes: string;
@@ -115,7 +114,6 @@ const emptyRefuelingFormState: RefuelingFormState = {
   quantity: '',
   cost: '',
   odometerReading: '',
-  location: '',
   vendor: '',
   invoiceNumber: '',
   notes: '',
@@ -132,7 +130,6 @@ type UsageFormState = {
   workCategory: VehicleUsage['workCategory'];
   siteId: string;
   operator: string;
-  fuelConsumed: string;
   notes: string;
 };
 
@@ -147,7 +144,6 @@ const emptyUsageFormState: UsageFormState = {
   workCategory: 'transport',
   siteId: '',
   operator: '',
-  fuelConsumed: '',
   notes: '',
 };
 
@@ -440,7 +436,7 @@ export function VehiclesPage({
         appliedRefuelingFilters.vendors.includes(record.vendor);
       const matchesLocation =
         appliedRefuelingFilters.locations.length === 0 ||
-        appliedRefuelingFilters.locations.includes(record.location);
+        (record.location && appliedRefuelingFilters.locations.includes(record.location));
       const recordDate = parseDateValue(record.date);
       const matchesDateFrom = !dateFrom || (recordDate !== null && recordDate >= dateFrom);
       const matchesDateTo = !dateTo || (recordDate !== null && recordDate <= dateTo);
@@ -507,9 +503,13 @@ export function VehiclesPage({
         Number.isNaN(distanceMax) ||
         record.totalDistance <= distanceMax;
       const matchesFuelMin =
-        fuelMin === undefined || Number.isNaN(fuelMin) || record.fuelConsumed >= fuelMin;
+        fuelMin === undefined ||
+        Number.isNaN(fuelMin) ||
+        (record.fuelConsumed != null && record.fuelConsumed >= fuelMin);
       const matchesFuelMax =
-        fuelMax === undefined || Number.isNaN(fuelMax) || record.fuelConsumed <= fuelMax;
+        fuelMax === undefined ||
+        Number.isNaN(fuelMax) ||
+        (record.fuelConsumed != null && record.fuelConsumed <= fuelMax);
       const matchesRental =
         appliedUsageFilters.rentalType === 'all' ||
         (appliedUsageFilters.rentalType === 'rental' && record.isRental) ||
@@ -601,7 +601,7 @@ export function VehiclesPage({
         quantity: item.quantity.toString(),
         cost: item.cost.toString(),
         odometerReading: item.odometerReading.toString(),
-        location: item.location,
+        // location field removed - not used in form
         vendor: item.vendor,
         invoiceNumber: item.invoiceNumber,
         notes: item.notes ?? '',
@@ -630,7 +630,7 @@ export function VehiclesPage({
         workCategory: item.workCategory,
         siteId: item.siteId,
         operator: item.operator,
-        fuelConsumed: item.fuelConsumed.toString(),
+        // fuelConsumed field removed - not used in form
         notes: item.notes ?? '',
       });
     } else {
@@ -655,7 +655,10 @@ export function VehiclesPage({
     (sum, record) => sum + record.totalDistance,
     0,
   );
-  const totalFuelConsumed = usageRecords.reduce((sum, record) => sum + record.fuelConsumed, 0);
+  const totalFuelConsumed = usageRecords.reduce(
+    (sum, record) => sum + (record.fuelConsumed ?? 0),
+    0,
+  );
   const averageFuelEfficiency =
     totalFuelConsumed > 0 ? totalDistanceTravelled / totalFuelConsumed : 0;
 
@@ -898,11 +901,6 @@ export function VehiclesPage({
       return;
     }
 
-    if (!refuelingForm.location || refuelingForm.location.trim() === '') {
-      toast.error('Please enter a location.');
-      return;
-    }
-
     if (!refuelingForm.invoiceNumber || refuelingForm.invoiceNumber.trim() === '') {
       toast.error('Please enter an invoice number.');
       return;
@@ -938,7 +936,7 @@ export function VehiclesPage({
       unit,
       cost,
       odometerReading,
-      location: refuelingForm.location,
+      location: null,
       vendor: refuelingForm.vendor,
       invoiceNumber: refuelingForm.invoiceNumber,
       receiptUrl: null,
@@ -983,9 +981,8 @@ export function VehiclesPage({
 
     const startOdometer = Number(usageForm.startOdometer);
     const endOdometer = Number(usageForm.endOdometer);
-    const fuelConsumed = Number(usageForm.fuelConsumed);
 
-    if ([startOdometer, endOdometer, fuelConsumed].some((value) => Number.isNaN(value))) {
+    if ([startOdometer, endOdometer].some((value) => Number.isNaN(value))) {
       toast.error('Please enter valid numeric values.');
       return;
     }
@@ -1018,7 +1015,7 @@ export function VehiclesPage({
       siteId: usageForm.siteId,
       siteName,
       operator: operatorName,
-      fuelConsumed,
+      fuelConsumed: null,
       isRental: vehicle.isRental,
       rentalCost: vehicle.isRental ? (vehicle.rentalCostPerDay ?? null) : null,
       vendor: vehicle.vendor ?? null,
@@ -1891,7 +1888,7 @@ export function VehiclesPage({
                                   0,
                                 );
                                 const totalFuel = monthlyRecords.reduce(
-                                  (sum, r) => sum + r.fuelConsumed,
+                                  (sum, r) => sum + (r.fuelConsumed ?? 0),
                                   0,
                                 );
                                 if (totalFuel === 0) return '0.00 km/L';
@@ -2997,21 +2994,6 @@ export function VehiclesPage({
                         />
                         <FieldDescription>Vehicle odometer reading at refueling.</FieldDescription>
                       </Field>
-                      <Field>
-                        <FieldLabel htmlFor="location">
-                          Location <span className="text-destructive">*</span>
-                        </FieldLabel>
-                        <Input
-                          id="location"
-                          value={refuelingForm.location}
-                          onChange={(e) =>
-                            setRefuelingForm((prev) => ({ ...prev, location: e.target.value }))
-                          }
-                          placeholder="Site Fuel Station"
-                          required
-                        />
-                        <FieldDescription>Location where refueling took place.</FieldDescription>
-                      </Field>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <Field>
@@ -3238,9 +3220,7 @@ export function VehiclesPage({
                       </Field>
                     </div>
                     <Field>
-                      <FieldLabel htmlFor="workDescription">
-                        Work Description <span className="text-destructive">*</span>
-                      </FieldLabel>
+                      <FieldLabel htmlFor="workDescription">Work Description</FieldLabel>
                       <Textarea
                         id="workDescription"
                         value={usageForm.workDescription}
@@ -3248,7 +3228,6 @@ export function VehiclesPage({
                           setUsageForm((prev) => ({ ...prev, workDescription: e.target.value }))
                         }
                         placeholder="Describe the work performed..."
-                        required
                       />
                       <FieldDescription>Detailed description of work performed.</FieldDescription>
                     </Field>
@@ -3324,24 +3303,7 @@ export function VehiclesPage({
                         <FieldDescription>Site where vehicle was used.</FieldDescription>
                       </Field>
                     </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <Field>
-                        <FieldLabel htmlFor="fuelConsumed">
-                          Fuel Consumed (Liters) <span className="text-destructive">*</span>
-                        </FieldLabel>
-                        <Input
-                          id="fuelConsumed"
-                          type="number"
-                          value={usageForm.fuelConsumed}
-                          onChange={(e) =>
-                            setUsageForm((prev) => ({ ...prev, fuelConsumed: e.target.value }))
-                          }
-                          placeholder="40"
-                          required
-                          style={{ appearance: 'textfield', MozAppearance: 'textfield' }}
-                        />
-                        <FieldDescription>Amount of fuel consumed during usage.</FieldDescription>
-                      </Field>
+                    <div className="space-y-2">
                       <Field>
                         <FieldLabel htmlFor="notes">Notes</FieldLabel>
                         <Textarea

@@ -13,6 +13,7 @@ export const revalidate = 0;
 const PAYMENT_SELECT = `
   id,
   client_name,
+  vendor_id,
   amount,
   status,
   due_date,
@@ -86,7 +87,35 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       updated_by: ctx.userId,
     };
 
-    if (body.clientName !== undefined) updates['client_name'] = body.clientName;
+    // Handle vendorId update - if provided, validate and fetch vendor name
+    if (body.vendorId !== undefined) {
+      if (body.vendorId && body.vendorId.trim().length > 0) {
+        // Validate vendor exists and belongs to organization
+        const { data: vendor, error: vendorError } = await supabase
+          .from('vendors')
+          .select('id, name')
+          .eq('id', body.vendorId.trim())
+          .eq('organization_id', ctx.organizationId)
+          .maybeSingle();
+
+        if (vendorError || !vendor) {
+          return NextResponse.json(
+            { error: 'Vendor not found or does not belong to your organization.' },
+            { status: 400 },
+          );
+        }
+
+        updates['vendor_id'] = vendor.id;
+        updates['client_name'] = vendor.name; // Update client_name from vendor name
+      } else {
+        updates['vendor_id'] = null;
+      }
+    }
+
+    if (body.clientName !== undefined && body.vendorId === undefined) {
+      // Only update client_name if vendorId is not being updated
+      updates['client_name'] = body.clientName;
+    }
 
     if (body.amount !== undefined) {
       const amount = Number(body.amount);

@@ -1,23 +1,19 @@
 import { NextResponse } from 'next/server';
 
+import type { UOMItem } from '@/components/shared/masterData';
 import type { createClient } from '@/lib/supabase/server';
-import type { Payment } from '@/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-export type PaymentRow = {
+export type UOMRow = {
   id: string;
-  client_name: string;
-  vendor_id: string | null;
-  amount: number | string;
-  status: string;
-  due_date: string | null;
-  paid_date: string | null;
-  site_id: string | null;
-  site_name: string | null;
-  organization_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
+  org_id: string | null;
   created_by: string | null;
   updated_by: string | null;
 };
@@ -36,20 +32,16 @@ const MUTATION_ROLES = [
 
 type MutationRole = (typeof MUTATION_ROLES)[number];
 
-export function mapRowToPayment(row: PaymentRow): Payment {
+export function mapRowToUOM(row: UOMRow): UOMItem {
   return {
     id: row.id,
-    clientName: row.client_name,
-    vendorId: row.vendor_id ?? undefined,
-    amount: Number(row.amount ?? 0),
-    status: row.status as Payment['status'],
-    dueDate: row.due_date ?? undefined,
-    paidDate: row.paid_date ?? undefined,
-    siteId: row.site_id ?? undefined,
-    siteName: row.site_name ?? undefined,
-    organizationId: row.organization_id,
+    code: row.code,
+    name: row.name,
+    description: row.description ?? '',
+    isActive: row.is_active,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    orgId: row.org_id ?? undefined,
   };
 }
 

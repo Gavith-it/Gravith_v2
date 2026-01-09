@@ -11,7 +11,7 @@ import type { Payment } from '@/types';
 interface PaymentsContextType {
   payments: Payment[];
   isLoading: boolean;
-  refresh: (page?: number, limit?: number) => Promise<void>;
+  refresh: (page?: number, limit?: number, vendorId?: string) => Promise<void>;
   addPayment: (payment: PaymentPayload) => Promise<Payment | null>;
   updatePayment: (id: string, updates: PaymentUpdatePayload) => Promise<Payment | null>;
   deletePayment: (id: string) => Promise<boolean>;
@@ -24,13 +24,13 @@ interface PaymentsContextType {
 }
 
 type PaymentPayload = {
-  clientName: string;
+  clientName?: string;
+  vendorId?: string;
   amount: number;
   status?: Payment['status'];
+  date?: string;
   dueDate?: string;
   paidDate?: string;
-  siteId?: string | null;
-  siteName?: string | null;
 };
 
 type PaymentUpdatePayload = Partial<PaymentPayload>;
@@ -40,6 +40,7 @@ const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined
 async function fetchPayments(
   page = 1,
   limit = 50,
+  vendorId?: string,
 ): Promise<{
   payments: Payment[];
   pagination?: {
@@ -49,6 +50,14 @@ async function fetchPayments(
     totalPages: number;
   };
 }> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+  if (vendorId) {
+    params.append('vendorId', vendorId);
+  }
+
   const payload = (await fetchJson<{
     payments?: Payment[];
     pagination?: {
@@ -58,7 +67,7 @@ async function fetchPayments(
       totalPages: number;
     };
     error?: string;
-  }>(`/api/payments?page=${page}&limit=${limit}`).catch(() => ({}))) as {
+  }>(`/api/payments?${params.toString()}`).catch(() => ({}))) as {
     payments?: Payment[];
     pagination?: {
       page: number;
@@ -95,10 +104,10 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   // Use ref to prevent duplicate calls in React Strict Mode
   const hasInitialized = React.useRef(false);
 
-  const refresh = useCallback(async (page = 1, limit = 50) => {
+  const refresh = useCallback(async (page = 1, limit = 50, vendorId?: string) => {
     try {
       setIsLoading(true);
-      const result = await fetchPayments(page, limit);
+      const result = await fetchPayments(page, limit, vendorId);
       setPayments(result.payments);
       setPagination(result.pagination);
     } catch (error) {

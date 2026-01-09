@@ -24,7 +24,7 @@ interface RefuelingPayload {
   unit: VehicleRefueling['unit'];
   cost: number;
   odometerReading: number;
-  location: string;
+  location?: string | null;
   vendor: string;
   invoiceNumber: string;
   receiptUrl?: string | null;
@@ -207,7 +207,7 @@ export async function POST(request: Request) {
       unit: body.unit,
       cost: body.cost,
       odometer_reading: body.odometerReading,
-      location: body.location,
+      location: body.location ?? null,
       vendor: body.vendor,
       invoice_number: body.invoiceNumber,
       receipt_url: body.receiptUrl ?? null,

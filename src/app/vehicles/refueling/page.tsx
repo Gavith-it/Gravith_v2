@@ -85,12 +85,13 @@ export default function VehicleRefuelingPage() {
     date: string;
     fuelType: 'Petrol' | 'Diesel' | 'CNG' | 'Electric';
     quantity: number;
+    unit: 'liters' | 'kWh';
     cost: number;
     odometerReading: number;
-    location: string;
+    location?: string | null;
     vendor: string;
     invoiceNumber: string;
-    notes?: string;
+    notes?: string | null;
   }) => {
     try {
       const selectedVehicle = vehicles.find((v) => v.id === data.vehicleId);
@@ -116,7 +117,7 @@ export default function VehicleRefuelingPage() {
           unit,
           cost: data.cost,
           odometerReading: data.odometerReading,
-          location: data.location,
+          location: data.location ?? null,
           vendor: data.vendor,
           invoiceNumber: data.invoiceNumber,
           receiptUrl: null,

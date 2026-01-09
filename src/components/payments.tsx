@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
@@ -44,25 +45,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { usePayments } from '@/lib/contexts';
+import { usePayments, useVendors } from '@/lib/contexts';
 import { fetcher, swrConfig } from '@/lib/swr';
 import { formatDate } from '@/lib/utils';
 import { formatDateOnly } from '@/lib/utils/date';
 import type { Payment } from '@/types';
 
-const paymentSchema = z.object({
-  clientName: z.string().min(1, 'Client name is required.'),
-  amount: z.number().min(0, 'Amount must be non-negative.'),
-  status: z.enum(['pending', 'completed', 'overdue']),
-  dueDate: z.date().optional().nullable(),
-  paidDate: z.date().optional().nullable(),
-  siteId: z.string().optional(),
-  siteName: z.string().optional(),
-});
+const paymentSchema = z
+  .object({
+    vendorId: z.string().optional(),
+    clientName: z.string().optional(),
+    amount: z.number().min(0, 'Amount must be non-negative.'),
+    status: z.enum(['pending', 'completed', 'overdue']),
+    date: z.date().optional().nullable(),
+  })
+  .refine((data) => data.vendorId || data.clientName, {
+    message: 'Please select a vendor or enter a client name.',
+    path: ['vendorId'],
+  });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
-
-type SiteOption = { id: string; name: string };
 
 const STATUS_LABELS: Record<Payment['status'], string> = {
   pending: 'Pending',
@@ -87,11 +89,13 @@ function deriveStats(payments: Payment[]) {
 export function PaymentsPage() {
   const { payments, isLoading, addPayment, updatePayment, deletePayment, refresh, pagination } =
     usePayments();
+  const { vendors, isLoading: isLoadingVendors } = useVendors();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Payment['status']>('all');
+  const [vendorFilter, setVendorFilter] = useState<string>('all');
   // Pagination state
   const [page, setPage] = useState<number>(1);
   const [limit] = useState<number>(50);
@@ -99,43 +103,101 @@ export function PaymentsPage() {
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
+      vendorId: undefined,
       clientName: '',
       amount: undefined,
       status: 'pending',
-      dueDate: undefined,
-      paidDate: undefined,
-      siteId: undefined,
-      siteName: '',
+      date: undefined,
     },
   });
 
-  // Fetch sites using SWR
-  const { data: sitesData, isLoading: isLoadingSites } = useSWR<{
-    sites: Array<{ id: string; name: string }>;
-  }>('/api/sites', fetcher, swrConfig);
+  // Watch vendorId to fetch purchases
+  const selectedVendorId = form.watch('vendorId');
+  const selectedVendor = vendors.find((v) => v.id === selectedVendorId);
 
-  const siteOptions = useMemo(() => sitesData?.sites ?? [], [sitesData]);
+  // Fetch purchases for selected vendor
+  const purchasesUrl = selectedVendorId
+    ? `/api/purchases?vendorId=${selectedVendorId}&limit=100`
+    : null;
+  const { data: purchasesData, isLoading: isLoadingPurchases } = useSWR<{
+    purchases?: Array<{
+      id: string;
+      vendor?: string;
+      invoiceNumber?: string;
+      purchaseDate?: string;
+      totalAmount: number;
+    }>;
+  }>(purchasesUrl, fetcher, swrConfig);
+
+  const vendorPurchases = useMemo(() => purchasesData?.purchases ?? [], [purchasesData]);
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<Set<string>>(new Set());
+
+  // Clear selected purchases when vendor changes
+  useEffect(() => {
+    setSelectedPurchaseIds(new Set());
+  }, [selectedVendorId]);
+
+  const selectedPurchases = useMemo(
+    () => vendorPurchases.filter((p) => selectedPurchaseIds.has(p.id)),
+    [vendorPurchases, selectedPurchaseIds],
+  );
+
+  const totalSelectedAmount = useMemo(
+    () => selectedPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0),
+    [selectedPurchases],
+  );
+
+  const totalPurchaseAmount = useMemo(
+    () => vendorPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0),
+    [vendorPurchases],
+  );
+
+  // Auto-fill amount when purchases are selected
+  useEffect(() => {
+    if (selectedPurchaseIds.size > 0 && totalSelectedAmount > 0) {
+      form.setValue('amount', totalSelectedAmount);
+    }
+  }, [selectedPurchaseIds, totalSelectedAmount, form]);
+
+  const togglePurchaseSelection = (purchaseId: string) => {
+    setSelectedPurchaseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(purchaseId)) {
+        next.delete(purchaseId);
+      } else {
+        next.add(purchaseId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllPurchases = () => {
+    setSelectedPurchaseIds(new Set(vendorPurchases.map((p) => p.id)));
+  };
+
+  const clearAllPurchases = () => {
+    setSelectedPurchaseIds(new Set());
+  };
 
   // Fetch payments with pagination
   useEffect(() => {
-    void refresh(page, limit);
-  }, [refresh, page, limit]);
+    const vendorId = vendorFilter !== 'all' ? vendorFilter : undefined;
+    void refresh(page, limit, vendorId);
+  }, [refresh, page, limit, vendorFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, vendorFilter]);
 
   useEffect(() => {
     if (!isDialogOpen) {
       form.reset({
+        vendorId: undefined,
         clientName: '',
         amount: undefined,
         status: 'pending',
-        dueDate: undefined,
-        paidDate: undefined,
-        siteId: undefined,
-        siteName: '',
+        date: undefined,
       });
       setEditingPayment(null);
       return;
@@ -143,13 +205,11 @@ export function PaymentsPage() {
 
     if (editingPayment) {
       form.reset({
+        vendorId: editingPayment.vendorId,
         clientName: editingPayment.clientName,
         amount: editingPayment.amount,
         status: editingPayment.status,
-        dueDate: editingPayment.dueDate ? new Date(editingPayment.dueDate) : undefined,
-        paidDate: editingPayment.paidDate ? new Date(editingPayment.paidDate) : undefined,
-        siteId: editingPayment.siteId,
-        siteName: editingPayment.siteName,
+        date: undefined, // New payments won't have date, existing ones keep their data but form shows empty
       });
     }
   }, [editingPayment, form, isDialogOpen]);
@@ -170,13 +230,11 @@ export function PaymentsPage() {
   const handleSubmit = async (data: PaymentFormData) => {
     try {
       const payload = {
+        vendorId: data.vendorId,
         clientName: data.clientName,
         amount: data.amount,
         status: data.status,
-        dueDate: data.dueDate ? formatDateOnly(data.dueDate) : undefined,
-        paidDate: data.paidDate ? formatDateOnly(data.paidDate) : undefined,
-        siteId: data.siteId && data.siteId.length > 0 ? data.siteId : null,
-        siteName: data.siteName && data.siteName.length > 0 ? data.siteName : null,
+        date: data.date ? formatDateOnly(data.date) : undefined,
       } satisfies Parameters<typeof addPayment>[0];
 
       if (editingPayment) {
@@ -221,12 +279,6 @@ export function PaymentsPage() {
     setIsDialogOpen(true);
   };
 
-  const onSiteChange = (siteId: string | undefined) => {
-    const site = siteOptions.find((option: SiteOption) => option.id === siteId);
-    form.setValue('siteId', siteId);
-    form.setValue('siteName', site?.name ?? '');
-  };
-
   return (
     <div className="w-full space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -241,6 +293,19 @@ export function PaymentsPage() {
             onChange={(event) => setSearchQuery(event.target.value)}
             className="w-full md:w-72"
           />
+          <Select value={vendorFilter} onValueChange={setVendorFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="All vendors" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All vendors</SelectItem>
+              {vendors.map((vendor) => (
+                <SelectItem key={vendor.id} value={vendor.id}>
+                  {vendor.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={statusFilter}
             onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}
@@ -440,13 +505,40 @@ export function PaymentsPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="clientName"
+                  name="vendorId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Client *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Acme Constructions" {...field} />
-                      </FormControl>
+                      <FormLabel>Client (Vendor) *</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          // Clear clientName when vendor is selected
+                          form.setValue('clientName', '');
+                        }}
+                        disabled={isLoadingVendors}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isLoadingVendors
+                                  ? 'Loading vendors…'
+                                  : vendors.length === 0
+                                    ? 'No vendors available'
+                                    : 'Select vendor'
+                              }
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {vendors.map((vendor) => (
+                            <SelectItem key={vendor.id} value={vendor.id}>
+                              {vendor.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -475,6 +567,115 @@ export function PaymentsPage() {
                 />
               </div>
 
+              {/* Display purchases for selected vendor */}
+              {selectedVendorId && (
+                <Card className="border-dashed">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">
+                      Purchases for {selectedVendor?.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingPurchases ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-sm text-muted-foreground">
+                          Loading purchases...
+                        </span>
+                      </div>
+                    ) : vendorPurchases.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No purchases found for this vendor.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">
+                            Select invoices to pay for (optional)
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={selectAllPurchases}
+                              className="h-7 text-xs"
+                            >
+                              Select All
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={clearAllPurchases}
+                              className="h-7 text-xs"
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-12 text-xs"></TableHead>
+                                <TableHead className="text-xs">Invoice</TableHead>
+                                <TableHead className="text-xs">Date</TableHead>
+                                <TableHead className="text-xs text-right">Amount</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {vendorPurchases.map((purchase) => (
+                                <TableRow
+                                  key={purchase.id}
+                                  className="cursor-pointer"
+                                  onClick={() => togglePurchaseSelection(purchase.id)}
+                                >
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedPurchaseIds.has(purchase.id)}
+                                      onCheckedChange={() => togglePurchaseSelection(purchase.id)}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="text-xs font-medium">
+                                    {purchase.invoiceNumber || '—'}
+                                  </TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">
+                                    {purchase.purchaseDate
+                                      ? formatDate(purchase.purchaseDate)
+                                      : '—'}
+                                  </TableCell>
+                                  <TableCell className="text-xs text-right font-medium">
+                                    ₹{purchase.totalAmount.toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        <div className="space-y-1 border-t pt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Total Purchase Amount:</span>
+                            <span className="text-sm font-bold">
+                              ₹{totalPurchaseAmount.toLocaleString()}
+                            </span>
+                          </div>
+                          {selectedPurchaseIds.size > 0 && (
+                            <div className="flex items-center justify-between text-primary">
+                              <span className="text-sm font-medium">Selected Amount:</span>
+                              <span className="text-sm font-bold">
+                                ₹{totalSelectedAmount.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -500,68 +701,13 @@ export function PaymentsPage() {
                 />
                 <FormField
                   control={form.control}
-                  name="dueDate"
+                  name="date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Due Date</FormLabel>
+                      <FormLabel>Date</FormLabel>
                       <FormControl>
                         <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="paidDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Paid Date</FormLabel>
-                      <FormControl>
-                        <DatePicker date={field.value ?? undefined} onSelect={field.onChange} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="siteId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Site</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          onSiteChange(value);
-                        }}
-                        disabled={isLoadingSites || siteOptions.length === 0}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                isLoadingSites
-                                  ? 'Loading sites…'
-                                  : siteOptions.length === 0
-                                    ? 'No sites available'
-                                    : 'Select site'
-                              }
-                            />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {siteOptions.map((site: SiteOption) => (
-                            <SelectItem key={site.id} value={site.id}>
-                              {site.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}

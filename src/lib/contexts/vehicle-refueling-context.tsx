@@ -28,7 +28,7 @@ interface VehicleRefuelingInput {
   unit: VehicleRefueling['unit'];
   cost: number;
   odometerReading: number;
-  location: string;
+  location?: string | null;
   vendor: string;
   invoiceNumber: string;
   receiptUrl?: string | null;
