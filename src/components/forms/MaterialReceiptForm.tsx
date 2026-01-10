@@ -300,6 +300,13 @@ export function MaterialReceiptForm({
             }
           }
 
+          // Invalidate materials cache to refresh inward quantities
+          await mutate(
+            (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+            undefined,
+            { revalidate: true },
+          );
+
           toast.success('Material receipt(s) updated successfully!');
           onSubmit?.(receiptData);
         } else {
@@ -340,6 +347,13 @@ export function MaterialReceiptForm({
             toast.success(`${receiptsData.length} material receipt(s) recorded successfully!`);
           }
 
+          // Invalidate materials cache to refresh inward quantities
+          await mutate(
+            (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+            undefined,
+            { revalidate: true },
+          );
+
           onSubmit?.(receiptsData[0]);
         }
       } catch (error) {
@@ -349,7 +363,7 @@ export function MaterialReceiptForm({
         );
       }
     },
-    [addReceipt, addReceipts, editingReceipt, materialOptions, onSubmit, updateReceipt],
+    [addReceipt, addReceipts, editingReceipt, materialOptions, onSubmit, updateReceipt, mutate],
   );
 
   // Update material names when materials are selected in line items

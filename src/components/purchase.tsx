@@ -24,6 +24,16 @@ import { MaterialReceiptsPage } from './material-receipts';
 import { PurchaseForm } from './shared/PurchaseForm';
 
 import { FilterSheet } from '@/components/filters/FilterSheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,7 +70,7 @@ interface PurchasePageProps {
 export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const searchParams = useSearchParams();
   const { materials, deleteMaterial, isLoading } = useMaterials();
-  const { receipts } = useMaterialReceipts();
+  const { receipts, unlinkReceipt } = useMaterialReceipts();
 
   // Use shared state hooks
   const tableState = useTableState({
@@ -146,6 +156,15 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<PurchaseAdvancedFilterState>(
     createDefaultPurchaseAdvancedFilters,
   );
+
+  // Delete dialog state for linked purchases
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [purchaseToDelete, setPurchaseToDelete] = useState<{
+    id: string;
+    name: string;
+    linkedReceiptIds: string[];
+  } | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   const categoryOptions = useMemo(() => {
     const categories = new Set<string>();
@@ -316,11 +335,13 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
     const linkedReceipts = receipts.filter((receipt) => receipt.linkedPurchaseId === materialId);
 
     if (linkedReceipts.length > 0) {
-      alert(
-        `Cannot delete purchase: "${target.materialName}"\n\n` +
-          `This purchase is connected or linked to ${linkedReceipts.length} material receipt(s). ` +
-          `Please unlink the material receipts first before deleting this purchase.`,
-      );
+      // Show dialog with option to unlink and delete
+      setPurchaseToDelete({
+        id: materialId,
+        name: target.materialName,
+        linkedReceiptIds: linkedReceipts.map((r) => r.id),
+      });
+      setDeleteDialogOpen(true);
       return;
     }
 
@@ -342,14 +363,57 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
 
       // Check if error is about linked receipts (fallback check)
       if (errorMessage.includes('linked to') && errorMessage.includes('material receipt')) {
-        alert(
-          `Cannot delete purchase: "${target.materialName}"\n\n` +
-            `This purchase is connected or linked to one or more material receipts. ` +
-            `Please unlink the material receipts first before deleting this purchase.`,
+        // Show dialog with option to unlink and delete
+        const linkedReceiptsFallback = receipts.filter(
+          (receipt) => receipt.linkedPurchaseId === materialId,
         );
+        setPurchaseToDelete({
+          id: materialId,
+          name: target.materialName,
+          linkedReceiptIds: linkedReceiptsFallback.map((r) => r.id),
+        });
+        setDeleteDialogOpen(true);
       } else {
         toast.error(errorMessage);
       }
+    }
+  };
+
+  const handleUnlinkAndDelete = async () => {
+    if (!purchaseToDelete) {
+      return;
+    }
+
+    setIsUnlinking(true);
+    try {
+      // First, unlink all linked receipts
+      for (const receiptId of purchaseToDelete.linkedReceiptIds) {
+        const success = await unlinkReceipt(receiptId);
+        if (!success) {
+          throw new Error(`Failed to unlink receipt ${receiptId}`);
+        }
+      }
+
+      // Then delete the purchase
+      await deleteMaterial(purchaseToDelete.id);
+
+      // Show success message
+      toast.success('Purchase unlinked and deleted successfully.');
+
+      // Close dialog after a small delay to ensure toast is visible
+      setTimeout(() => {
+        setDeleteDialogOpen(false);
+        setPurchaseToDelete(null);
+      }, 100);
+    } catch (error) {
+      console.error('Failed to unlink and delete purchase', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to unlink and delete purchase. Please try again.',
+      );
+    } finally {
+      setIsUnlinking(false);
     }
   };
 
@@ -997,6 +1061,30 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
         }}
         isDirty={!isPurchaseAdvancedFilterDefault(draftAdvancedFilters)}
       />
+
+      {/* Alert Dialog for Unlink and Delete */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unlink and Delete Purchase</AlertDialogTitle>
+            <AlertDialogDescription>
+              The purchase &quot;{purchaseToDelete?.name}&quot; is linked to{' '}
+              {purchaseToDelete?.linkedReceiptIds.length || 0} material receipt(s). Do you want to
+              automatically unlink these receipts and then delete the purchase?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUnlinking}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnlinkAndDelete}
+              disabled={isUnlinking}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isUnlinking ? 'Processing...' : 'Unlink & Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

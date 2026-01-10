@@ -17,7 +17,7 @@ import {
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 
 import { useDialogState } from '../lib/hooks/useDialogState';
 import { useTableState } from '../lib/hooks/useTableState';
@@ -382,6 +382,14 @@ export function MaterialReceiptsPage({
     try {
       setProcessingId(receiptToDelete.id);
       await deleteReceipt(receiptToDelete.id);
+
+      // Invalidate materials cache to refresh inward quantities
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+        undefined,
+        { revalidate: true },
+      );
+
       toast.success('Receipt deleted successfully');
       setDeleteDialogOpen(false);
       setReceiptToDelete(null);
@@ -408,6 +416,13 @@ export function MaterialReceiptsPage({
     setIsLinking(true);
     const success = await linkReceiptToPurchase(selectedReceiptForLink.id, selectedPurchaseId);
     if (success) {
+      // Invalidate materials cache to refresh inward quantities
+      await mutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+        undefined,
+        { revalidate: true },
+      );
+
       toast.success('Receipt linked successfully');
       setLinkDialogOpen(false);
       setSelectedReceiptForLink(null);
@@ -422,6 +437,13 @@ export function MaterialReceiptsPage({
       setProcessingId(receipt.id);
       const success = await unlinkReceipt(receipt.id);
       if (success) {
+        // Invalidate materials cache to refresh inward quantities
+        await mutate(
+          (key) => typeof key === 'string' && key.startsWith('/api/materials'),
+          undefined,
+          { revalidate: true },
+        );
+
         toast.success('Receipt unlinked successfully');
       }
     } finally {
