@@ -596,60 +596,49 @@ export function MaterialReceiptForm({
               <Controller
                 name="siteId"
                 control={form.control}
-                render={({ field, fieldState }) => {
-                  const selectedSiteId = field.value;
-                  const selectedMaterialId = form.watch('lineItems.0.materialId');
-                  const currentOB = selectedSiteId && selectedMaterialId ? lineItemOBs[0] : null;
-
-                  return (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel>
-                        Site <span className="text-destructive">*</span>
-                      </FieldLabel>
-                      <Select
-                        value={field.value ?? ''}
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          if (value === 'unallocated') {
-                            form.setValue('siteName', 'Unallocated');
-                          } else {
-                            const site = sites.find((s) => s.id === value);
-                            form.setValue('siteName', site?.name ?? '');
-                          }
-                        }}
-                        disabled={isLoadingSites}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select site" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unallocated">
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-site`}>
+                      Site <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select
+                      value={field.value ?? ''}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (value === 'unallocated') {
+                          form.setValue('siteName', 'Unallocated');
+                        } else {
+                          const site = sites.find((s) => s.id === value);
+                          form.setValue('siteName', site?.name ?? '');
+                        }
+                      }}
+                      disabled={isLoadingSites}
+                    >
+                      <SelectTrigger id={`${formId}-site`} aria-invalid={fieldState.invalid}>
+                        <SelectValue placeholder="Select site" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unallocated">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            <span>Unallocated</span>
+                          </div>
+                        </SelectItem>
+                        {sites.map((site) => (
+                          <SelectItem key={site.id} value={site.id}>
                             <div className="flex items-center gap-2">
                               <Building2 className="h-4 w-4" />
-                              <span>Unallocated</span>
+                              <span>{site.name}</span>
                             </div>
                           </SelectItem>
-                          {sites.map((site) => (
-                            <SelectItem key={site.id} value={site.id}>
-                              <div className="flex items-center gap-2">
-                                <Building2 className="h-4 w-4" />
-                                <span>{site.name}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <input type="hidden" {...form.register('siteName')} />
-                      {currentOB !== null && currentOB !== undefined && (
-                        <span className="text-xs text-muted-foreground mt-1 block">
-                          Current OB: {currentOB.toLocaleString()}
-                        </span>
-                      )}
-                      <FieldDescription>Select the site for all line items.</FieldDescription>
-                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
-                  );
-                }}
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <input type="hidden" {...form.register('siteName')} />
+                    <FieldDescription>Select the site for all line items.</FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
               />
             </div>
 
