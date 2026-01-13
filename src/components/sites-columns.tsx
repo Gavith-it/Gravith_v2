@@ -140,10 +140,10 @@ export const vehicleColumns: DataTableColumn[] = [
 ];
 
 export const documentColumns: DataTableColumn[] = [
+  { key: 'uploadDate', label: 'Upload Date', sortable: true },
   { key: 'document', label: 'Document', sortable: true },
   { key: 'type', label: 'Type', sortable: true },
   { key: 'size', label: 'Size', sortable: true },
-  { key: 'uploadDate', label: 'Upload Date', sortable: true },
   { key: 'uploadedBy', label: 'Uploaded By', sortable: true },
   { key: 'actions', label: 'Actions', sortable: false },
 ];

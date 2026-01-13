@@ -32,8 +32,6 @@ export default function VendorNewPageContent() {
         status: 'active',
         totalPaid: 0,
         pendingAmount: 0,
-        rating: 0,
-        lastPayment: '',
         registrationDate: formatDateOnly(new Date()),
       });
 

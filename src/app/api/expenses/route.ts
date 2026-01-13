@@ -22,6 +22,8 @@ const EXPENSE_SELECT = `
   site_name,
   receipt,
   status,
+  paid,
+  balance,
   approved_by,
   approved_by_name,
   organization_id,
@@ -146,6 +148,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Partial<Expense> & {
       siteId?: string | null;
       siteName?: string | null;
+      paymentTiming?: 'immediate' | 'later';
     };
     const {
       description,
@@ -159,6 +162,7 @@ export async function POST(request: Request) {
       receipt,
       status,
       approvedBy,
+      paymentTiming,
     } = body;
 
     const numericAmount = Number(amount);
@@ -184,6 +188,24 @@ export async function POST(request: Request) {
 
     const approvedByValue = approvedBy && approvedBy.length > 0 ? approvedBy.slice(0, 255) : null;
 
+    // Find vendor_id from vendor name if vendor is provided
+    let vendorId: string | null = null;
+    if (vendor && vendor.trim().length > 0) {
+      const { data: vendorData } = await supabase
+        .from('vendors')
+        .select('id')
+        .eq('name', vendor.trim())
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle();
+
+      if (vendorData) {
+        vendorId = vendorData.id as string;
+      }
+    }
+
+    // Determine expense status based on paymentTiming
+    const finalStatus = paymentTiming === 'immediate' ? ('paid' as const) : normalizedStatus;
+
     const payload = {
       description,
       amount: normalizedAmount,
@@ -191,10 +213,11 @@ export async function POST(request: Request) {
       subcategory: subcategory ?? null,
       date,
       vendor: vendor && vendor.length > 0 ? vendor : null,
+      vendor_id: vendorId,
       site_id: siteId && siteId.length > 0 ? siteId : null,
       site_name: siteName && siteName.length > 0 ? siteName : null,
       receipt: receipt && receipt.length > 0 ? receipt : null,
-      status: normalizedStatus,
+      status: finalStatus,
       approved_by: null,
       approved_by_name: approvedByValue,
       organization_id: ctx.organizationId,
@@ -214,6 +237,38 @@ export async function POST(request: Request) {
     }
 
     const expense = mapRowToExpense(data as ExpenseRow);
+
+    // Create a payment entry for both "immediate" and "later" payment timing
+    if (vendorId && normalizedAmount > 0) {
+      try {
+        const isImmediate = paymentTiming === 'immediate';
+        const paymentPayload = {
+          client_name: vendor || '',
+          vendor_id: vendorId,
+          amount: normalizedAmount,
+          status: isImmediate ? ('completed' as const) : ('pending' as const),
+          due_date: date,
+          paid_date: isImmediate ? date : null,
+          site_id: siteId && siteId.length > 0 ? siteId : null,
+          site_name: siteName && siteName.length > 0 ? siteName : null,
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          updated_by: ctx.userId,
+        };
+
+        const { error: paymentError } = await supabase.from('payments').insert(paymentPayload);
+
+        if (paymentError) {
+          console.error('Error creating payment from expense:', paymentError);
+          // Don't fail the expense creation if payment creation fails
+          // The expense is already created, just log the error
+        }
+      } catch (paymentErr) {
+        console.error('Unexpected error creating payment from expense:', paymentErr);
+        // Continue even if payment creation fails
+      }
+    }
+
     const response = NextResponse.json({ expense }, { status: 201 });
 
     // Invalidate cache to ensure fresh data is fetched on next request

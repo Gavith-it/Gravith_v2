@@ -1,4 +1,4 @@
-import { Building, Phone, Mail, Star, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
+import { Building, Phone, Mail, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 
 import type { DataTableColumn } from '@/components/common/DataTable';
 import { Badge } from '@/components/ui/badge';
@@ -31,9 +31,9 @@ export const getStatusColor = (status: Vendor['status']) => {
 export const vendorColumns: DataTableColumn[] = [
   { key: 'name', label: 'Vendor Details', sortable: true },
   { key: 'contact', label: 'Contact', sortable: false },
-  { key: 'totalPaid', label: 'Financial', sortable: true },
-  { key: 'status', label: 'Status', sortable: true },
-  { key: 'rating', label: 'Rating', sortable: true },
+  { key: 'totalBill', label: 'Total Bill', sortable: true },
+  { key: 'totalPaid', label: 'Total Paid', sortable: true },
+  { key: 'balance', label: 'Balance', sortable: true },
 ];
 
 export const createVendorTableData = (vendors: Vendor[]) => {
@@ -59,21 +59,19 @@ export const createVendorTableData = (vendors: Vendor[]) => {
         </div>
       </div>
     ),
-    totalPaid: (
-      <div className="space-y-1">
-        <p className="text-sm font-medium">
-          Paid: ₹{((vendor.totalPaid || 0) / 100000).toFixed(1)}L
-        </p>
-        <p className="text-sm text-orange-600">
-          Pending: ₹{((vendor.pendingAmount || 0) / 1000).toFixed(0)}K
-        </p>
+    totalBill: (
+      <div className="text-sm font-medium">
+        ₹{(((vendor.totalPaid || 0) + (vendor.pendingAmount || 0)) / 100000).toFixed(1)}L
       </div>
     ),
-    status: <Badge className={getStatusColor(vendor.status)}>{vendor.status}</Badge>,
-    rating: (
-      <div className="flex items-center gap-1">
-        <Star className="h-3 w-3 fill-current text-yellow-500" />
-        <span className="text-sm font-medium">{(vendor.rating || 0).toFixed(1)}</span>
+    totalPaid: (
+      <div className="text-sm font-medium text-green-600">
+        ₹{((vendor.totalPaid || 0) / 100000).toFixed(1)}L
+      </div>
+    ),
+    balance: (
+      <div className="text-sm font-medium text-orange-600">
+        ₹{((vendor.pendingAmount || 0) / 100000).toFixed(1)}L
       </div>
     ),
   }));

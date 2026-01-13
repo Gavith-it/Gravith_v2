@@ -720,13 +720,14 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
             <CardContent className="p-0">
               <DataTable
                 columns={[
+                  { key: 'purchaseDate', label: 'Purchase Date', sortable: true },
                   { key: 'materialName', label: 'Material Name', sortable: true },
                   { key: 'vendor', label: 'Vendor', sortable: true },
                   { key: 'quantity', label: 'Quantity', sortable: true },
-                  { key: 'usage', label: 'Usage', sortable: false },
                   { key: 'unitRate', label: 'Rate (₹)', sortable: true },
                   { key: 'totalAmount', label: 'Total Amount', sortable: true },
-                  { key: 'purchaseDate', label: 'Purchase Date', sortable: true },
+                  { key: 'paid', label: 'Paid', sortable: true },
+                  { key: 'balance', label: 'Balance', sortable: true },
                   { key: 'actions', label: 'Actions', sortable: false },
                 ]}
                 data={sortedAndFilteredMaterials.map((material) => {
@@ -740,6 +741,9 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                     totalOrdered > 0 ? Math.min(100, (consumedQuantity / totalOrdered) * 100) : 0;
 
                   return {
+                    purchaseDate: (
+                      <span className="text-sm text-muted-foreground">{material.purchaseDate}</span>
+                    ),
                     materialName: (
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8 bg-primary/10">
@@ -747,18 +751,10 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                             <Package className="h-4 w-4" />
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <div className="font-medium">{material.materialName}</div>
-                          <div className="text-sm text-muted-foreground">{material.site}</div>
-                        </div>
+                        <div className="font-medium">{material.materialName}</div>
                       </div>
                     ),
-                    vendor: (
-                      <div>
-                        <div className="font-medium">{material.vendor}</div>
-                        <div className="text-sm text-muted-foreground">{material.purchaseDate}</div>
-                      </div>
-                    ),
+                    vendor: <div className="font-medium">{material.vendor}</div>,
                     quantity: (
                       <div>
                         <div className="font-medium">
@@ -771,28 +767,6 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                         )}
                       </div>
                     ),
-                    usage: (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>
-                            Used:{' '}
-                            {consumedQuantity.toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                          <span>
-                            Left:{' '}
-                            {remainingQuantity.toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
-                        <Progress value={usagePercent} className="h-1.5" />
-                        <div className="text-[11px] text-muted-foreground text-right">
-                          {usagePercent.toFixed(1)}%
-                        </div>
-                      </div>
-                    ),
                     unitRate: (
                       <span className="font-medium">₹{material.unitRate?.toLocaleString()}</span>
                     ),
@@ -801,8 +775,13 @@ export function PurchasePage({ filterBySite }: PurchasePageProps = {}) {
                         ₹{material.totalAmount?.toLocaleString()}
                       </span>
                     ),
-                    purchaseDate: (
-                      <span className="text-sm text-muted-foreground">{material.purchaseDate}</span>
+                    paid: (
+                      <span className="font-medium">₹{(material.paid ?? 0).toLocaleString()}</span>
+                    ),
+                    balance: (
+                      <span className="font-medium text-orange-600">
+                        ₹{(material.balance ?? 0).toLocaleString()}
+                      </span>
                     ),
                     actions: (
                       <div className="flex items-center gap-1">

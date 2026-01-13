@@ -19,10 +19,8 @@ const VENDOR_SELECT = `
   bank_account,
   ifsc_code,
   payment_terms,
-  rating,
   total_paid,
   pending_amount,
-  last_payment,
   status,
   registration_date,
   notes,
@@ -63,7 +61,59 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Vendor not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ vendor: mapRowToVendor(data as VendorRow) });
+    // Calculate Total Paid from payments table
+    let totalPaid = 0;
+    const { data: paymentsData } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('organization_id', ctx.organizationId)
+      .eq('vendor_id', id)
+      .not('vendor_id', 'is', null);
+
+    if (paymentsData) {
+      totalPaid = paymentsData.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+    }
+
+    // Calculate Total Bill from purchases + expenses
+    let totalPurchases = 0;
+    const { data: purchasesData } = await supabase
+      .from('material_purchases')
+      .select('total_amount')
+      .eq('organization_id', ctx.organizationId)
+      .eq('vendor_id', id)
+      .not('vendor_id', 'is', null);
+
+    if (purchasesData) {
+      totalPurchases = purchasesData.reduce(
+        (sum, purchase) => sum + (Number(purchase.total_amount) || 0),
+        0,
+      );
+    }
+
+    let totalExpenses = 0;
+    const { data: expensesData } = await supabase
+      .from('expenses')
+      .select('amount')
+      .eq('organization_id', ctx.organizationId)
+      .eq('vendor_id', id)
+      .not('vendor_id', 'is', null);
+
+    if (expensesData) {
+      totalExpenses = expensesData.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    }
+
+    const totalBill = totalPurchases + totalExpenses;
+    const balance = totalBill - totalPaid;
+
+    const vendor = mapRowToVendor(data as VendorRow);
+    // Override with calculated values
+    const vendorWithCalculatedTotals = {
+      ...vendor,
+      totalPaid,
+      pendingAmount: balance, // Using pendingAmount field to store balance
+    };
+
+    return NextResponse.json({ vendor: vendorWithCalculatedTotals });
   } catch (error) {
     console.error('Unexpected error fetching vendor:', error);
     return NextResponse.json({ error: 'Unexpected error fetching vendor.' }, { status: 500 });
@@ -109,33 +159,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       updates['registration_date'] = body.registrationDate ?? null;
     if (body.status !== undefined) updates['status'] = body.status;
 
-    if (body.rating !== undefined) {
-      const rating = Number(body.rating);
-      if (Number.isNaN(rating) || rating < 0 || rating > 5) {
-        return NextResponse.json({ error: 'Invalid rating value.' }, { status: 400 });
-      }
-      updates['rating'] = rating;
-    }
-
-    if (body.totalPaid !== undefined) {
-      const totalPaid = Number(body.totalPaid);
-      if (Number.isNaN(totalPaid) || totalPaid < 0) {
-        return NextResponse.json({ error: 'Invalid total paid value.' }, { status: 400 });
-      }
-      updates['total_paid'] = totalPaid;
-    }
-
-    if (body.pendingAmount !== undefined) {
-      const pendingAmount = Number(body.pendingAmount);
-      if (Number.isNaN(pendingAmount) || pendingAmount < 0) {
-        return NextResponse.json({ error: 'Invalid pending amount value.' }, { status: 400 });
-      }
-      updates['pending_amount'] = pendingAmount;
-    }
-
-    if (body.lastPayment !== undefined) {
-      updates['last_payment'] = body.lastPayment ?? null;
-    }
+    // Note: totalPaid and pendingAmount are now calculated dynamically from payments, purchases, and expenses
+    // Manual updates to these fields are not allowed as they are computed values
 
     if (Object.keys(updates).length === 1) {
       return NextResponse.json({ error: 'No updates provided.' }, { status: 400 });
@@ -154,7 +179,58 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to update vendor.' }, { status: 500 });
     }
 
-    return NextResponse.json({ vendor: mapRowToVendor(data as VendorRow) });
+    // Calculate financial totals after update
+    const vendorId = id;
+    let totalPaid = 0;
+    const { data: paymentsData } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('organization_id', ctx.organizationId)
+      .eq('vendor_id', vendorId)
+      .not('vendor_id', 'is', null);
+
+    if (paymentsData) {
+      totalPaid = paymentsData.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+    }
+
+    let totalPurchases = 0;
+    const { data: purchasesData } = await supabase
+      .from('material_purchases')
+      .select('total_amount')
+      .eq('organization_id', ctx.organizationId)
+      .eq('vendor_id', vendorId)
+      .not('vendor_id', 'is', null);
+
+    if (purchasesData) {
+      totalPurchases = purchasesData.reduce(
+        (sum, purchase) => sum + (Number(purchase.total_amount) || 0),
+        0,
+      );
+    }
+
+    let totalExpenses = 0;
+    const { data: expensesData } = await supabase
+      .from('expenses')
+      .select('amount')
+      .eq('organization_id', ctx.organizationId)
+      .eq('vendor_id', vendorId)
+      .not('vendor_id', 'is', null);
+
+    if (expensesData) {
+      totalExpenses = expensesData.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    }
+
+    const totalBill = totalPurchases + totalExpenses;
+    const balance = totalBill - totalPaid;
+
+    const vendor = mapRowToVendor(data as VendorRow);
+    const vendorWithCalculatedTotals = {
+      ...vendor,
+      totalPaid,
+      pendingAmount: balance,
+    };
+
+    return NextResponse.json({ vendor: vendorWithCalculatedTotals });
   } catch (error) {
     console.error('Unexpected error updating vendor:', error);
     return NextResponse.json({ error: 'Unexpected error updating vendor.' }, { status: 500 });

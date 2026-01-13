@@ -13,10 +13,13 @@ export type ExpenseRow = {
   subcategory: string | null;
   date: string;
   vendor: string | null;
+  vendor_id: string | null;
   site_id: string | null;
   site_name: string | null;
   receipt: string | null;
   status: string;
+  paid: number | string | null;
+  balance: number | string | null;
   approved_by: string | null;
   approved_by_name: string | null;
   organization_id: string;
@@ -53,6 +56,8 @@ export function mapRowToExpense(row: ExpenseRow): Expense {
     siteName: row.site_name ?? undefined,
     receipt: row.receipt ?? undefined,
     status: row.status as Expense['status'],
+    paid: row.paid !== null && row.paid !== undefined ? Number(row.paid) : 0,
+    balance: row.balance !== null && row.balance !== undefined ? Number(row.balance) : 0,
     approvedBy: row.approved_by_name ?? row.approved_by ?? undefined,
     approvedByName: row.approved_by_name ?? undefined,
     organizationId: row.organization_id,

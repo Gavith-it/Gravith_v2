@@ -32,6 +32,9 @@ export interface SharedMaterial {
   category?: string;
   // Material Receipt linking
   linkedReceiptId?: string;
+  // Payment fields
+  paid?: number;
+  balance?: number;
 }
 
 // Form data interface for adding materials

@@ -584,9 +584,7 @@ export default function MaterialMasterForm({
                     placeholder="Enter HSN code"
                     autoComplete="off"
                   />
-                  <FieldDescription>
-                    Harmonized System of Nomenclature code for tax purposes.
-                  </FieldDescription>
+                  <FieldDescription>HSN code for tax purpose.</FieldDescription>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
               )}
@@ -612,7 +610,7 @@ export default function MaterialMasterForm({
                       ) : (
                         taxRateOptions.map((taxRate) => (
                           <SelectItem key={taxRate.id} value={taxRate.code}>
-                            {taxRate.name} ({taxRate.rate}%)
+                            {taxRate.name}
                           </SelectItem>
                         ))
                       )}

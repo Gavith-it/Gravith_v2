@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import useSWR from 'swr';
 import { z } from 'zod';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -183,6 +184,29 @@ export function PaymentsPage() {
   useEffect(() => {
     const vendorId = vendorFilter !== 'all' ? vendorFilter : undefined;
     void refresh(page, limit, vendorId);
+  }, [refresh, page, limit, vendorFilter]);
+
+  // Refresh payments when page becomes visible (e.g., user switches tabs or creates expense elsewhere)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const vendorId = vendorFilter !== 'all' ? vendorFilter : undefined;
+        void refresh(page, limit, vendorId);
+      }
+    };
+
+    const handleFocus = () => {
+      const vendorId = vendorFilter !== 'all' ? vendorFilter : undefined;
+      void refresh(page, limit, vendorId);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [refresh, page, limit, vendorFilter]);
 
   // Reset to page 1 when filters change
@@ -383,10 +407,10 @@ export function PaymentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Due Date</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>Amount (₹)</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Due Date</TableHead>
                     <TableHead>Paid Date</TableHead>
                     <TableHead>Site</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -395,17 +419,35 @@ export function PaymentsPage() {
                 <TableBody>
                   {filteredPayments.map((payment) => (
                     <TableRow key={payment.id}>
+                      <TableCell className="text-muted-foreground">
+                        {payment.dueDate ? formatDate(payment.dueDate) : '—'}
+                      </TableCell>
                       <TableCell>
                         <div className="font-medium">{payment.clientName}</div>
-                        {payment.siteName && (
-                          <div className="text-xs text-muted-foreground">{payment.siteName}</div>
-                        )}
                       </TableCell>
-                      <TableCell>₹{payment.amount.toLocaleString()}</TableCell>
-                      <TableCell className="capitalize">{STATUS_LABELS[payment.status]}</TableCell>
-                      <TableCell>{payment.dueDate ? formatDate(payment.dueDate) : '—'}</TableCell>
-                      <TableCell>{payment.paidDate ? formatDate(payment.paidDate) : '—'}</TableCell>
-                      <TableCell>{payment.siteName ?? '—'}</TableCell>
+                      <TableCell className="font-semibold">
+                        ₹{payment.amount.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            payment.status === 'completed'
+                              ? 'default'
+                              : payment.status === 'overdue'
+                                ? 'destructive'
+                                : 'secondary'
+                          }
+                          className="capitalize"
+                        >
+                          {STATUS_LABELS[payment.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {payment.paidDate ? formatDate(payment.paidDate) : '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {payment.siteName ?? '—'}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button

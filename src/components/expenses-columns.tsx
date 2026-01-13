@@ -198,6 +198,17 @@ const downloadExpenseReceipt = async (expense: Expense) => {
 
 export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHandlers) => [
   {
+    key: 'date',
+    label: 'Date',
+    sortable: true,
+    minWidth: 'min-w-[120px]',
+    render: (expense: Expense) => (
+      <div className="text-sm text-muted-foreground whitespace-nowrap">
+        {formatDate(expense.date)}
+      </div>
+    ),
+  },
+  {
     key: 'category',
     label: 'Category & Description',
     sortable: true,
@@ -220,18 +231,6 @@ export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHan
     },
   },
   {
-    key: 'amount',
-    label: 'Amount',
-    sortable: true,
-    minWidth: 'min-w-[120px]',
-    align: 'right' as const,
-    render: (expense: Expense) => (
-      <div className="font-semibold text-primary whitespace-nowrap">
-        ₹{expense.amount.toLocaleString()}
-      </div>
-    ),
-  },
-  {
     key: 'vendor',
     label: 'Vendor',
     sortable: true,
@@ -248,40 +247,38 @@ export const getExpenseColumns = ({ onView, onEdit, onDelete }: ExpenseColumnHan
     ),
   },
   {
-    key: 'date',
-    label: 'Date',
+    key: 'amount',
+    label: 'Amount',
     sortable: true,
     minWidth: 'min-w-[120px]',
+    align: 'right' as const,
     render: (expense: Expense) => (
-      <div className="text-sm text-muted-foreground whitespace-nowrap">
-        {formatDate(expense.date)}
+      <div className="font-semibold text-primary whitespace-nowrap">
+        ₹{expense.amount.toLocaleString()}
       </div>
     ),
   },
   {
-    key: 'status',
-    label: 'Status',
+    key: 'paid',
+    label: 'Paid',
     sortable: true,
-    minWidth: 'min-w-[110px]',
-    render: (expense: Expense) => {
-      const status = expense.status as 'paid' | 'pending' | 'overdue';
-      const statusConfig = {
-        paid: { variant: 'default' as const, dotColor: 'bg-green-500', label: 'Paid' },
-        pending: { variant: 'secondary' as const, dotColor: 'bg-orange-500', label: 'Pending' },
-        overdue: { variant: 'destructive' as const, dotColor: 'bg-red-500', label: 'Overdue' },
-      };
-      const config = statusConfig[status];
-
-      return (
-        <Badge
-          variant={config.variant}
-          className="text-xs flex items-center gap-1.5 w-fit whitespace-nowrap"
-        >
-          <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${config.dotColor}`} />
-          {config.label}
-        </Badge>
-      );
-    },
+    minWidth: 'min-w-[120px]',
+    align: 'right' as const,
+    render: (expense: Expense) => (
+      <div className="font-medium whitespace-nowrap">₹{(expense.paid ?? 0).toLocaleString()}</div>
+    ),
+  },
+  {
+    key: 'balance',
+    label: 'Balance',
+    sortable: true,
+    minWidth: 'min-w-[120px]',
+    align: 'right' as const,
+    render: (expense: Expense) => (
+      <div className="font-medium text-orange-600 whitespace-nowrap">
+        ₹{(expense.balance ?? 0).toLocaleString()}
+      </div>
+    ),
   },
   {
     key: 'actions',

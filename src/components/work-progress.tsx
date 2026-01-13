@@ -2232,17 +2232,23 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
             <CardContent className="p-0">
               <DataTable
                 columns={[
+                  { key: 'date', label: 'Date', sortable: true },
                   { key: 'workType', label: 'Work Type', sortable: true },
                   { key: 'siteName', label: 'Site', sortable: true },
                   { key: 'progressPercentage', label: 'Progress', sortable: true },
                   { key: 'laborHours', label: 'Labor Hours', sortable: true },
-                  { key: 'date', label: 'Date', sortable: true },
                   { key: 'status', label: 'Status', sortable: true },
                   { key: 'actions', label: 'Actions', sortable: false },
                 ]}
                 data={filteredEntries.map((entry) => {
                   const IconComponent = getWorkTypeIcon(entry.workType);
                   return {
+                    date: (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">{formatDateShort(entry.date)}</span>
+                      </div>
+                    ),
                     workType: (
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8 bg-primary/10">
@@ -2277,12 +2283,6 @@ export function WorkProgressPage({ filterBySite }: WorkProgressProps) {
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">{entry.laborHours}h</span>
-                      </div>
-                    ),
-                    date: (
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{formatDateShort(entry.date)}</span>
                       </div>
                     ),
                     status: (

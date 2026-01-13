@@ -47,6 +47,15 @@ interface SitePurchase {
 
 export const getSitePurchaseColumns = (): DataTableColumn<SitePurchase>[] => [
   {
+    key: 'purchaseDate',
+    label: 'Purchase Date',
+    sortable: true,
+    minWidth: 'min-w-[120px]',
+    render: (purchase: SitePurchase) => (
+      <div className="text-sm text-muted-foreground">{formatDate(purchase.purchaseDate)}</div>
+    ),
+  },
+  {
     key: 'materialName',
     label: 'Material',
     sortable: true,
@@ -103,15 +112,6 @@ export const getSitePurchaseColumns = (): DataTableColumn<SitePurchase>[] => [
     sortable: true,
     minWidth: 'min-w-[180px]',
     render: (purchase: SitePurchase) => <div className="text-sm truncate">{purchase.vendor}</div>,
-  },
-  {
-    key: 'purchaseDate',
-    label: 'Purchase Date',
-    sortable: true,
-    minWidth: 'min-w-[120px]',
-    render: (purchase: SitePurchase) => (
-      <div className="text-sm text-muted-foreground">{formatDate(purchase.purchaseDate)}</div>
-    ),
   },
   {
     key: 'actions',
@@ -210,6 +210,15 @@ interface SiteExpense {
 
 export const getSiteExpenseColumns = (): DataTableColumn<SiteExpense>[] => [
   {
+    key: 'date',
+    label: 'Date',
+    sortable: true,
+    minWidth: 'min-w-[120px]',
+    render: (expense: SiteExpense) => (
+      <div className="text-sm text-muted-foreground">{formatDate(expense.date)}</div>
+    ),
+  },
+  {
     key: 'category',
     label: 'Category',
     sortable: true,
@@ -238,15 +247,6 @@ export const getSiteExpenseColumns = (): DataTableColumn<SiteExpense>[] => [
     minWidth: 'min-w-[180px]',
     render: (expense: SiteExpense) => (
       <div className="text-sm truncate">{expense.vendor || 'N/A'}</div>
-    ),
-  },
-  {
-    key: 'date',
-    label: 'Date',
-    sortable: true,
-    minWidth: 'min-w-[120px]',
-    render: (expense: SiteExpense) => (
-      <div className="text-sm text-muted-foreground">{formatDate(expense.date)}</div>
     ),
   },
   {
@@ -537,7 +537,8 @@ export const getSiteMaterialMasterColumns = (): DataTableColumn<SiteMaterialMast
     minWidth: 'min-w-[110px]',
     render: (material: SiteMaterialMaster) => (
       <div className="text-sm font-semibold">
-        {material.siteStock.toLocaleString()} <span className="text-muted-foreground">{material.unit}</span>
+        {material.siteStock.toLocaleString()}{' '}
+        <span className="text-muted-foreground">{material.unit}</span>
       </div>
     ),
   },
@@ -548,7 +549,8 @@ export const getSiteMaterialMasterColumns = (): DataTableColumn<SiteMaterialMast
     minWidth: 'min-w-[110px]',
     render: (material: SiteMaterialMaster) => (
       <div className="text-sm">
-        {material.allocated.toLocaleString()} <span className="text-muted-foreground">{material.unit}</span>
+        {material.allocated.toLocaleString()}{' '}
+        <span className="text-muted-foreground">{material.unit}</span>
       </div>
     ),
   },
@@ -559,7 +561,8 @@ export const getSiteMaterialMasterColumns = (): DataTableColumn<SiteMaterialMast
     minWidth: 'min-w-[110px]',
     render: (material: SiteMaterialMaster) => (
       <div className="text-sm">
-        {material.reserved.toLocaleString()} <span className="text-muted-foreground">{material.unit}</span>
+        {material.reserved.toLocaleString()}{' '}
+        <span className="text-muted-foreground">{material.unit}</span>
       </div>
     ),
   },

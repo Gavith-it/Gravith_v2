@@ -18,10 +18,8 @@ export type VendorRow = {
   bank_account: string | null;
   ifsc_code: string | null;
   payment_terms: string | null;
-  rating: number | null;
   total_paid: number | string | null;
   pending_amount: number | string | null;
-  last_payment: string | null;
   status: string;
   registration_date: string | null;
   notes: string | null;
@@ -60,14 +58,12 @@ export function mapRowToVendor(row: VendorRow): Vendor {
     bankAccount: row.bank_account ?? undefined,
     ifscCode: row.ifsc_code ?? undefined,
     paymentTerms: row.payment_terms ?? undefined,
-    rating: row.rating !== null && row.rating !== undefined ? Number(row.rating) : undefined,
     totalPaid:
       row.total_paid !== null && row.total_paid !== undefined ? Number(row.total_paid) : undefined,
     pendingAmount:
       row.pending_amount !== null && row.pending_amount !== undefined
         ? Number(row.pending_amount)
         : undefined,
-    lastPayment: row.last_payment ?? undefined,
     status: row.status as Vendor['status'],
     registrationDate: row.registration_date ?? undefined,
     notes: row.notes ?? undefined,

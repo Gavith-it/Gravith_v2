@@ -143,6 +143,8 @@ export interface MaterialPurchase {
   weightUnit?: string;
   consumedQuantity?: number;
   remainingQuantity?: number;
+  paid?: number;
+  balance?: number;
   organizationId: string;
   createdAt: string;
   updatedAt: string;
@@ -315,10 +317,8 @@ export interface Vendor {
   bankAccount?: string;
   ifscCode?: string;
   paymentTerms?: string;
-  rating?: number;
   totalPaid?: number;
   pendingAmount?: number;
-  lastPayment?: string;
   status: 'active' | 'inactive' | 'blocked';
   registrationDate?: string;
   notes?: string;
@@ -342,6 +342,8 @@ export interface Expense {
   siteName?: string;
   receipt?: string;
   status: 'paid' | 'pending' | 'overdue';
+  paid?: number;
+  balance?: number;
   approvedBy?: string;
   approvedByName?: string;
   organizationId: string;

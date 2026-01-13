@@ -11,7 +11,6 @@ import {
   Edit,
   CheckCircle2,
   Pause,
-  Star,
   Phone,
   Mail,
   MoreHorizontal,
@@ -25,7 +24,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useTableState } from '../lib/hooks/useTableState';
-import { formatDate } from '../lib/utils';
 
 import VendorNewForm, { type VendorFormData } from './forms/VendorForm';
 import type { Vendor } from './vendors-columns';
@@ -74,26 +72,18 @@ import { formatDateOnly } from '@/lib/utils/date';
 
 type VendorAdvancedFilterState = {
   paymentTerms: string[];
-  ratingMin: string;
-  ratingMax: string;
   totalPaidMin: string;
   totalPaidMax: string;
   pendingMin: string;
   pendingMax: string;
-  lastPaymentFrom?: string;
-  lastPaymentTo?: string;
 };
 
 const createDefaultVendorAdvancedFilters = (): VendorAdvancedFilterState => ({
   paymentTerms: [],
-  ratingMin: '',
-  ratingMax: '',
   totalPaidMin: '',
   totalPaidMax: '',
   pendingMin: '',
   pendingMax: '',
-  lastPaymentFrom: undefined,
-  lastPaymentTo: undefined,
 });
 
 const cloneVendorAdvancedFilters = (
@@ -106,24 +96,18 @@ const cloneVendorAdvancedFilters = (
 const isVendorAdvancedFilterDefault = (filters: VendorAdvancedFilterState): boolean => {
   return (
     filters.paymentTerms.length === 0 &&
-    filters.ratingMin === '' &&
-    filters.ratingMax === '' &&
     filters.totalPaidMin === '' &&
     filters.totalPaidMax === '' &&
     filters.pendingMin === '' &&
-    filters.pendingMax === '' &&
-    !filters.lastPaymentFrom &&
-    !filters.lastPaymentTo
+    filters.pendingMax === ''
   );
 };
 
 const countVendorAdvancedFilters = (filters: VendorAdvancedFilterState): number => {
   let count = 0;
   count += filters.paymentTerms.length;
-  if (filters.ratingMin !== '' || filters.ratingMax !== '') count += 1;
   if (filters.totalPaidMin !== '' || filters.totalPaidMax !== '') count += 1;
   if (filters.pendingMin !== '' || filters.pendingMax !== '') count += 1;
-  if (filters.lastPaymentFrom || filters.lastPaymentTo) count += 1;
   return count;
 };
 
@@ -196,14 +180,6 @@ export function VendorsPage() {
 
   // Filter and sort vendors
   const sortedAndFilteredVendors = useMemo(() => {
-    const ratingMin =
-      appliedAdvancedFilters.ratingMin !== ''
-        ? Number(appliedAdvancedFilters.ratingMin)
-        : undefined;
-    const ratingMax =
-      appliedAdvancedFilters.ratingMax !== ''
-        ? Number(appliedAdvancedFilters.ratingMax)
-        : undefined;
     const totalPaidMin =
       appliedAdvancedFilters.totalPaidMin !== ''
         ? Number(appliedAdvancedFilters.totalPaidMin)
@@ -220,8 +196,6 @@ export function VendorsPage() {
       appliedAdvancedFilters.pendingMax !== ''
         ? Number(appliedAdvancedFilters.pendingMax)
         : undefined;
-    const lastPaymentFrom = parseDateValue(appliedAdvancedFilters.lastPaymentFrom);
-    const lastPaymentTo = parseDateValue(appliedAdvancedFilters.lastPaymentTo);
 
     return vendors
       .filter((vendor) => {
@@ -239,11 +213,6 @@ export function VendorsPage() {
           appliedAdvancedFilters.paymentTerms.length === 0 ||
           (vendor.paymentTerms &&
             appliedAdvancedFilters.paymentTerms.includes(vendor.paymentTerms.trim()));
-        const vendorRating = vendor.rating ?? 0;
-        const matchesRatingMin =
-          ratingMin === undefined || Number.isNaN(ratingMin) || vendorRating >= ratingMin;
-        const matchesRatingMax =
-          ratingMax === undefined || Number.isNaN(ratingMax) || vendorRating <= ratingMax;
         const vendorTotalPaid = Number(vendor.totalPaid ?? 0);
         const vendorPending = Number(vendor.pendingAmount ?? 0);
         const matchesTotalPaidMin =
@@ -258,25 +227,16 @@ export function VendorsPage() {
           pendingMin === undefined || Number.isNaN(pendingMin) || vendorPending >= pendingMin;
         const matchesPendingMax =
           pendingMax === undefined || Number.isNaN(pendingMax) || vendorPending <= pendingMax;
-        const vendorLastPayment = parseDateValue(vendor.lastPayment);
-        const matchesLastPaymentFrom =
-          !lastPaymentFrom || (vendorLastPayment !== null && vendorLastPayment >= lastPaymentFrom);
-        const matchesLastPaymentTo =
-          !lastPaymentTo || (vendorLastPayment !== null && vendorLastPayment <= lastPaymentTo);
 
         return (
           matchesSearch &&
           matchesCategory &&
           matchesStatus &&
           matchesPaymentTerms &&
-          matchesRatingMin &&
-          matchesRatingMax &&
           matchesTotalPaidMin &&
           matchesTotalPaidMax &&
           matchesPendingMin &&
-          matchesPendingMax &&
-          matchesLastPaymentFrom &&
-          matchesLastPaymentTo
+          matchesPendingMax
         );
       })
       .sort((a, b) => {
@@ -306,26 +266,24 @@ export function VendorsPage() {
   ]);
 
   // Analytics calculations
-  const { totalVendors, totalPaid, totalPending, averageRating } = useMemo(() => {
+  const { totalVendors, totalPaid, totalPending } = useMemo(() => {
     if (vendors.length === 0) {
-      return { totalVendors: 0, totalPaid: 0, totalPending: 0, averageRating: 0 };
+      return { totalVendors: 0, totalPaid: 0, totalPending: 0 };
     }
 
     const totals = vendors.reduce(
       (acc, vendor) => {
         acc.totalPaid += vendor.totalPaid || 0;
         acc.totalPending += vendor.pendingAmount || 0;
-        acc.totalRating += vendor.rating || 0;
         return acc;
       },
-      { totalPaid: 0, totalPending: 0, totalRating: 0 },
+      { totalPaid: 0, totalPending: 0 },
     );
 
     return {
       totalVendors: vendors.length,
       totalPaid: totals.totalPaid,
       totalPending: totals.totalPending,
-      averageRating: totals.totalRating / vendors.length,
     };
   }, [vendors]);
 
@@ -379,8 +337,6 @@ export function VendorsPage() {
             status: 'active',
             totalPaid: 0,
             pendingAmount: 0,
-            rating: 0,
-            lastPayment: '',
             registrationDate: formatDateOnly(new Date()),
           });
           toast.success('Vendor added successfully');
@@ -504,21 +460,6 @@ export function VendorsPage() {
                     </div>
                     <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
                       <Clock className="h-6 w-6 text-orange-600" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/10 hover:shadow-md transition-shadow">
-                <CardContent className="p-4 md:p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-muted-foreground">Avg Rating</p>
-                      <p className="text-2xl font-bold text-purple-600">
-                        {averageRating.toFixed(1)}
-                      </p>
-                    </div>
-                    <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
-                      <Star className="h-6 w-6 text-purple-600" />
                     </div>
                   </div>
                 </CardContent>
@@ -684,11 +625,6 @@ export function VendorsPage() {
                     if (appliedAdvancedFilters.paymentTerms.length > 0) {
                       chips.push(`Terms: ${appliedAdvancedFilters.paymentTerms.join(', ')}`);
                     }
-                    if (appliedAdvancedFilters.ratingMin || appliedAdvancedFilters.ratingMax) {
-                      chips.push(
-                        `Rating: ${appliedAdvancedFilters.ratingMin || 'Any'} - ${appliedAdvancedFilters.ratingMax || 'Any'}`,
-                      );
-                    }
                     if (
                       appliedAdvancedFilters.totalPaidMin ||
                       appliedAdvancedFilters.totalPaidMax
@@ -700,14 +636,6 @@ export function VendorsPage() {
                     if (appliedAdvancedFilters.pendingMin || appliedAdvancedFilters.pendingMax) {
                       chips.push(
                         `Pending: ₹${appliedAdvancedFilters.pendingMin || 'Any'} - ₹${appliedAdvancedFilters.pendingMax || 'Any'}`,
-                      );
-                    }
-                    if (
-                      appliedAdvancedFilters.lastPaymentFrom ||
-                      appliedAdvancedFilters.lastPaymentTo
-                    ) {
-                      chips.push(
-                        `Last paid: ${appliedAdvancedFilters.lastPaymentFrom ?? 'Any'} → ${appliedAdvancedFilters.lastPaymentTo ?? 'Any'}`,
                       );
                     }
                     return chips;
@@ -758,13 +686,10 @@ export function VendorsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[250px]">Vendor</TableHead>
-                      <TableHead className="min-w-[120px]">Category</TableHead>
                       <TableHead className="min-w-[150px]">Contact</TableHead>
+                      <TableHead className="min-w-[120px] text-right">Total Bill</TableHead>
                       <TableHead className="min-w-[120px] text-right">Total Paid</TableHead>
-                      <TableHead className="min-w-[120px] text-right">Pending</TableHead>
-                      <TableHead className="min-w-[100px]">Rating</TableHead>
-                      <TableHead className="min-w-[100px]">Status</TableHead>
-                      <TableHead className="min-w-[120px]">Last Payment</TableHead>
+                      <TableHead className="min-w-[120px] text-right">Balance</TableHead>
                       <TableHead className="min-w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -793,14 +718,6 @@ export function VendorsPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant="secondary"
-                              className="capitalize text-xs whitespace-nowrap"
-                            >
-                              {vendor.category}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
                             <div className="space-y-1">
                               <div className="flex items-center gap-1 text-xs">
                                 <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -812,33 +729,19 @@ export function VendorsPage() {
                               </div>
                             </div>
                           </TableCell>
+                          <TableCell className="font-semibold text-right whitespace-nowrap">
+                            ₹
+                            {(
+                              ((vendor.totalPaid || 0) + (vendor.pendingAmount || 0)) /
+                              100000
+                            ).toFixed(1)}
+                            L
+                          </TableCell>
                           <TableCell className="font-semibold text-green-600 text-right whitespace-nowrap">
                             ₹{((vendor.totalPaid || 0) / 100000).toFixed(1)}L
                           </TableCell>
                           <TableCell className="font-semibold text-orange-600 text-right whitespace-nowrap">
                             ₹{((vendor.pendingAmount || 0) / 100000).toFixed(1)}L
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Star className="h-3 w-3 text-yellow-500 fill-current flex-shrink-0" />
-                              <span className="text-sm font-medium whitespace-nowrap">
-                                {vendor.rating || 0}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={vendor.status === 'active' ? 'default' : 'destructive'}
-                              className="text-xs flex items-center gap-1 w-fit whitespace-nowrap"
-                            >
-                              <div
-                                className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${vendor.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}
-                              />
-                              {vendor.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                            {vendor.lastPayment ? formatDate(vendor.lastPayment) : 'N/A'}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2 justify-end">
@@ -1021,53 +924,6 @@ export function VendorsPage() {
               ),
           },
           {
-            id: 'rating',
-            title: 'Rating',
-            description: 'Filter vendors by minimum and maximum rating.',
-            content: (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="vendor-rating-min" className="text-sm font-medium">
-                    Min
-                  </Label>
-                  <Input
-                    id="vendor-rating-min"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    placeholder="0"
-                    value={draftAdvancedFilters.ratingMin}
-                    onChange={(event) =>
-                      setDraftAdvancedFilters((prev) => ({
-                        ...prev,
-                        ratingMin: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="vendor-rating-max" className="text-sm font-medium">
-                    Max
-                  </Label>
-                  <Input
-                    id="vendor-rating-max"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    placeholder="5"
-                    value={draftAdvancedFilters.ratingMax}
-                    onChange={(event) =>
-                      setDraftAdvancedFilters((prev) => ({
-                        ...prev,
-                        ratingMax: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            ),
-          },
-          {
             id: 'total-paid',
             title: 'Total paid (₹)',
             description: 'Filter by total paid amount.',
@@ -1150,47 +1006,6 @@ export function VendorsPage() {
                       setDraftAdvancedFilters((prev) => ({
                         ...prev,
                         pendingMax: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            ),
-          },
-          {
-            id: 'last-payment',
-            title: 'Last payment date',
-            description: 'Filter vendors by their last payment activity.',
-            content: (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="vendor-last-payment-from" className="text-sm font-medium">
-                    From
-                  </Label>
-                  <Input
-                    id="vendor-last-payment-from"
-                    type="date"
-                    value={draftAdvancedFilters.lastPaymentFrom ?? ''}
-                    onChange={(event) =>
-                      setDraftAdvancedFilters((prev) => ({
-                        ...prev,
-                        lastPaymentFrom: event.target.value || undefined,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="vendor-last-payment-to" className="text-sm font-medium">
-                    To
-                  </Label>
-                  <Input
-                    id="vendor-last-payment-to"
-                    type="date"
-                    value={draftAdvancedFilters.lastPaymentTo ?? ''}
-                    onChange={(event) =>
-                      setDraftAdvancedFilters((prev) => ({
-                        ...prev,
-                        lastPaymentTo: event.target.value || undefined,
                       }))
                     }
                   />

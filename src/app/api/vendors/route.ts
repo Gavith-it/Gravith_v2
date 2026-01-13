@@ -20,10 +20,8 @@ const VENDOR_SELECT = `
   bank_account,
   ifsc_code,
   payment_terms,
-  rating,
   total_paid,
   pending_amount,
-  last_payment,
   status,
   registration_date,
   notes,
@@ -84,7 +82,88 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Failed to load vendors.' }, { status: 500 });
     }
 
-    const vendors = (data ?? []).map((row) => mapRowToVendor(row as VendorRow));
+    const vendorRows = data ?? [];
+    const vendorIds = vendorRows.map((row) => row.id);
+
+    // Calculate Total Paid from payments table for all vendors in this page
+    const paymentsTotalMap = new Map<string, number>();
+    if (vendorIds.length > 0) {
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('vendor_id, amount')
+        .eq('organization_id', ctx.organizationId)
+        .in('vendor_id', vendorIds)
+        .not('vendor_id', 'is', null);
+
+      if (!paymentsError && paymentsData) {
+        paymentsData.forEach((payment) => {
+          if (payment.vendor_id && payment.amount) {
+            const vendorId = String(payment.vendor_id);
+            const currentTotal = paymentsTotalMap.get(vendorId) || 0;
+            paymentsTotalMap.set(vendorId, currentTotal + Number(payment.amount));
+          }
+        });
+      }
+    }
+
+    // Calculate Total Bill from purchases + expenses for all vendors in this page
+    const purchasesTotalMap = new Map<string, number>();
+    if (vendorIds.length > 0) {
+      const { data: purchasesData, error: purchasesError } = await supabase
+        .from('material_purchases')
+        .select('vendor_id, total_amount')
+        .eq('organization_id', ctx.organizationId)
+        .in('vendor_id', vendorIds)
+        .not('vendor_id', 'is', null);
+
+      if (!purchasesError && purchasesData) {
+        purchasesData.forEach((purchase) => {
+          if (purchase.vendor_id && purchase.total_amount) {
+            const vendorId = String(purchase.vendor_id);
+            const currentTotal = purchasesTotalMap.get(vendorId) || 0;
+            purchasesTotalMap.set(vendorId, currentTotal + Number(purchase.total_amount));
+          }
+        });
+      }
+    }
+
+    const expensesTotalMap = new Map<string, number>();
+    if (vendorIds.length > 0) {
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('expenses')
+        .select('vendor_id, amount')
+        .eq('organization_id', ctx.organizationId)
+        .in('vendor_id', vendorIds)
+        .not('vendor_id', 'is', null);
+
+      if (!expensesError && expensesData) {
+        expensesData.forEach((expense) => {
+          if (expense.vendor_id && expense.amount) {
+            const vendorId = String(expense.vendor_id);
+            const currentTotal = expensesTotalMap.get(vendorId) || 0;
+            expensesTotalMap.set(vendorId, currentTotal + Number(expense.amount));
+          }
+        });
+      }
+    }
+
+    // Map vendors and calculate financial totals
+    const vendors = vendorRows.map((row) => {
+      const vendor = mapRowToVendor(row as VendorRow);
+      const vendorId = String(row.id);
+      const totalPaid = paymentsTotalMap.get(vendorId) || 0;
+      const totalPurchases = purchasesTotalMap.get(vendorId) || 0;
+      const totalExpenses = expensesTotalMap.get(vendorId) || 0;
+      const totalBill = totalPurchases + totalExpenses;
+      const balance = totalBill - totalPaid;
+
+      // Override with calculated values
+      return {
+        ...vendor,
+        totalPaid,
+        pendingAmount: balance, // Using pendingAmount field to store balance
+      };
+    });
     const total = count ?? 0;
     const totalPages = Math.ceil(total / limit);
 

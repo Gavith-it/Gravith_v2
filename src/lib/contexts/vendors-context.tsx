@@ -41,10 +41,8 @@ type VendorPayload = {
   notes?: string;
   status?: Vendor['status'];
   registrationDate?: string;
-  lastPayment?: string;
   totalPaid?: number;
   pendingAmount?: number;
-  rating?: number;
 };
 
 type VendorUpdatePayload = Partial<VendorPayload>;

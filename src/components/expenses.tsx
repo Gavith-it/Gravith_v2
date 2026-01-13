@@ -245,7 +245,8 @@ export function ExpensesPage({ filterBySite }: ExpensesPageProps = {}) {
           receipt: formData.receipt,
           approvedBy: formData.approvedBy,
           status: formData.status || 'pending',
-        });
+          paymentTiming: formData.paymentTiming,
+        } as Expense & { paymentTiming?: 'immediate' | 'later' });
 
         toast.success('Expense added successfully');
       }

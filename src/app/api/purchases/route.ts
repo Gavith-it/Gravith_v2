@@ -32,6 +32,8 @@ type PurchaseRow = {
   weight_unit: string | null;
   consumed_quantity: number | string | null;
   remaining_quantity: number | string | null;
+  paid: number | string | null;
+  balance: number | string | null;
   organization_id: string;
   created_at: string | null;
   updated_at: string | null;
@@ -95,6 +97,8 @@ function mapRowToSharedMaterial(
     weightUnit: row.weight_unit ?? undefined,
     consumedQuantity: consumedFromUsage,
     remainingQuantity: remainingFromUsage,
+    paid: row.paid !== null && row.paid !== undefined ? Number(row.paid) : 0,
+    balance: row.balance !== null && row.balance !== undefined ? Number(row.balance) : 0,
     category,
     linkedReceiptId: undefined,
   };

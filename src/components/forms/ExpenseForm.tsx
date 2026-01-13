@@ -21,6 +21,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -46,6 +48,7 @@ const expenseSchema = z.object({
   purchaseId: z.string().optional(),
   materialId: z.string().optional(),
   status: z.enum(['paid', 'pending', 'overdue']).optional(),
+  paymentTiming: z.enum(['immediate', 'later']).optional(),
 });
 
 export type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -87,6 +90,7 @@ export function ExpenseForm({
       receipt: '',
       approvedBy: '',
       status: (defaultValues?.status as 'paid' | 'pending' | 'overdue') || 'pending',
+      paymentTiming: (defaultValues?.paymentTiming as 'immediate' | 'later') || 'later',
       ...defaultValues,
     },
   });
@@ -467,24 +471,45 @@ export function ExpenseForm({
 
               <FormField
                 control={form.control}
-                name="status"
+                name="paymentTiming"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-3">
                     <FormLabel>
-                      Status <span className="text-destructive">*</span>
+                      Payment Timing <span className="text-destructive">*</span>
                     </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value || 'pending'}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="overdue">Overdue</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        defaultValue={field.value || 'later'}
+                        className="flex flex-col space-y-1"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="immediate" id="payment-immediate" />
+                          <Label
+                            htmlFor="payment-immediate"
+                            className="font-normal cursor-pointer flex items-center gap-2"
+                          >
+                            <span className="font-medium">Pay Immediately</span>
+                            <span className="text-xs text-muted-foreground">
+                              (Already paid, expense marked as paid)
+                            </span>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="later" id="payment-later" />
+                          <Label
+                            htmlFor="payment-later"
+                            className="font-normal cursor-pointer flex items-center gap-2"
+                          >
+                            <span className="font-medium">Pay Later</span>
+                            <span className="text-xs text-muted-foreground">
+                              (Will create a payment entry to track this obligation)
+                            </span>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
