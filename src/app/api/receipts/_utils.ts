@@ -92,3 +92,57 @@ export async function resolveContext(supabase: SupabaseServerClient) {
   };
 }
 
+/**
+ * Generate the next receipt number for a given date
+ * Format: MR-YYYYMMDD-XXX (e.g., MR-20241201-001)
+ */
+export async function generateReceiptNumber(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  date: string,
+): Promise<string> {
+  // Format date as YYYYMMDD
+  const dateStr = date.replace(/-/g, '').substring(0, 8);
+  const prefix = `MR-${dateStr}-`;
+
+  // Find the highest receipt number for this date
+  const { data: existingReceipts, error } = await supabase
+    .from('material_receipts')
+    .select('receipt_number')
+    .eq('organization_id', organizationId)
+    .like('receipt_number', `${prefix}%`)
+    .order('receipt_number', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('Error fetching existing receipt numbers', error);
+    // Fallback: use timestamp-based number
+    return `${prefix}${Date.now().toString().slice(-3)}`;
+  }
+
+  if (!existingReceipts || existingReceipts.length === 0) {
+    // First receipt for this date
+    return `${prefix}001`;
+  }
+
+  // Extract the sequence number from the last receipt
+  const lastReceiptNumber = existingReceipts[0]?.receipt_number;
+  if (
+    !lastReceiptNumber ||
+    typeof lastReceiptNumber !== 'string' ||
+    !lastReceiptNumber.startsWith(prefix)
+  ) {
+    return `${prefix}001`;
+  }
+
+  const sequenceStr = lastReceiptNumber.substring(prefix.length);
+  const sequenceNum = parseInt(sequenceStr, 10);
+
+  if (isNaN(sequenceNum)) {
+    return `${prefix}001`;
+  }
+
+  // Increment and format with leading zeros
+  const nextSequence = (sequenceNum + 1).toString().padStart(3, '0');
+  return `${prefix}${nextSequence}`;
+}

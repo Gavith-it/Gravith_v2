@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { mapRowToReceipt, MUTATION_ROLES, resolveContext } from './_utils';
+import { generateReceiptNumber, mapRowToReceipt, MUTATION_ROLES, resolveContext } from './_utils';
 import type { ReceiptRow } from './_utils';
 
 import { createClient } from '@/lib/supabase/server';
@@ -219,62 +219,70 @@ export async function POST(request: Request) {
         ).receipts
       : [body as Partial<MaterialReceipt>];
 
-    // Validate all receipts
-    const payloads = receiptsData.map((receipt) => {
-      const {
-        date,
-        receiptNumber,
-        vehicleNumber,
-        materialId,
-        materialName,
-        filledWeight,
-        emptyWeight,
-        quantity,
-        vendorId,
-        vendorName,
-        linkedPurchaseId,
-        siteId,
-        siteName,
-      } = receipt;
+    // Validate all receipts and generate receipt numbers if not provided
+    const payloads = await Promise.all(
+      receiptsData.map(async (receipt) => {
+        const {
+          date,
+          receiptNumber,
+          vehicleNumber,
+          materialId,
+          materialName,
+          filledWeight,
+          emptyWeight,
+          quantity,
+          vendorId,
+          vendorName,
+          linkedPurchaseId,
+          siteId,
+          siteName,
+        } = receipt;
 
-      if (
-        !date ||
-        !vehicleNumber ||
-        !materialId ||
-        !materialName ||
-        typeof filledWeight !== 'number' ||
-        typeof emptyWeight !== 'number' ||
-        typeof quantity !== 'number'
-      ) {
-        throw new Error('Missing required receipt fields.');
-      }
+        if (
+          !date ||
+          !vehicleNumber ||
+          !materialId ||
+          !materialName ||
+          typeof filledWeight !== 'number' ||
+          typeof emptyWeight !== 'number' ||
+          typeof quantity !== 'number'
+        ) {
+          throw new Error('Missing required receipt fields.');
+        }
 
-      const netWeight = Number(filledWeight) - Number(emptyWeight);
+        const netWeight = Number(filledWeight) - Number(emptyWeight);
 
-      if (Number.isNaN(netWeight) || netWeight < 0) {
-        throw new Error('Invalid weight values. Net weight cannot be negative.');
-      }
+        if (Number.isNaN(netWeight) || netWeight < 0) {
+          throw new Error('Invalid weight values. Net weight cannot be negative.');
+        }
 
-      return {
-        date,
-        receipt_number: receiptNumber ?? null,
-        vehicle_number: vehicleNumber,
-        material_id: materialId,
-        material_name: materialName,
-        filled_weight: Number(filledWeight),
-        empty_weight: Number(emptyWeight),
-        net_weight: netWeight,
-        quantity: Number(quantity),
-        vendor_id: vendorId ?? null,
-        vendor_name: vendorName ?? null,
-        linked_purchase_id: linkedPurchaseId ?? null,
-        site_id: siteId === 'unallocated' ? null : (siteId ?? null),
-        site_name: siteName === 'Unallocated' ? null : (siteName ?? null),
-        organization_id: ctx.organizationId,
-        created_by: ctx.userId,
-        updated_by: ctx.userId,
-      };
-    });
+        // Auto-generate receipt number if not provided
+        let finalReceiptNumber = receiptNumber;
+        if (!finalReceiptNumber || finalReceiptNumber.trim() === '') {
+          finalReceiptNumber = await generateReceiptNumber(supabase, ctx.organizationId, date);
+        }
+
+        return {
+          date,
+          receipt_number: finalReceiptNumber,
+          vehicle_number: vehicleNumber,
+          material_id: materialId,
+          material_name: materialName,
+          filled_weight: Number(filledWeight),
+          empty_weight: Number(emptyWeight),
+          net_weight: netWeight,
+          quantity: Number(quantity),
+          vendor_id: vendorId ?? null,
+          vendor_name: vendorName ?? null,
+          linked_purchase_id: linkedPurchaseId ?? null,
+          site_id: siteId === 'unallocated' ? null : (siteId ?? null),
+          site_name: siteName === 'Unallocated' ? null : (siteName ?? null),
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          updated_by: ctx.userId,
+        };
+      }),
+    );
 
     // Insert all receipts in a transaction
     const { data, error } = await supabase

@@ -190,6 +190,31 @@ export function PurchaseForm({
     return Array.from(new Set(receiptNumbers)).sort();
   }, [receipts, selectedVendor, vendors]);
 
+  // Auto-populate receipt number when receipts are linked
+  React.useEffect(() => {
+    if (linkedReceiptIds.length > 0) {
+      const linkedReceipts = receipts.filter((r) => linkedReceiptIds.includes(r.id));
+      // Get unique receipt numbers from linked receipts
+      const linkedReceiptNumbers = linkedReceipts
+        .map((r) => r.receiptNumber)
+        .filter((rn): rn is string => Boolean(rn && rn.trim() !== ''));
+
+      if (linkedReceiptNumbers.length === 1) {
+        // If all linked receipts have the same receipt number, auto-populate it
+        const currentReceiptNumber = form.getValues('receiptNumber');
+        if (!currentReceiptNumber || currentReceiptNumber !== linkedReceiptNumbers[0]) {
+          form.setValue('receiptNumber', linkedReceiptNumbers[0]);
+        }
+      } else if (linkedReceiptNumbers.length > 1) {
+        // If multiple different receipt numbers, use the first one
+        const currentReceiptNumber = form.getValues('receiptNumber');
+        if (!currentReceiptNumber || !linkedReceiptNumbers.includes(currentReceiptNumber)) {
+          form.setValue('receiptNumber', linkedReceiptNumbers[0]);
+        }
+      }
+    }
+  }, [linkedReceiptIds, receipts, form]);
+
   // Clear receipt number when vendor changes (if current receipt number doesn't belong to new vendor)
   React.useEffect(() => {
     const currentReceiptNumber = form.getValues('receiptNumber');
@@ -771,9 +796,16 @@ export function PurchaseForm({
                                       {formatDate(receipt.date)}
                                     </TableCell>
                                     <TableCell>
-                                      <Badge variant="outline" className="font-mono">
-                                        {receipt.vehicleNumber}
-                                      </Badge>
+                                      <div className="space-y-1">
+                                        <Badge variant="outline" className="font-mono">
+                                          {receipt.vehicleNumber}
+                                        </Badge>
+                                        {receipt.receiptNumber && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {receipt.receiptNumber}
+                                          </div>
+                                        )}
+                                      </div>
                                     </TableCell>
                                     <TableCell>{receipt.materialName}</TableCell>
                                     <TableCell className="text-right font-medium">

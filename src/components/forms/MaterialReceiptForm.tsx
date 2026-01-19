@@ -522,8 +522,8 @@ export function MaterialReceiptForm({
       <CardContent className="pt-6">
         <form id={formId} onSubmit={form.handleSubmit(handleFormSubmit)}>
           <FieldGroup>
-            {/* Header Section: Date, Vendor, and Site */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Header Section: Line 1 - Date, Receipt Number */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="date"
                 control={form.control}
@@ -545,6 +545,33 @@ export function MaterialReceiptForm({
                 )}
               />
 
+              {/* Receipt Number Field - Read-only, shows auto-generated value */}
+              <Controller
+                name="receiptNumber"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor={`${formId}-receiptNumber`}>Receipt Number</FieldLabel>
+                    <Input
+                      {...field}
+                      id={`${formId}-receiptNumber`}
+                      placeholder="Auto-generated"
+                      value={field.value ?? ''}
+                      readOnly
+                      disabled
+                      className="bg-muted cursor-not-allowed"
+                    />
+                    <FieldDescription>
+                      Receipt number is auto-generated when creating new receipts.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </div>
+
+            {/* Header Section: Line 2 - Vendor, Site */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Controller
                 name="vendorId"
                 control={form.control}
@@ -642,25 +669,6 @@ export function MaterialReceiptForm({
               />
             </div>
 
-            {/* Receipt Number Field - Below Site */}
-            <Controller
-              name="receiptNumber"
-              control={form.control}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor={`${formId}-receiptNumber`}>Receipt Number</FieldLabel>
-                  <Input
-                    {...field}
-                    id={`${formId}-receiptNumber`}
-                    placeholder="Enter receipt number (optional)"
-                    value={field.value ?? ''}
-                  />
-                  <FieldDescription>Unique receipt number for tracking.</FieldDescription>
-                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                </Field>
-              )}
-            />
-
             {/* Line Items Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -698,14 +706,15 @@ export function MaterialReceiptForm({
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {/* Line 1: Vehicle Number, Material */}
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                           {/* Vehicle Number */}
                           <Controller
                             name={`lineItems.${index}.vehicleNumber`}
                             control={form.control}
                             render={({ field, fieldState }) => (
-                              <Field data-invalid={fieldState.invalid}>
-                                <FieldLabel>
+                              <Field data-invalid={fieldState.invalid} className="space-y-2">
+                                <FieldLabel className="mb-1">
                                   Vehicle Number <span className="text-destructive">*</span>
                                 </FieldLabel>
                                 <Input {...field} placeholder="KA-01-AB-1234" autoComplete="off" />
@@ -719,9 +728,17 @@ export function MaterialReceiptForm({
                             name={`lineItems.${index}.materialId`}
                             control={form.control}
                             render={({ field, fieldState }) => (
-                              <Field data-invalid={fieldState.invalid}>
-                                <FieldLabel>
-                                  Material <span className="text-destructive">*</span>
+                              <Field data-invalid={fieldState.invalid} className="space-y-2">
+                                <FieldLabel className="mb-1 flex items-center gap-2">
+                                  <span>
+                                    Material <span className="text-destructive">*</span>
+                                  </span>
+                                  {lineItemOBs[index] !== null &&
+                                    lineItemOBs[index] !== undefined && (
+                                      <span className="text-xs text-muted-foreground font-normal">
+                                        Current OB: {lineItemOBs[index]?.toLocaleString()}
+                                      </span>
+                                    )}
                                 </FieldLabel>
                                 <Select
                                   value={field.value ?? ''}
@@ -743,17 +760,14 @@ export function MaterialReceiptForm({
                                   type="hidden"
                                   {...form.register(`lineItems.${index}.materialName`)}
                                 />
-                                {lineItemOBs[index] !== null &&
-                                  lineItemOBs[index] !== undefined && (
-                                    <span className="text-xs text-muted-foreground mt-1 block">
-                                      Current OB: {lineItemOBs[index]?.toLocaleString()}
-                                    </span>
-                                  )}
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                               </Field>
                             )}
                           />
+                        </div>
 
+                        {/* Line 2: Filled Weight, Empty Weight, Quantity */}
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                           {/* Filled Weight */}
                           <Controller
                             name={`lineItems.${index}.filledWeight`}
@@ -761,8 +775,11 @@ export function MaterialReceiptForm({
                             render={({ field, fieldState }) => {
                               const emptyWeight = form.watch(`lineItems.${index}.emptyWeight`);
                               return (
-                                <Field data-invalid={fieldState.invalid && fieldState.isTouched}>
-                                  <FieldLabel>
+                                <Field
+                                  data-invalid={fieldState.invalid && fieldState.isTouched}
+                                  className="space-y-2"
+                                >
+                                  <FieldLabel className="mb-1">
                                     Filled Weight <span className="text-destructive">*</span>
                                   </FieldLabel>
                                   <Input
@@ -865,8 +882,11 @@ export function MaterialReceiptForm({
                             render={({ field, fieldState }) => {
                               const filledWeight = form.watch(`lineItems.${index}.filledWeight`);
                               return (
-                                <Field data-invalid={fieldState.invalid && fieldState.isTouched}>
-                                  <FieldLabel>
+                                <Field
+                                  data-invalid={fieldState.invalid && fieldState.isTouched}
+                                  className="space-y-2"
+                                >
+                                  <FieldLabel className="mb-1">
                                     Empty Weight <span className="text-destructive">*</span>
                                   </FieldLabel>
                                   <Input
@@ -964,8 +984,11 @@ export function MaterialReceiptForm({
                             name={`lineItems.${index}.quantity`}
                             control={form.control}
                             render={({ field, fieldState }) => (
-                              <Field data-invalid={fieldState.invalid && fieldState.isTouched}>
-                                <FieldLabel>
+                              <Field
+                                data-invalid={fieldState.invalid && fieldState.isTouched}
+                                className="space-y-2"
+                              >
+                                <FieldLabel className="mb-1">
                                   Quantity <span className="text-destructive">*</span>
                                 </FieldLabel>
                                 <Input
